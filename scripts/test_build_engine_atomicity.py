@@ -683,7 +683,7 @@ class NvidiaRuntimeBundleTests(unittest.TestCase):
         self.module = load_build_engine_module()
 
     def test_installed_cuda_provider_still_installs_nvidia_runtime_wheels(self):
-        with mock.patch.object(self.module.importlib.metadata, "version", return_value="0.1.3"), \
+        with mock.patch.object(self.module.importlib.metadata, "version", return_value=self.module.QWEN3_CUDA_PROVIDER_VERSION), \
              mock.patch.object(self.module.shutil, "which", return_value="uv"), \
              mock.patch.object(self.module.subprocess, "run") as run:
             self.module.ensure_qwen3_cuda_provider()
@@ -692,6 +692,16 @@ class NvidiaRuntimeBundleTests(unittest.TestCase):
              "nvidia-cuda-runtime-cu12>=12.9,<13", "nvidia-cublas-cu12>=12.9,<13"],
             check=True,
         )
+
+    def test_old_cuda_provider_is_replaced_with_the_pinned_prompt_capable_runtime(self):
+        with mock.patch.object(self.module.importlib.metadata, "version", side_effect=["0.1.3", self.module.QWEN3_CUDA_PROVIDER_VERSION]), \
+             mock.patch.object(self.module.shutil, "which", return_value="uv"), \
+             mock.patch.object(self.module.subprocess, "run") as run:
+            self.module.ensure_qwen3_cuda_provider()
+        command = run.call_args.args[0]
+        self.assertIn("--reinstall", command)
+        self.assertIn(self.module.QWEN3_CUDA_PROVIDER_URL, command)
+        self.assertIn("#sha256=", self.module.QWEN3_CUDA_PROVIDER_URL)
 
     def _frozen_provider(self):
         provider = self.internal / "transcribe_cpp_native_cu12/_native"

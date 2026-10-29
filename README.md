@@ -53,7 +53,7 @@ All local engines run on Windows without WSL. Models download separately and are
 
 Add names and technical terms in Settings → Smart Vocabulary. Words you add take priority over automatically learned words when building model hints. Models have different hint limits, and a hint does not guarantee the model will recognize a word.
 
-R2T2 and the cloud engines receive vocabulary hints directly. The current Qwen3-ASR, Parakeet, Canary-Qwen and Cohere runtime does not support vocabulary prompts; SpeakFlow applies local spelling corrections to their transcripts instead. Manual entries remain eligible for local correction even beyond the 100-word learned-vocabulary cutoff. Symbol-bearing names such as `C++` and names with accented letters preserve their spelling without fuzzy substitutions of unrelated words.
+Qwen3-ASR 1.7B and 0.6B receive up to 100 manual and learned vocabulary terms during recognition, with manual terms first. R2T2 and the cloud engines also receive vocabulary hints directly. Parakeet, Canary-Qwen and Cohere use local spelling correction after recognition. Manual entries remain eligible for local correction even beyond the learned-vocabulary cutoff. Symbol-bearing names such as `C++` and names with accented letters preserve their spelling without fuzzy substitutions of unrelated words. See the [Qwen vocabulary recognition check](docs/evidence/qwen-vocabulary.md) for a real-model example and its limits.
 
 ### Learning corrections in other apps
 
