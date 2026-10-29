@@ -1674,9 +1674,27 @@ mod tests {
     }
 
     #[test]
-    fn qwen_response_uses_profile_hotwords_without_touching_other_engines() {
+    fn local_engine_responses_use_manual_vocabulary_with_a_full_learned_list() {
         let state = AppState::new();
         state.update_profile_mut(|profile| {
+            for index in 0..100 {
+                profile.hot_words.push(HotWord {
+                    text: format!("Learned{index}"),
+                    weight: 5,
+                    source: HotWordSource::Learned,
+                    use_count: 100,
+                    last_used: 0,
+                });
+            }
+            for term in ["C++", "C#", "José"] {
+                profile.hot_words.push(HotWord {
+                    text: term.into(),
+                    weight: 3,
+                    source: HotWordSource::User,
+                    use_count: 0,
+                    last_used: 0,
+                });
+            }
             profile.hot_words.push(HotWord {
                 text: "github".to_string(),
                 weight: 3,
@@ -1703,12 +1721,15 @@ mod tests {
         for &engine in crate::utils::paths::LOCAL_ASR_ENGINES {
             let response: ServerResponse = serde_json::from_value(serde_json::json!({
                 "success": true,
-                "text": "请用 get hub 打开 open cloud。",
+                "text": "请用 get hub 打开 open cloud。 Ask josé to use c++ and c#.",
                 "engine": engine
             }))
             .unwrap();
             let result = server_response_to_transcription_result(&state, response);
-            assert_eq!(result.text, "请用 github 打开 openclaw。");
+            assert_eq!(
+                result.text,
+                "请用 github 打开 openclaw。 Ask José to use C++ and C#."
+            );
         }
     }
 

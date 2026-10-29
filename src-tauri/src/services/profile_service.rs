@@ -594,9 +594,12 @@ fn sanitize_hot_words(profile: &mut UserProfile) -> usize {
     }
 
     profile.hot_words = deduped.into_values().collect();
-    profile
-        .hot_words
-        .sort_by(|a, b| b.weight.cmp(&a.weight).then(b.use_count.cmp(&a.use_count)));
+    profile.hot_words.sort_by(|a, b| {
+        (b.source == HotWordSource::User)
+            .cmp(&(a.source == HotWordSource::User))
+            .then(b.weight.cmp(&a.weight))
+            .then(b.use_count.cmp(&a.use_count))
+    });
     profile.hot_words.truncate(MAX_HOT_WORDS);
     before.saturating_sub(profile.hot_words.len())
 }
@@ -954,6 +957,28 @@ fn extract_diff_segments(original: &str, polished: &str) -> Vec<(String, String)
 mod tests {
     use super::{collect_diff_correction_pairs, normalize_profile};
     use crate::state::user_profile::*;
+
+    #[test]
+    fn adding_manual_vocabulary_to_a_full_learned_profile_survives_reload() {
+        let mut profile = UserProfile {
+            hot_words: (0..super::MAX_HOT_WORDS)
+                .map(|index| HotWord {
+                    text: format!("Learned{index}"),
+                    weight: 5,
+                    source: HotWordSource::Learned,
+                    use_count: 100,
+                    last_used: 0,
+                })
+                .collect(),
+            ..Default::default()
+        };
+        super::add_hot_word(&mut profile, "SpeakFlow".into(), 3);
+        let saved = super::serialize_profile(&profile).unwrap();
+        let mut restored: UserProfile = serde_json::from_str(&saved).unwrap();
+        normalize_profile(&mut restored);
+        assert_eq!(restored.hot_words.len(), super::MAX_HOT_WORDS);
+        assert_eq!(restored.get_hot_word_texts(1), vec!["SpeakFlow"]);
+    }
 
     #[test]
     fn removed_features_are_disabled_in_legacy_profiles() {

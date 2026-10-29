@@ -874,7 +874,12 @@ impl UserProfile {
     /// 获取按权重排序的热词文本列表（用于 ASR 注入）
     pub fn get_hot_word_texts(&self, limit: usize) -> Vec<String> {
         let mut words: Vec<&HotWord> = self.hot_words.iter().collect();
-        words.sort_by(|a, b| b.weight.cmp(&a.weight).then(b.use_count.cmp(&a.use_count)));
+        words.sort_by(|a, b| {
+            (b.source == HotWordSource::User)
+                .cmp(&(a.source == HotWordSource::User))
+                .then(b.weight.cmp(&a.weight))
+                .then(b.use_count.cmp(&a.use_count))
+        });
         words
             .into_iter()
             .take(limit)
@@ -924,6 +929,37 @@ mod tests {
             model: format!("model-{id}"),
             api_format: ApiFormat::OpenaiCompat,
         }
+    }
+
+    #[test]
+    fn manual_hot_words_take_priority_in_model_prompts() {
+        use super::{HotWord, HotWordSource};
+
+        let profile = UserProfile {
+            hot_words: vec![
+                HotWord {
+                    text: "LearnedTerm".into(),
+                    weight: 5,
+                    source: HotWordSource::Learned,
+                    use_count: 100,
+                    last_used: 0,
+                },
+                HotWord {
+                    text: "SpeakFlow".into(),
+                    weight: 3,
+                    source: HotWordSource::User,
+                    use_count: 0,
+                    last_used: 0,
+                },
+            ],
+            ..UserProfile::default()
+        };
+        assert_eq!(profile.get_hot_word_texts(1), vec!["SpeakFlow"]);
+        assert_eq!(
+            profile.get_hot_word_texts(2),
+            vec!["SpeakFlow", "LearnedTerm"]
+        );
+        assert!(profile.get_hot_word_texts(0).is_empty());
     }
 
     #[test]

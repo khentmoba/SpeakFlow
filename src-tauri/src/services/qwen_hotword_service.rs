@@ -67,9 +67,7 @@ pub fn correct_qwen_hot_words(text: &str, hot_words: &[HotWord]) -> HotWordCorre
         };
     }
 
-    let mut ranked: Vec<&HotWord> = hot_words.iter().collect();
-    ranked.sort_by(|a, b| b.weight.cmp(&a.weight).then(b.use_count.cmp(&a.use_count)));
-    ranked.truncate(MAX_ASR_HOT_WORDS);
+    let ranked = ranked_hot_words(hot_words);
 
     let chars = indexed_chars(text);
     let ascii_words = ascii_word_spans(text);
@@ -81,7 +79,9 @@ pub fn correct_qwen_hot_words(text: &str, hot_words: &[HotWord]) -> HotWordCorre
             continue;
         }
 
-        if hot_text.chars().all(is_han) {
+        if requires_literal_matching(hot_text) {
+            collect_literal_candidates(text, hot_word, hot_text, rank, &mut candidates);
+        } else if hot_text.chars().all(is_han) {
             collect_han_candidates(text, &chars, hot_word, hot_text, rank, &mut candidates);
         } else if hot_text.is_ascii() && hot_text.chars().any(|ch| ch.is_ascii_alphanumeric()) {
             collect_ascii_candidates(
@@ -96,6 +96,60 @@ pub fn correct_qwen_hot_words(text: &str, hot_words: &[HotWord]) -> HotWordCorre
     }
 
     apply_candidates(text, candidates)
+}
+
+fn ranked_hot_words(hot_words: &[HotWord]) -> Vec<&HotWord> {
+    let mut ranked: Vec<_> = hot_words.iter().collect();
+    ranked.sort_by(|a, b| b.weight.cmp(&a.weight).then(b.use_count.cmp(&a.use_count)));
+    ranked
+        .into_iter()
+        .enumerate()
+        .filter(|(rank, word)| *rank < MAX_ASR_HOT_WORDS || word.source == HotWordSource::User)
+        .map(|(_, word)| word)
+        .collect()
+}
+
+fn requires_literal_matching(term: &str) -> bool {
+    (!term.is_ascii() && !term.chars().all(is_han))
+        || !term.starts_with(|ch: char| ch.is_ascii_alphanumeric() || is_han(ch))
+        || !term.ends_with(|ch: char| ch.is_ascii_alphanumeric() || is_han(ch))
+}
+
+fn collect_literal_candidates<'a>(
+    text: &str,
+    hot_word: &'a HotWord,
+    hot_text: &'a str,
+    rank: usize,
+    candidates: &mut Vec<ReplacementCandidate<'a>>,
+) {
+    if hot_word.source != HotWordSource::User && !has_canonical_ascii_style(hot_text) {
+        return;
+    }
+    let term_len = hot_text.chars().count();
+    for (start, _) in text.char_indices() {
+        let mut chars = text[start..].char_indices();
+        let Some((last, ch)) = chars.nth(term_len - 1) else {
+            break;
+        };
+        let end = start + last + ch.len_utf8();
+        let raw = &text[start..end];
+        if raw == hot_text
+            || !raw
+                .chars()
+                .flat_map(char::to_lowercase)
+                .eq(hot_text.chars().flat_map(char::to_lowercase))
+            || !has_ascii_boundaries(text, start, end)
+        {
+            continue;
+        }
+        candidates.push(ReplacementCandidate {
+            start,
+            end,
+            replacement: hot_text,
+            score: 1_000 + term_len as u32,
+            rank,
+        });
+    }
 }
 
 fn correct_known_aliases(
@@ -116,10 +170,7 @@ fn correct_known_aliases(
         };
     }
 
-    let mut ranked_hot_words: Vec<&HotWord> = hot_words.iter().collect();
-    ranked_hot_words.sort_by(|a, b| b.weight.cmp(&a.weight).then(b.use_count.cmp(&a.use_count)));
-    ranked_hot_words.truncate(MAX_ASR_HOT_WORDS);
-    let hot_targets: HashSet<String> = ranked_hot_words
+    let hot_targets: HashSet<String> = ranked_hot_words(hot_words)
         .into_iter()
         .map(|hot_word| normalize_profile_term(hot_word.text.trim()))
         .filter(|normalized| !normalized.is_empty())
@@ -347,7 +398,7 @@ fn collect_ascii_candidates<'a>(
             let start = words[start_index].start;
             let end = last_word.end;
             let raw = &text[start..end];
-            if !raw.is_ascii() || raw == hot_text {
+            if !raw.is_ascii() || raw == hot_text || !has_ascii_boundaries(text, start, end) {
                 continue;
             }
 
@@ -445,11 +496,11 @@ fn has_ascii_boundaries(text: &str, start: usize, end: usize) -> bool {
     let before_is_word = text[..start]
         .chars()
         .next_back()
-        .is_some_and(|ch| ch.is_ascii_alphanumeric());
+        .is_some_and(|ch| ch.is_alphanumeric() && !is_han(ch));
     let after_is_word = text[end..]
         .chars()
         .next()
-        .is_some_and(|ch| ch.is_ascii_alphanumeric());
+        .is_some_and(|ch| ch.is_alphanumeric() && !is_han(ch));
     !before_is_word && !after_is_word
 }
 
@@ -661,6 +712,44 @@ mod tests {
             correction_patterns,
             ..UserProfile::default()
         }
+    }
+
+    #[test]
+    fn manual_vocabulary_preserves_symbolic_names_and_unicode_spelling() {
+        for (term, raw, expected) in [
+            ("C++", "Use C++ today.", "Use C++ today."),
+            ("C++", "Use c++ today.", "Use C++ today."),
+            ("C++", "Use C today.", "Use C today."),
+            ("C#", "Use c# today.", "Use C# today."),
+            ("José", "Ask josé today.", "Ask José today."),
+            ("München", "Visit münchen today.", "Visit München today."),
+            ("C#", "Use abc# today.", "Use abc# today."),
+            ("CAF", "Visit the café.", "Visit the café."),
+            (".NET", "Use .net today.", "Use .NET today."),
+            (
+                "Speak-Flow",
+                "Use speak flow today.",
+                "Use Speak-Flow today.",
+            ),
+        ] {
+            assert_eq!(
+                correct_qwen_hot_words(raw, &[user(term)]).text,
+                expected,
+                "{term}: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn manual_vocabulary_is_not_dropped_by_the_learned_word_limit() {
+        let mut words: Vec<_> = (0..MAX_ASR_HOT_WORDS)
+            .map(|index| hot_word(&format!("Learned{index}"), HotWordSource::Learned, 5, 100))
+            .collect();
+        words.push(user("SpeakFlow"));
+        assert_eq!(
+            correct_qwen_hot_words("speak flow", &words).text,
+            "SpeakFlow"
+        );
     }
 
     #[test]
