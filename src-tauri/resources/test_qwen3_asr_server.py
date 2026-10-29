@@ -17,10 +17,12 @@ class FakeSession:
     def __init__(self):
         self.calls = 0
         self.inputs = []
+        self.options = []
 
-    def run(self, audio, **_kwargs):
+    def run(self, audio, **kwargs):
         self.calls += 1
         self.inputs.append(np.array(audio, copy=True))
+        self.options.append(kwargs)
         return types.SimpleNamespace(text="测试文本", language="zh")
 
     def close(self):
@@ -74,6 +76,33 @@ class Qwen3ASRServerTests(unittest.TestCase):
         gpu_info_patcher.start()
         self.gpu_info_patcher = gpu_info_patcher
         self.addCleanup(gpu_info_patcher.stop)
+
+    def test_vocabulary_conditions_recognition_without_leaking_between_requests(self):
+        for engine in qwen3_asr_server.TRANSCRIBE_CPP_ASR_MODELS:
+            supported = engine.startswith("qwen3-asr-")
+            with (
+                self.subTest(engine=engine),
+                mock.patch.object(qwen3_asr_server.Qwen3ASRServer, "_detect_device", return_value="cpu"),
+            ):
+                server = qwen3_asr_server.Qwen3ASRServer(engine=engine)
+                server.initialized = True
+                server.model = mock.Mock()
+                server.model.supports.return_value = supported
+                server.session = FakeSession()
+                server.vad_model = FakeVad([{"start": 0, "end": 16_000}])
+                payload = base64.b64encode(np.zeros(16_000, dtype="<i2").tobytes()).decode("ascii")
+                for words in (["Khent", "SpeakFlow"], ["Qwen"], []):
+                    result = server.transcribe_audio(
+                        None, hot_words=words, audio_base64=payload,
+                        audio_format="pcm_s16le", sample_rate=16_000,
+                    )
+                    self.assertTrue(result["success"], result)
+                expected = [
+                    {"timestamps": "none", "vocabulary": ["Khent", "SpeakFlow"]},
+                    {"timestamps": "none", "vocabulary": ["Qwen"]},
+                    {"timestamps": "none"},
+                ] if supported else [{"timestamps": "none"}] * 3
+                self.assertEqual(server.session.options, expected)
 
     def test_backend_preferences_are_scoped_to_the_selected_model(self):
         with (

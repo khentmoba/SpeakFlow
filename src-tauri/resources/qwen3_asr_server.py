@@ -363,11 +363,14 @@ class Qwen3ASRServer(BaseASRServer):
                     "inference_ms": 0.0,
                 }
 
+            run_options = {"timestamps": "none"}
+            if hot_words and self.model.supports("vocabulary"):
+                run_options["vocabulary"] = hot_words
             started = time.perf_counter()
             with self.stdout_suppressor.suppress():
                 # These models do not advertise speculative decoding. Keeping a
                 # persistent KV session is the supported low-latency path.
-                result = self.session.run(audio, timestamps="none")
+                result = self.session.run(audio, **run_options)
             inference_ms = (time.perf_counter() - started) * 1000
             self._total_inference_ms += inference_ms
             self.transcription_count += 1

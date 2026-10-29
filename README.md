@@ -49,6 +49,12 @@ Basic local dictation works without an LLM account. For rewriting, translation o
 
 All local engines run on Windows without WSL. Models download separately and are cached; FireRedVAD is bundled. GPU acceleration is optional. R2T2's committed subtitle text does not roll back, while its preview can change. Streaming alone does not guarantee lower latency; see [measured behavior and limitations](docs/r2t2-native.md).
 
+### Smart Vocabulary
+
+Add names and technical terms in Settings → Smart Vocabulary. Words you add take priority over automatically learned words when building model hints. Models have different hint limits, and a hint does not guarantee the model will recognize a word.
+
+Qwen3-ASR 1.7B and 0.6B receive up to 100 manual and learned vocabulary terms during recognition, with manual terms first. R2T2 and the cloud engines also receive vocabulary hints directly. Parakeet, Canary-Qwen and Cohere use local spelling correction after recognition. Manual entries remain eligible for local correction even beyond the learned-vocabulary cutoff. Symbol-bearing names such as `C++` and names with accented letters preserve their spelling without fuzzy substitutions of unrelated words. See the [Qwen vocabulary recognition check](docs/evidence/qwen-vocabulary.md) for a real-model example and its limits.
+
 ### Learning corrections in other apps
 
 With **Learn corrections in other apps** enabled in the correction-rules settings, SpeakFlow watches the field receiving its automatic dictation paste for up to 60 seconds. Correct a spelling mistake there and pause for two seconds; the learned rule is saved locally and used in future dictations. Pasting over selected text is supported. Deleting words no longer prevents learning separate spelling corrections, but deletions themselves never become global word-removal rules.

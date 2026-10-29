@@ -31,11 +31,11 @@ DIST_DIR = RESOURCES_DIR / "python-dist"
 ENTRY_SCRIPT = RESOURCES_DIR / "engine.py"
 OUTPUT_ARCHIVE = RESOURCES_DIR / "engine.tar.xz"
 WINDOWS_MANIFEST = PROJECT_ROOT / "src-tauri" / "windows-app-manifest.xml"
-QWEN3_CUDA_PROVIDER_VERSION = "0.1.3"
+QWEN3_CUDA_PROVIDER_VERSION = "0.4.1"
 QWEN3_CUDA_PROVIDER_URL = (
-    "https://github.com/handy-computer/transcribe.cpp/releases/download/v0.1.3/"
-    "transcribe_cpp_native_cu12-0.1.3-py3-none-win_amd64.whl"
-    "#sha256=b46eef15ccce2d3248bff99fe988f081511a1116032643276ec4ef50cb1716eb"
+    "https://github.com/handy-computer/transcribe.cpp/releases/download/v0.4.1/"
+    "transcribe_cpp_native_cu12-0.4.1-py3-none-win_amd64.whl"
+    "#sha256=7af39bbbddd79039d9b2d400ab96c7248b1ad5073be2d4161dafddb649bfe7d1"
 )
 # The cu12 provider wheel bundles only the ggml modules: its prepare() loads
 # cudart/cublas at runtime from the `nvidia` namespace wheels, which
