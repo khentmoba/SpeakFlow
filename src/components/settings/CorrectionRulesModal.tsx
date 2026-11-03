@@ -4,10 +4,10 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
 import {
+  addCorrectionRule,
   removeCorrection,
   setCorrectionValidationConfig,
   setExternalCorrectionLearning,
-  submitUserCorrection,
   validateCorrections,
 } from "@/api/tauri";
 import type { CorrectionPattern, UserProfile } from "@/types";
@@ -152,7 +152,7 @@ export default function CorrectionRulesModal({
     if (!orig || !corr || orig === corr || addingRule) return;
     setAddingRule(true);
     try {
-      await submitUserCorrection(orig, corr, null);
+      await addCorrectionRule(orig, corr);
       setNewOriginal("");
       setNewCorrected("");
       onRefreshProfile();

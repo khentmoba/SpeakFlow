@@ -77,6 +77,25 @@ class LocalEngineContractTests(unittest.TestCase):
         for engine, size in local.items():
             self.assertRegex(size, r"^\d+(\.\d+)? (MB|GB)$", engine)
 
+    def test_frontend_vocabulary_flags_match_rust(self):
+        match = re.search(
+            r"pub fn engine_receives_vocabulary\(engine: &str\) -> bool \{\s*matches!\(\s*engine,\s*(.*?)\s*\)\s*\}",
+            self.paths_source,
+            re.S,
+        )
+        self.assertIsNotNone(match)
+        flags = dict(
+            re.findall(
+                r'"([^"]+)": \{ execution: .*?, vocabulary: (true|false) \}',
+                ENGINE_CAPABILITIES_TS.read_text(encoding="utf-8"),
+            )
+        )
+        self.assertEqual(set(flags), {*self.rust_local, *self.rust_online})
+        self.assertEqual(
+            {engine for engine, flag in flags.items() if flag == "true"},
+            set(_quoted(match.group(1))),
+        )
+
     def test_bundled_engine_entry_accepts_every_local_engine(self):
         match = re.search(r"engine_choices = \[(.*?)\]", ENGINE_PY.read_text(encoding="utf-8"), re.S)
         self.assertIsNotNone(match)

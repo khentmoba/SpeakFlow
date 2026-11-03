@@ -24,6 +24,7 @@ fn seeded_profile() -> UserProfile {
         count: 4,
         last_seen: 123,
         source: CorrectionSource::User,
+        manual: false,
     });
     profile
 }

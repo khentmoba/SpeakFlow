@@ -7,7 +7,7 @@ const api = vi.hoisted(() => ({
   removeCorrection: vi.fn(),
   setCorrectionValidationConfig: vi.fn(),
   setExternalCorrectionLearning: vi.fn(),
-  submitUserCorrection: vi.fn(),
+  addCorrectionRule: vi.fn(),
   validateCorrections: vi.fn(),
 }));
 const toast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
@@ -69,7 +69,7 @@ describe("external correction learning", () => {
   });
 
   it("adds a manual correction rule and refreshes the profile", async () => {
-    api.submitUserCorrection.mockResolvedValue(undefined);
+    api.addCorrectionRule.mockResolvedValue(undefined);
     const { props } = setup();
     fireEvent.change(screen.getByLabelText("settings.correctionOriginalPlaceholder"), {
       target: { value: "Speekflow" },
@@ -78,7 +78,7 @@ describe("external correction learning", () => {
       target: { value: "SpeakFlow" },
     });
     fireEvent.click(screen.getByRole("button", { name: "settings.correctionAddRuleLabel" }));
-    await waitFor(() => expect(api.submitUserCorrection).toHaveBeenCalledWith("Speekflow", "SpeakFlow", null));
+    await waitFor(() => expect(api.addCorrectionRule).toHaveBeenCalledWith("Speekflow", "SpeakFlow"));
     expect(props.onRefreshProfile).toHaveBeenCalledOnce();
   });
 });

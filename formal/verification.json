@@ -276,6 +276,10 @@
       "personalization",
       "profile-save"
     ],
+    "commands::profile::add_correction_rule": [
+      "personalization",
+      "profile-save"
+    ],
     "commands::profile::remove_correction": [
       "personalization",
       "profile-save"
@@ -2195,6 +2199,7 @@
     "commands::profile::import_user_profile": "src-tauri/src/commands/profile.rs#fn import_user_profile(",
     "commands::profile::submit_user_correction": "src-tauri/src/commands/profile.rs#fn submit_user_correction(",
     "commands::profile::validate_corrections": "src-tauri/src/commands/profile.rs#fn validate_corrections(",
+    "commands::profile::add_correction_rule": "src-tauri/src/commands/profile.rs#fn add_correction_rule(",
     "commands::profile::remove_correction": "src-tauri/src/commands/profile.rs#fn remove_correction(",
     "commands::profile::set_llm_provider_config": "src-tauri/src/commands/profile.rs#fn set_llm_provider_config(",
     "commands::profile::set_screen_vision_config": "src-tauri/src/commands/profile.rs#fn set_screen_vision_config(",

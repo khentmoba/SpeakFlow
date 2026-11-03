@@ -151,6 +151,22 @@ describe("SettingsPage profile load", () => {
     expect(tauri.getGrokBuildOauthStatus).not.toHaveBeenCalled();
   });
 
+  it("notes when the engine applies Smart Vocabulary only after recognition", async () => {
+    vi.mocked(tauri.getUserProfile).mockResolvedValue(profile);
+    const { default: SettingsPage } = await import("@/pages/SettingsPage");
+
+    vi.mocked(tauri.getEngine).mockResolvedValue("parakeet-tdt-0.6b-v2");
+    const parakeet = render(<SettingsPage active onNavigate={vi.fn()} />);
+    expect(await screen.findByText("settings.vocabularyAfterRecognitionHint")).toBeInTheDocument();
+    parakeet.unmount();
+
+    vi.mocked(tauri.getEngine).mockResolvedValue("qwen3-asr-1.7b");
+    render(<SettingsPage active onNavigate={vi.fn()} />);
+    await screen.findByRole("heading", { name: "settings.vocabulary" });
+    await waitFor(() => expect(tauri.getEngine).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("settings.vocabularyAfterRecognitionHint")).not.toBeInTheDocument();
+  });
+
   it("blocks default-profile writes on load failure and restores saved settings after retry", async () => {
     vi.mocked(tauri.getUserProfile)
       .mockRejectedValueOnce(new Error("profile unavailable"))

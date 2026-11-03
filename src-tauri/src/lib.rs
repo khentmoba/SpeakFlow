@@ -338,6 +338,7 @@ pub fn run() {
             commands::profile::export_user_profile,
             commands::profile::import_user_profile,
             commands::profile::submit_user_correction,
+            commands::profile::add_correction_rule,
             commands::profile::set_translation_target,
             commands::profile::set_translation_hotkey,
             commands::profile::set_custom_prompt,

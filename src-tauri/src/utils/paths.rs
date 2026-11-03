@@ -115,6 +115,16 @@ pub fn is_online_engine(engine: &str) -> bool {
     ONLINE_ASR_ENGINES.contains(&engine)
 }
 
+/// Engines that condition recognition on Smart Vocabulary. The others only get
+/// local spelling correction after recognition. Keep in sync with
+/// `vocabulary` in `src/lib/asrEngineCapabilities.ts`.
+pub fn engine_receives_vocabulary(engine: &str) -> bool {
+    matches!(
+        engine,
+        "qwen3-asr-0.6b" | "qwen3-asr-1.7b" | "confucius4-r2t2" | "glm-asr" | "alibaba-asr"
+    )
+}
+
 const GLM_ENDPOINT_INTERNATIONAL: &str = "https://api.z.ai";
 const GLM_ENDPOINT_DOMESTIC: &str = "https://open.bigmodel.cn";
 

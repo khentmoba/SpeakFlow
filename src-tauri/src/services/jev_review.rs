@@ -167,6 +167,7 @@ mod tests {
                 original: "same".into(),
                 corrected: "replacement".into(),
                 source,
+                manual: false,
                 count: 1,
                 last_seen: 1,
             });

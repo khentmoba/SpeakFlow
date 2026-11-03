@@ -158,10 +158,8 @@ fn correct_known_aliases(
     correction_patterns: &[CorrectionPattern],
 ) -> HotWordCorrection {
     if text.is_empty()
-        || hot_words.is_empty()
         || !correction_patterns.iter().any(|pattern| {
-            let original = pattern.original.trim();
-            !original.is_empty() && text.contains(original)
+            (pattern.manual || !hot_words.is_empty()) && alias_may_match(text, pattern)
         })
     {
         return HotWordCorrection {
@@ -180,7 +178,12 @@ fn correct_known_aliases(
         .iter()
         .filter(|pattern| is_safe_alias(pattern, &hot_targets))
         .collect();
-    aliases.sort_by(|a, b| b.count.cmp(&a.count).then(b.last_seen.cmp(&a.last_seen)));
+    aliases.sort_by(|a, b| {
+        b.manual
+            .cmp(&a.manual)
+            .then(b.count.cmp(&a.count))
+            .then(b.last_seen.cmp(&a.last_seen))
+    });
     aliases.truncate(MAX_ASR_ALIASES);
 
     let mut candidates = Vec::new();
@@ -200,6 +203,14 @@ fn is_safe_alias(pattern: &CorrectionPattern, hot_targets: &HashSet<String>) -> 
 
     let original_normalized = normalize_profile_term(original);
     let corrected_normalized = normalize_profile_term(corrected);
+    if pattern.manual {
+        // The user typed this rule, so it needs no vocabulary target and may
+        // map any spelling. Very short originals would still hit too often.
+        let min_length = if original.is_ascii() { 2 } else { 1 };
+        return original_normalized.chars().count() >= min_length
+            && original.chars().count() <= 80
+            && corrected.chars().count() <= 80;
+    }
     if !hot_targets.contains(&corrected_normalized) {
         return false;
     }
@@ -243,8 +254,20 @@ fn collect_alias_candidates<'a>(
 ) {
     let original = alias.original.trim();
     let corrected = alias.corrected.trim();
-    for (start, matched) in text.match_indices(original) {
+    // Manual ASCII rules ignore case. ASCII lowercasing keeps byte offsets, so
+    // matches in the lowered copy index the original text.
+    let lowered;
+    let (haystack, needle) = if alias.manual && original.is_ascii() {
+        lowered = (text.to_ascii_lowercase(), original.to_ascii_lowercase());
+        (lowered.0.as_str(), lowered.1.as_str())
+    } else {
+        (text, original)
+    };
+    for (start, matched) in haystack.match_indices(needle) {
         let end = start + matched.len();
+        if &text[start..end] == corrected {
+            continue;
+        }
         if original.is_ascii() && !has_ascii_boundaries(text, start, end) {
             continue;
         }
@@ -256,6 +279,19 @@ fn collect_alias_candidates<'a>(
             rank,
         });
     }
+}
+
+fn alias_may_match(text: &str, pattern: &CorrectionPattern) -> bool {
+    let original = pattern.original.trim();
+    if original.is_empty() {
+        return false;
+    }
+    if pattern.manual && original.is_ascii() {
+        return text
+            .to_ascii_lowercase()
+            .contains(&original.to_ascii_lowercase());
+    }
+    text.contains(original)
 }
 
 fn apply_candidates<'a>(
@@ -384,6 +420,11 @@ fn collect_ascii_candidates<'a>(
         return;
     }
 
+    let hot_sound = is_manual
+        .then(|| sound_key(&hot_normalized))
+        .filter(|key| key.len() >= MIN_SOUND_KEY_LEN);
+    let max_sound_distance = (hot_normalized.len() / 2).clamp(1, 3);
+
     let hot_word_count = ascii_word_spans(hot_text).len().max(1);
     let min_words = hot_word_count.saturating_sub(1).max(1);
     let max_words = hot_word_count + 1;
@@ -418,32 +459,194 @@ fn collect_ascii_candidates<'a>(
                 continue;
             }
 
-            if !is_manual || hot_normalized.len() < 5 {
-                continue;
-            }
-            if is_simple_inflection(&candidate_normalized, &hot_normalized) {
+            if !is_manual || is_simple_inflection(&candidate_normalized, &hot_normalized) {
                 continue;
             }
 
+            let length_delta = candidate_normalized.len().abs_diff(hot_normalized.len());
             let max_distance = if hot_normalized.len() >= 10 { 2 } else { 1 };
-            if candidate_normalized.len().abs_diff(hot_normalized.len()) > max_distance {
+            if hot_normalized.len() >= 5 && length_delta <= max_distance {
+                let distance = levenshtein(&candidate_normalized, &hot_normalized);
+                if distance <= max_distance {
+                    candidates.push(ReplacementCandidate {
+                        start,
+                        end,
+                        replacement: hot_text,
+                        score: 800 + hot_normalized.len() as u32 - (distance as u32 * 50),
+                        rank,
+                    });
+                    continue;
+                }
+            }
+
+            // Engines without recognition vocabulary often hear a name as a
+            // similar-sounding spelling. Accept those when the sounds match,
+            // the spelling is still close, and the words are not everyday English.
+            let Some(hot_sound) = hot_sound.as_deref() else {
+                continue;
+            };
+            if length_delta > max_sound_distance
+                || is_common_english_phrase(raw)
+                || sound_key(&candidate_normalized) != hot_sound
+            {
                 continue;
             }
             let distance = levenshtein(&candidate_normalized, &hot_normalized);
-            if distance > max_distance {
+            if distance > max_sound_distance {
                 continue;
             }
-
             candidates.push(ReplacementCandidate {
                 start,
                 end,
                 replacement: hot_text,
-                score: 800 + hot_normalized.len() as u32 - (distance as u32 * 50),
+                score: 700 + hot_normalized.len() as u32 - (distance as u32 * 50),
                 rank,
             });
         }
     }
 }
+
+const MIN_SOUND_KEY_LEN: usize = 3;
+
+/// A simplified Metaphone key for lowercase ASCII: vowels drop out and
+/// consonant spellings that sound alike share one symbol.
+fn sound_key(word: &str) -> String {
+    let bytes = word.as_bytes();
+    let at = |index: usize| bytes.get(index).copied().unwrap_or(0);
+    let is_vowel = |byte: u8| matches!(byte, b'a' | b'e' | b'i' | b'o' | b'u' | b'y');
+    let is_front_vowel = |byte: u8| matches!(byte, b'e' | b'i' | b'y');
+
+    let mut key = String::with_capacity(bytes.len());
+    let push = |key: &mut String, sound: &str| {
+        for ch in sound.chars() {
+            if !key.ends_with(ch) {
+                key.push(ch);
+            }
+        }
+    };
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        let next = at(index + 1);
+        let mut skip = 1;
+        match byte {
+            _ if is_vowel(byte) => {}
+            b'0'..=b'9' => push(&mut key, &(byte as char).to_string()),
+            b'c' if next == b'h' => {
+                push(&mut key, "x");
+                skip = 2;
+            }
+            b'c' if is_front_vowel(next) => push(&mut key, "s"),
+            b'c' => push(&mut key, "k"),
+            b'd' if next == b'g' && is_front_vowel(at(index + 2)) => {
+                push(&mut key, "j");
+                skip = 2;
+            }
+            b'g' if next == b'h' => skip = 2,
+            b'g' if next == b'n' && (index == 0 || index + 2 == bytes.len()) => {}
+            b'g' if is_front_vowel(next) => push(&mut key, "j"),
+            b'g' => push(&mut key, "k"),
+            b'h' if index == 0 && is_vowel(next) => push(&mut key, "h"),
+            b'h' => {}
+            b'k' if index == 0 && next == b'n' => {}
+            b'p' if next == b'h' => {
+                push(&mut key, "f");
+                skip = 2;
+            }
+            b'q' if next == b'u' => {
+                push(&mut key, "kw");
+                skip = 2;
+            }
+            b'q' => push(&mut key, "k"),
+            b's' if next == b'h' => {
+                push(&mut key, "x");
+                skip = 2;
+            }
+            b't' if next == b'h' => {
+                push(&mut key, "0");
+                skip = 2;
+            }
+            b'w' if index == 0 && next == b'r' => {}
+            b'w' if next == b'h' => {
+                push(&mut key, "w");
+                skip = 2;
+            }
+            b'w' if is_vowel(next) => push(&mut key, "w"),
+            b'w' => {}
+            b'x' if index == 0 => push(&mut key, "s"),
+            b'x' => push(&mut key, "ks"),
+            b'z' => push(&mut key, "s"),
+            _ => push(&mut key, &(byte as char).to_string()),
+        }
+        index += skip;
+    }
+    key
+}
+
+/// True when every word in the span is everyday English. Sound matching never
+/// rewrites those, so adding a name like "Nuxt" cannot replace "next".
+fn is_common_english_phrase(text: &str) -> bool {
+    ascii_word_spans(text).iter().all(|span| {
+        let word = text[span.start..span.end].to_ascii_lowercase();
+        COMMON_ENGLISH_WORDS.binary_search(&word.as_str()).is_ok()
+    })
+}
+
+/// Frequent English words, sorted for binary search.
+#[rustfmt::skip]
+const COMMON_ENGLISH_WORDS: &[&str] = &[
+    "about", "above", "across", "act", "add", "after", "again", "against", "age", "ago", "air",
+    "all", "almost", "alone", "along", "already", "also", "always", "among", "and", "another",
+    "answer", "any", "anyone", "anything", "app", "area", "arm", "around", "art", "ask", "away",
+    "back", "bad", "bag", "bank", "base", "be", "bear", "beat", "became", "because", "become",
+    "bed", "been", "before", "began", "begin", "behind", "being", "believe", "below", "best",
+    "better", "between", "big", "bill", "bit", "black", "blue", "board", "body", "book", "born",
+    "both", "box", "boy", "break", "bring", "brought", "build", "built", "business", "but",
+    "buy", "call", "came", "can", "cannot", "car", "card", "care", "carry", "case", "cat",
+    "catch", "cause", "cent", "center", "certain", "chance", "change", "check", "child",
+    "choose", "city", "class", "clean", "clear", "close", "cloud", "code", "cold", "come",
+    "common", "company", "copy", "cost", "could", "count", "country", "course", "cover",
+    "create", "cut", "dark", "data", "date", "day", "dead", "deal", "dear", "decide", "deep",
+    "did", "die", "different", "do", "does", "dog", "done", "door", "down", "draw", "drive",
+    "during", "each", "early", "east", "easy", "eat", "edge", "else", "end", "engine", "enough",
+    "even", "evening", "event", "ever", "every", "exact", "example", "eye", "face", "fact",
+    "fall", "family", "far", "fast", "father", "feel", "few", "field", "file", "fill", "final",
+    "find", "fine", "fire", "first", "fix", "floor", "flow", "fly", "follow", "food", "foot",
+    "for", "force", "form", "found", "free", "friend", "from", "front", "full", "game", "gave",
+    "get", "girl", "give", "given", "go", "going", "gone", "good", "got", "great", "green",
+    "ground", "group", "grow", "had", "half", "hand", "happen", "hard", "has", "have", "he",
+    "head", "hear", "heard", "heart", "held", "help", "her", "here", "high", "him", "his",
+    "hit", "hold", "home", "hope", "horse", "hot", "hour", "house", "how", "however", "hub",
+    "idea", "if", "important", "in", "into", "is", "issue", "it", "its", "job", "just", "keep",
+    "kept", "key", "kind", "king", "knew", "know", "known", "land", "large", "last", "late",
+    "later", "laugh", "lead", "learn", "least", "leave", "left", "less", "let", "letter",
+    "life", "light", "like", "line", "list", "listen", "little", "live", "load", "long", "look",
+    "lose", "lost", "lot", "love", "low", "made", "main", "make", "man", "many", "mark", "may",
+    "maybe", "me", "mean", "meet", "men", "might", "mind", "minute", "miss", "model", "moment",
+    "money", "month", "more", "morning", "most", "mother", "move", "much", "music", "must",
+    "my", "name", "near", "need", "never", "new", "next", "nice", "night", "no", "none", "not",
+    "note", "nothing", "notice", "now", "number", "of", "off", "office", "often", "old", "on",
+    "once", "one", "only", "open", "or", "order", "other", "our", "out", "over", "own", "page",
+    "paper", "part", "party", "pass", "past", "pay", "people", "person", "pick", "picture",
+    "piece", "place", "plan", "play", "point", "power", "press", "pretty", "print", "problem",
+    "program", "put", "question", "quick", "quite", "rain", "ran", "rather", "reach", "read",
+    "ready", "real", "reason", "record", "red", "remember", "rest", "result", "right", "ring",
+    "river", "road", "rock", "room", "round", "rule", "run", "said", "same", "save", "saw",
+    "say", "school", "sea", "second", "see", "seem", "seen", "send", "sense", "sent", "set",
+    "several", "shall", "she", "ship", "short", "should", "show", "side", "simple", "since",
+    "sing", "sit", "size", "small", "so", "some", "something", "song", "soon", "sorry", "sound",
+    "south", "speak", "special", "stand", "start", "state", "stay", "step", "still", "stop",
+    "story", "street", "strong", "study", "such", "sun", "sure", "system", "table", "take",
+    "talk", "team", "tell", "ten", "term", "test", "text", "than", "thank", "that", "the",
+    "their", "them", "then", "there", "these", "they", "thing", "think", "this", "those",
+    "though", "thought", "three", "through", "time", "to", "today", "together", "told", "too",
+    "took", "top", "toward", "town", "tree", "true", "try", "turn", "two", "type", "under",
+    "until", "up", "upon", "us", "use", "used", "user", "usual", "very", "view", "voice",
+    "wait", "walk", "wall", "want", "war", "warm", "was", "watch", "water", "way", "we", "week",
+    "well", "went", "were", "west", "what", "when", "where", "which", "while", "white", "who",
+    "whole", "why", "will", "wind", "window", "with", "within", "without", "woman", "word",
+    "work", "world", "would", "write", "wrong", "year", "yes", "yet", "you", "young", "your",
+];
 
 fn indexed_chars(text: &str) -> Vec<(usize, char)> {
     text.char_indices().collect()
@@ -599,6 +802,7 @@ mod tests {
             count,
             last_seen: 0,
             source,
+            manual: false,
         }
     }
 
@@ -1054,6 +1258,123 @@ mod tests {
             "I already use github, but github is misspelled."
         );
         assert_eq!(result.replacements, 1);
+    }
+
+    #[test]
+    fn manual_terms_match_similar_sounding_spellings() {
+        for (term, raw, expected) in [
+            ("Qwen", "Switch to quen today.", "Switch to Qwen today."),
+            ("nginx", "Restart engine x now.", "Restart nginx now."),
+            ("Phoenix", "Deploy fenix later.", "Deploy Phoenix later."),
+            ("Khent", "Ask Kent about it.", "Ask Khent about it."),
+        ] {
+            assert_eq!(
+                correct_qwen_hot_words(raw, &[user(term)]).text,
+                expected,
+                "{term}: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn sound_matching_leaves_everyday_words_and_learned_terms_alone() {
+        for (hot_word, raw) in [
+            (user("Nuxt"), "Do the next step."),
+            (user("Khent"), "Count the files."),
+            (user("Tauri"), "That is true."),
+            (learned("Qwen"), "Switch to quen today."),
+        ] {
+            let result = correct_qwen_hot_words(raw, std::slice::from_ref(&hot_word));
+            assert_eq!(result.text, raw, "{}: {raw}", hot_word.text);
+            assert_eq!(result.replacements, 0, "{}: {raw}", hot_word.text);
+        }
+    }
+
+    #[test]
+    fn sound_keys_merge_spellings_that_sound_alike() {
+        for (left, right) in [
+            ("qwen", "quen"),
+            ("phoenix", "fenix"),
+            ("nginx", "enginex"),
+            ("knight", "nite"),
+            ("cent", "sent"),
+        ] {
+            assert_eq!(sound_key(left), sound_key(right), "{left} / {right}");
+        }
+        assert_ne!(sound_key("github"), sound_key("gxtxub"));
+    }
+
+    #[test]
+    fn common_english_words_are_sorted_and_unique() {
+        assert!(COMMON_ENGLISH_WORDS
+            .windows(2)
+            .all(|pair| pair[0] < pair[1]));
+    }
+
+    fn manual_rule(original: &str, corrected: &str) -> CorrectionPattern {
+        CorrectionPattern {
+            manual: true,
+            ..correction(original, corrected, 3, CorrectionSource::User)
+        }
+    }
+
+    #[test]
+    fn manual_rules_apply_without_a_vocabulary_target_and_ignore_case() {
+        let profile = UserProfile {
+            correction_patterns: vec![
+                manual_rule("Tora", "Tauri"),
+                manual_rule("Cloud", "claude"),
+                manual_rule("语音", "宇树"),
+            ],
+            ..UserProfile::default()
+        };
+        for (raw, expected) in [
+            ("Build it with tora.", "Build it with Tauri."),
+            ("TORA is fast.", "Tauri is fast."),
+            ("Ask Cloud.", "Ask claude."),
+            ("打开语音。", "打开宇树。"),
+            ("The torah scroll.", "The torah scroll."),
+        ] {
+            assert_eq!(
+                correct_qwen_profile_terms(raw, &profile).text,
+                expected,
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn learned_user_rules_keep_the_single_word_safety_limit() {
+        let profile = UserProfile {
+            hot_words: vec![learned("Tauri")],
+            correction_patterns: vec![correction("Tora", "Tauri", 3, CorrectionSource::User)],
+            ..UserProfile::default()
+        };
+        assert_eq!(
+            correct_qwen_profile_terms("Build it with Tora.", &profile).text,
+            "Build it with Tora."
+        );
+    }
+
+    #[test]
+    fn manual_rules_rank_ahead_of_the_alias_limit() {
+        let mut correction_patterns: Vec<_> = (0..MAX_ASR_ALIASES)
+            .map(|index| {
+                correction(
+                    &format!("misheard{index:03}"),
+                    "canonical",
+                    1_000,
+                    CorrectionSource::Ai,
+                )
+            })
+            .collect();
+        correction_patterns.push(manual_rule("Tora", "Tauri"));
+        let profile = UserProfile {
+            hot_words: vec![learned("canonical")],
+            correction_patterns,
+            ..UserProfile::default()
+        };
+        assert_eq!(correct_qwen_profile_terms("Tora", &profile).text, "Tauri");
     }
 
     #[test]

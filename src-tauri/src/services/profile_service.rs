@@ -721,6 +721,7 @@ fn upsert_correction(
             count: initial_count,
             last_seen: now,
             source: source.clone(),
+            manual: false,
         });
     }
 }
@@ -833,6 +834,24 @@ pub fn collect_diff_correction_pairs(baselines: &[&str], corrected: &str) -> Vec
 }
 
 /// 从 LLM 结构化输出中学习
+/// Records a rule the user typed in the Correction Rules dialog. Manual rules
+/// apply after recognition even where learned rules would be considered unsafe.
+pub fn add_manual_correction(profile: &mut UserProfile, original: &str, corrected: &str) {
+    learn_from_structured(
+        profile,
+        &[(original.to_string(), corrected.to_string())],
+        &[],
+        CorrectionSource::User,
+    );
+    if let Some(pattern) = profile
+        .correction_patterns
+        .iter_mut()
+        .find(|p| p.original == original && p.corrected == corrected)
+    {
+        pattern.manual = true;
+    }
+}
+
 pub fn learn_from_structured(
     profile: &mut UserProfile,
     corrections: &[(String, String)],
