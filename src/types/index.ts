@@ -149,6 +149,7 @@ export interface CorrectionPattern {
   count: number;
   last_seen: number;
   source: CorrectionSource;
+  manual?: boolean;
 }
 
 // 联网搜索方式

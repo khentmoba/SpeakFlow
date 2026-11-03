@@ -207,6 +207,33 @@ pub(crate) fn build_jev_audit_policy(
     )
 }
 
+/// Engines without recognition vocabulary only see these terms through polish,
+/// so polish gets the full list instead of the top terms.
+fn polish_hot_word_limit(recognition_vocabulary: bool) -> usize {
+    if recognition_vocabulary {
+        30
+    } else {
+        100
+    }
+}
+
+const UNCONDITIONED_ENGINE_NOTE: &str = "\n\nThe speech engine did not receive user_terms during recognition, so it may have written them as similar-sounding words. Restore a term only when its sound and the context clearly match.";
+
+fn push_user_terms(prompt: &mut String, hot_words: &[String], recognition_vocabulary: bool) {
+    if hot_words.is_empty() {
+        return;
+    }
+    if !recognition_vocabulary {
+        prompt.push_str(UNCONDITIONED_ENGINE_NOTE);
+    }
+    prompt.push_str("\n\n<user_terms>\n");
+    for hot_word in hot_words {
+        prompt.push_str(&crate::utils::foreground::wrap_xml_cdata("term", hot_word));
+        prompt.push('\n');
+    }
+    prompt.push_str("</user_terms>");
+}
+
 fn build_system_prompt_with_base(
     state: &AppState,
     input_text: &str,
@@ -215,10 +242,12 @@ fn build_system_prompt_with_base(
     mut prompt: String,
     include_output_contract: bool,
 ) -> String {
+    let recognition_vocabulary =
+        crate::utils::paths::engine_receives_vocabulary(&crate::utils::paths::read_engine_config());
     let (hot_words, corrections, profile_translation_target, custom_prompt, polish_structure_level) =
         state.with_profile(|p| {
             (
-                p.get_hot_word_texts(30),
+                p.get_hot_word_texts(polish_hot_word_limit(recognition_vocabulary)),
                 p.get_relevant_corrections(input_text, 10)
                     .into_iter()
                     .cloned()
@@ -230,14 +259,7 @@ fn build_system_prompt_with_base(
         });
     let translation_target = translation_target_override.unwrap_or(profile_translation_target);
 
-    if !hot_words.is_empty() {
-        prompt.push_str("\n\n<user_terms>\n");
-        for hot_word in hot_words {
-            prompt.push_str(&crate::utils::foreground::wrap_xml_cdata("term", &hot_word));
-            prompt.push('\n');
-        }
-        prompt.push_str("</user_terms>");
-    }
+    push_user_terms(&mut prompt, &hot_words, recognition_vocabulary);
 
     if !corrections.is_empty() {
         let (user_corrs, ai_corrs): (Vec<_>, Vec<_>) = corrections
@@ -1684,10 +1706,32 @@ fn emit_polish_status(
 mod tests {
     use super::{
         ai_polish_transport_plan, extract_edit_result, parse_structured_response,
-        passthrough_unless_required, render_polish_user_content, structure_policy, PolishOutcome,
-        BASE_SYSTEM_PROMPT,
+        passthrough_unless_required, polish_hot_word_limit, push_user_terms,
+        render_polish_user_content, structure_policy, PolishOutcome, BASE_SYSTEM_PROMPT,
+        UNCONDITIONED_ENGINE_NOTE,
     };
     use crate::state::user_profile::{LlmReasoningMode, PolishStructureLevel};
+
+    #[test]
+    fn engines_without_recognition_vocabulary_send_all_terms_with_a_note() {
+        assert_eq!(polish_hot_word_limit(true), 30);
+        assert_eq!(polish_hot_word_limit(false), 100);
+
+        let terms = vec!["Qwen".to_string(), "nginx".to_string()];
+        let mut conditioned = String::new();
+        push_user_terms(&mut conditioned, &terms, true);
+        assert!(!conditioned.contains(UNCONDITIONED_ENGINE_NOTE));
+        assert!(conditioned.contains("<term><![CDATA[Qwen]]></term>"));
+
+        let mut unconditioned = String::new();
+        push_user_terms(&mut unconditioned, &terms, false);
+        assert!(unconditioned.starts_with(UNCONDITIONED_ENGINE_NOTE));
+        assert!(unconditioned.contains("<term><![CDATA[nginx]]></term>"));
+
+        let mut empty = String::new();
+        push_user_terms(&mut empty, &[], false);
+        assert!(empty.is_empty());
+    }
 
     #[test]
     fn polish_input_preserves_symbols_and_splits_cdata() {

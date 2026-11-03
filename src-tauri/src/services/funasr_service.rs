@@ -1715,6 +1715,7 @@ mod tests {
                 count: 33,
                 last_seen: 0,
                 source: CorrectionSource::User,
+                manual: false,
             });
         });
 

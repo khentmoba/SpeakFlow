@@ -995,6 +995,13 @@ export default function SettingsPage({
               )}
             </div>
             <div className="settings-column" style={{ gap: 8 }}>
+              {getAsrEngineCapability(engine)?.vocabulary === false && (
+                <p className="settings-hint">
+                  {t("settings.vocabularyAfterRecognitionHint", {
+                    engine: engineOptionLabel(engineOptions.find((o) => o.key === engine) ?? engineOptions[0], t),
+                  })}
+                </p>
+              )}
               {/* Add hot word */}
               <div style={{ display: "flex", gap: 6 }}>
                 <input

@@ -711,6 +711,7 @@ const en = {
     historySaveFailed: "Failed to save history settings",
     vocabulary: "Smart Vocabulary",
     hotWordsCount: "{{count}} hot words · {{transcriptions}} transcriptions",
+    vocabularyAfterRecognitionHint: "{{engine}} doesn't use these words while it recognizes speech. They fix spelling afterwards, and help AI Polish when it's on. For names and technical terms, Qwen3-ASR recognizes them more reliably.",
     addHotWordPlaceholder: "Add hot word (e.g. Claude Code)",
     addHotWordLabel: "Add hot word",
     removeHotWordLabel: "Remove hot word {{word}}",

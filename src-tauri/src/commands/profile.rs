@@ -1028,6 +1028,23 @@ pub async fn set_correction_validation_config(
 }
 
 #[tauri::command]
+pub async fn add_correction_rule(
+    state: tauri::State<'_, AppState>,
+    original: String,
+    corrected: String,
+) -> Result<(), String> {
+    let original = original.trim();
+    let corrected = corrected.trim();
+    if original.is_empty() || corrected.is_empty() || original == corrected {
+        return Err("A correction rule needs two different, non-empty texts".to_string());
+    }
+    profile_service::update_profile_and_schedule(state.inner(), |profile| {
+        profile_service::add_manual_correction(profile, original, corrected);
+    });
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn remove_correction(
     state: tauri::State<'_, AppState>,
     original: String,

@@ -48,6 +48,9 @@ pub struct CorrectionPattern {
     /// 纠错来源
     #[serde(default)]
     pub source: CorrectionSource,
+    /// Typed in the Correction Rules dialog rather than learned from edits.
+    #[serde(default)]
+    pub manual: bool,
 }
 
 /// 词频条目
