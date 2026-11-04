@@ -1219,9 +1219,10 @@ pub(crate) fn flush_pending_paste(app: &tauri::AppHandle) {
                     )
                     .await
                     .map_err(|error| error.to_string())?;
-                    if let Some(before) = before {
+                    if state.with_profile(|p| p.external_correction_learning) {
                         crate::services::external_correction_service::watch(
                             app,
+                            output.target_window,
                             before,
                             output.text,
                             generation,
