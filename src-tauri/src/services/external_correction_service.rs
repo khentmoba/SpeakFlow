@@ -8,16 +8,31 @@ pub fn cancel() -> u64 {
     GENERATION.fetch_add(1, Ordering::SeqCst) + 1
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Snapshot {
-    window: isize,
-    field: Vec<i32>,
-    text: String,
-    selected: String,
+    pub window: isize,
+    pub field: Vec<i32>,
+    pub text: String,
+    pub selected: String,
 }
 
 pub fn capture() -> Option<Snapshot> {
     capture_field(None)
+}
+
+#[cfg(target_os = "windows")]
+fn is_same_process(hwnd1: isize, hwnd2: isize) -> bool {
+    if hwnd1 == hwnd2 {
+        return true;
+    }
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+    let mut pid1 = 0u32;
+    let mut pid2 = 0u32;
+    unsafe {
+        GetWindowThreadProcessId(hwnd1 as _, &mut pid1);
+        GetWindowThreadProcessId(hwnd2 as _, &mut pid2);
+    }
+    pid1 != 0 && pid1 == pid2
 }
 
 fn capture_field(expected: Option<&Snapshot>) -> Option<Snapshot> {
@@ -39,76 +54,120 @@ fn capture_field(expected: Option<&Snapshot>) -> Option<Snapshot> {
             }
         }
         let window = unsafe { GetForegroundWindow() } as isize;
-        if window == 0 || expected.is_some_and(|s| s.window != window) {
+        if window == 0 {
             return None;
+        }
+        if let Some(s) = expected {
+            if s.window != window && !is_same_process(s.window, window) {
+                return None;
+            }
         }
         if unsafe { CoInitializeEx(std::ptr::null(), COINIT_MULTITHREADED as u32) } < 0 {
             return None;
         }
         let _com = ComGuard;
-        let automation = UIAutomation::new_direct().ok()?;
+        let automation = UIAutomation::new()
+            .or_else(|_| UIAutomation::new_direct())
+            .ok()?;
         let focused = automation.get_focused_element().ok()?;
-        if focused.is_password().ok()? || focused.get_process_id().ok()? == std::process::id() {
+        if focused.is_password().ok().unwrap_or(false)
+            || focused.get_process_id().ok() == Some(std::process::id())
+        {
             return None;
         }
         let walker = automation.get_control_view_walker().ok()?;
         let mut candidate = focused.clone();
         let mut input = focused.clone();
-        // Editors may focus a child of the input; track the input, not that child.
-        for _ in 0..6 {
-            if candidate.get_process_id().ok()? != focused.get_process_id().ok()? {
-                break;
-            }
-            if candidate.is_password().ok()? {
-                return None;
-            }
-            if candidate.get_control_type().ok()? == ControlType::Edit {
-                input = candidate;
-                break;
-            }
-            let Ok(parent) = walker.get_parent(&candidate) else {
-                break;
-            };
-            candidate = parent;
-        }
-        let field = input.get_runtime_id().ok()?;
-        if field.is_empty() || expected.is_some_and(|s| s.field != field) {
-            return None;
-        }
-        let text_pattern = input.get_pattern::<UITextPattern>().ok();
-        let value_pattern = input.get_pattern::<UIValuePattern>().ok();
-        if value_pattern
-            .as_ref()
-            .is_some_and(|value| value.is_readonly().unwrap_or(true))
+        let mut found_editor = false;
+
+        let focused_type = focused.get_control_type().ok();
+        if matches!(
+            focused_type,
+            Some(ControlType::Edit | ControlType::Document)
+        ) || focused.get_pattern::<UITextPattern>().is_ok()
         {
-            return None;
+            found_editor = true;
         }
-        // Chromium inputs can expose an empty TextPattern alongside a populated ValuePattern.
-        let text = value_pattern
-            .filter(|_| input.get_control_type().ok() == Some(ControlType::Edit))
-            // shortcut: ValuePattern has no bounded read; reject oversized values below.
-            .and_then(|value| value.get_value().ok())
-            .or_else(|| {
-                text_pattern
-                    .as_ref()?
-                    .get_document_range()
-                    .ok()?
-                    .get_text(MAX_TEXT as i32 + 1)
-                    .ok()
-            })?;
+
+        if !found_editor {
+            for _ in 0..8 {
+                if candidate.get_process_id().ok() != focused.get_process_id().ok() {
+                    break;
+                }
+                if candidate.is_password().ok().unwrap_or(false) {
+                    return None;
+                }
+                let c_type = candidate.get_control_type().ok();
+                if matches!(c_type, Some(ControlType::Edit | ControlType::Document))
+                    || candidate.get_pattern::<UITextPattern>().is_ok()
+                {
+                    input = candidate;
+                    break;
+                }
+                let Ok(parent) = walker.get_parent(&candidate) else {
+                    break;
+                };
+                candidate = parent;
+            }
+        }
+
+        let field = input.get_runtime_id().ok().unwrap_or_default();
+        if let Some(s) = expected {
+            if !s.field.is_empty() && !field.is_empty() {
+                let exact = s.field == field;
+                let same_parent = s.field.len() == field.len()
+                    && s.field.get(1) == field.get(1)
+                    && (s.field.len() <= 2
+                        || s.field[..s.field.len() - 1] == field[..field.len() - 1]);
+                if !exact && !same_parent && window != s.window {
+                    return None;
+                }
+            }
+        }
+
+        let text_pattern = input
+            .get_pattern::<UITextPattern>()
+            .ok()
+            .or_else(|| focused.get_pattern::<UITextPattern>().ok());
+        let value_pattern = input
+            .get_pattern::<UIValuePattern>()
+            .ok()
+            .or_else(|| focused.get_pattern::<UIValuePattern>().ok());
+
+        let mut text = text_pattern
+            .as_ref()
+            .and_then(|pattern| pattern.get_document_range().ok())
+            .and_then(|range| range.get_text(MAX_TEXT as i32 + 1).ok())
+            .filter(|t| !t.trim().is_empty());
+
+        if text.as_ref().is_none_or(|t| t.trim().is_empty()) {
+            if let Some(ref vp) = value_pattern {
+                if !vp.is_readonly().unwrap_or(true) {
+                    if let Ok(v) = vp.get_value() {
+                        text = Some(v);
+                    }
+                }
+            }
+        }
+
+        let text = text.or_else(|| {
+            text_pattern
+                .as_ref()
+                .and_then(|pattern| pattern.get_document_range().ok())
+                .and_then(|range| range.get_text(MAX_TEXT as i32 + 1).ok())
+        })?;
+
         let selected = text_pattern
+            .as_ref()
             .and_then(|pattern| pattern.get_selection().ok())
             .filter(|ranges| ranges.len() == 1)
             .and_then(|ranges| ranges[0].get_text(MAX_TEXT as i32 + 1).ok())
             .unwrap_or_default();
-        if text.encode_utf16().count() > MAX_TEXT
-            || unsafe { GetForegroundWindow() } as isize != window
-            || !automation
-                .compare_elements(&focused, &automation.get_focused_element().ok()?)
-                .ok()?
-        {
+
+        if text.encode_utf16().count() > MAX_TEXT {
             return None;
         }
+
         Some(Snapshot {
             window,
             field,
@@ -499,13 +558,115 @@ fn corrections_with_deletions(
     (!pairs.is_empty()).then_some(pairs)
 }
 
-pub fn watch(app: tauri::AppHandle, before: Snapshot, pasted: String, generation: u64) {
+fn is_safe_external_pair(orig: &str, corr: &str) -> bool {
+    let orig = orig.trim();
+    let corr = corr.trim();
+    if orig.is_empty() || corr.is_empty() || orig == corr {
+        return false;
+    }
+    let orig_len = orig.chars().count();
+    let corr_len = corr.chars().count();
+    if orig_len > 30 || corr_len > 30 {
+        return false;
+    }
+    let (longer, shorter) = (orig_len.max(corr_len), orig_len.min(corr_len));
+    if shorter >= 2 && longer > shorter * 3 {
+        return false;
+    }
+    if orig_len == 1 && corr_len != 1 {
+        return false;
+    }
+    if orig.chars().all(char::is_alphanumeric)
+        && corr.chars().all(char::is_alphanumeric)
+        && word_correction(orig, corr).is_some()
+    {
+        return true;
+    }
+    let orig_toks = tokens(orig);
+    let corr_toks = tokens(corr);
+    if compound_correction(&orig_toks, &corr_toks).is_some() {
+        return true;
+    }
+    if orig.chars().any(is_cjk) && corr.chars().any(is_cjk) {
+        return true;
+    }
+    if orig.eq_ignore_ascii_case(corr) {
+        return true;
+    }
+    false
+}
+
+fn token_diff_corrections(original: &str, updated: &str) -> Vec<(String, String)> {
+    let orig_toks = tokens(original);
+    let upd_toks = tokens(updated);
+
+    if orig_toks.len() == upd_toks.len() {
+        let mut pairs = Vec::new();
+        for (a, b) in orig_toks.iter().zip(upd_toks.iter()) {
+            if a != b {
+                if let Some(pair) = word_correction(a, b) {
+                    pairs.push(pair);
+                } else if is_safe_external_pair(a, b) {
+                    pairs.push((a.to_string(), b.to_string()));
+                }
+            }
+        }
+        if !pairs.is_empty() {
+            return pairs;
+        }
+    }
+
+    let prefix = orig_toks
+        .iter()
+        .zip(upd_toks.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let suffix = orig_toks[prefix..]
+        .iter()
+        .rev()
+        .zip(upd_toks[prefix..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+
+    if prefix <= orig_toks.len() - suffix && prefix <= upd_toks.len() - suffix {
+        let orig_mid = &orig_toks[prefix..orig_toks.len() - suffix];
+        let upd_mid = &upd_toks[prefix..upd_toks.len() - suffix];
+
+        if let Some(pair) = compound_correction(orig_mid, upd_mid) {
+            return vec![pair];
+        }
+
+        if orig_mid.len() == 1 && upd_mid.len() == 1 {
+            let (a, b) = (orig_mid[0], upd_mid[0]);
+            if let Some(pair) = word_correction(a, b) {
+                return vec![pair];
+            } else if is_safe_external_pair(a, b) {
+                return vec![(a.to_string(), b.to_string())];
+            }
+        }
+    }
+
+    if let Some(pairs) = corrections(original, updated) {
+        return pairs;
+    }
+
+    Vec::new()
+}
+
+pub fn watch(
+    app: tauri::AppHandle,
+    target_window: Option<isize>,
+    before: Option<Snapshot>,
+    pasted: String,
+    generation: u64,
+) {
     use crate::{
         services::profile_service,
         state::{user_profile::CorrectionSource, AppState},
     };
     use std::time::{Duration, Instant};
     use tauri::Manager;
+    use tauri_plugin_clipboard_manager::ClipboardExt;
 
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -515,60 +676,204 @@ pub fn watch(app: tauri::AppHandle, before: Snapshot, pasted: String, generation
                 && state.with_profile(|p| p.external_correction_learning)
                 && state.recording.recording.lock().is_none()
         };
-        // Clipboard consumers may apply the paste asynchronously.
+
         let mut baseline = None;
-        for _ in 0..5 {
-            std::thread::sleep(Duration::from_millis(200));
+        let mut prefix = String::new();
+        let mut suffix = String::new();
+        let mut found_passage = false;
+        let mut active_snapshot = before.clone();
+
+        let before_text = before.as_ref().map(|b| b.text.as_str()).unwrap_or("");
+        let before_sel = before.as_ref().map(|b| b.selected.as_str()).unwrap_or("");
+
+        // Allow up to 1.8 seconds (12 * 150ms) for async paste (sendInput or clipboard) to be applied.
+        for _ in 0..12 {
+            std::thread::sleep(Duration::from_millis(150));
             if !active() {
                 return;
             }
-            let Some(current) = capture_field(Some(&before)) else {
+            let current = if let Some(ref b) = active_snapshot {
+                capture_field(Some(b))
+            } else {
+                capture_field(None)
+            };
+            let Some(current) = current else {
                 continue;
             };
-            if insertion(&before.text, &current.text, &pasted, &before.selected).is_some() {
+
+            if active_snapshot.is_none() {
+                if let Some(target) = target_window {
+                    if current.window != target && !is_same_process(current.window, target) {
+                        continue;
+                    }
+                }
+                active_snapshot = Some(Snapshot {
+                    window: current.window,
+                    field: current.field.clone(),
+                    text: before_text.to_string(),
+                    selected: before_sel.to_string(),
+                });
+            }
+
+            if let Some((p, s)) = insertion(before_text, &current.text, &pasted, before_sel) {
+                prefix = p.to_string();
+                suffix = s.to_string();
                 baseline = Some(current.text);
+                found_passage = true;
                 break;
             }
-            if current.text != before.text {
-                return;
+
+            let pasted_trimmed = pasted.trim();
+            if !pasted_trimmed.is_empty()
+                && current.text.contains(pasted_trimmed)
+                && current.text != before_text
+            {
+                if let Some(idx) = current.text.find(pasted_trimmed) {
+                    prefix = current.text[..idx].to_string();
+                    suffix = current.text[idx + pasted_trimmed.len()..].to_string();
+                    baseline = Some(current.text);
+                    found_passage = true;
+                    break;
+                }
             }
         }
-        let Some(baseline) = baseline else {
-            return;
+
+        let baseline = match baseline {
+            Some(b) => b,
+            None => {
+                if let Some(current) = active_snapshot
+                    .as_ref()
+                    .and_then(|b| capture_field(Some(b)))
+                {
+                    if current.text != before_text {
+                        current.text
+                    } else {
+                        // If UIA cannot detect text in this field, fallback to clipboard watching below
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                }
+            }
         };
-        let Some((prefix, suffix)) = insertion(&before.text, &baseline, &pasted, &before.selected)
-        else {
-            return;
-        };
+
         let deadline = Instant::now() + Duration::from_secs(60);
         let mut learned = std::collections::HashSet::new();
-        let mut latest = pasted.clone();
+
+        // If UIA baseline was not captured, watch clipboard as fallback for non-UIA apps
+        if baseline.is_empty() {
+            let mut last_clip = app.clipboard().read_text().ok();
+            while Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(400));
+                if !active() {
+                    return;
+                }
+                let Ok(clip) = app.clipboard().read_text() else {
+                    continue;
+                };
+                let clip = normalize_line_endings(&clip);
+                if clip.trim().is_empty() || last_clip.as_ref() == Some(&clip) || clip == pasted {
+                    continue;
+                }
+                last_clip = Some(clip.clone());
+
+                let diff_pairs =
+                    profile_service::collect_diff_correction_pairs(&[pasted.as_str()], &clip);
+                let safe_pairs: Vec<_> = diff_pairs
+                    .into_iter()
+                    .filter(|(orig, corr)| is_safe_external_pair(orig, corr))
+                    .filter(|pair| learned.insert(pair.clone()))
+                    .collect();
+
+                if !safe_pairs.is_empty() {
+                    profile_service::update_profile_and_schedule(&state, |profile| {
+                        if profile.external_correction_learning
+                            && GENERATION.load(Ordering::SeqCst) == generation
+                        {
+                            profile_service::learn_from_structured(
+                                profile,
+                                &safe_pairs,
+                                &[],
+                                CorrectionSource::User,
+                            );
+                        }
+                    });
+                    log::info!(
+                        "Learned external correction from clipboard: {:?}",
+                        safe_pairs
+                    );
+                }
+            }
+            return;
+        }
+
+        let baseline_text = baseline.clone();
+        let mut latest = if found_passage {
+            pasted.clone()
+        } else {
+            baseline_text.clone()
+        };
         let mut changed_at = Instant::now();
         let mut evaluated = false;
+
         while Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(400));
+            std::thread::sleep(Duration::from_millis(350));
             if !active() {
                 return;
             }
-            let Some(current) = capture_field(Some(&before)) else {
+            let Some(current) = active_snapshot
+                .as_ref()
+                .and_then(|b| capture_field(Some(b)))
+            else {
                 continue;
             };
-            let Some(edited) = passage(&current.text, prefix, suffix) else {
-                continue;
+
+            let current_target = if found_passage {
+                passage(&current.text, &prefix, &suffix)
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| current.text.clone())
+            } else {
+                current.text.clone()
             };
-            if edited != latest {
-                latest = edited.to_string();
+
+            if current_target != latest {
+                latest = current_target;
                 changed_at = Instant::now();
                 evaluated = false;
                 continue;
             }
-            if evaluated || latest == pasted || changed_at.elapsed() < Duration::from_secs(2) {
+
+            let initial_compare = if found_passage {
+                &pasted
+            } else {
+                &baseline_text
+            };
+            if evaluated
+                || &latest == initial_compare
+                || changed_at.elapsed() < Duration::from_millis(1500)
+            {
                 continue;
             }
             evaluated = true;
-            let Some(pairs) = corrections(&pasted, &latest) else {
-                continue;
+
+            let baseline_ref = if found_passage {
+                &pasted
+            } else {
+                &baseline_text
             };
+            let mut pairs = token_diff_corrections(baseline_ref, &latest);
+
+            if pairs.is_empty() {
+                let diff_pairs = profile_service::collect_diff_correction_pairs(
+                    &[baseline_ref.as_str()],
+                    &latest,
+                );
+                pairs = diff_pairs
+                    .into_iter()
+                    .filter(|(orig, corr)| is_safe_external_pair(orig, corr))
+                    .collect();
+            }
+
             let pairs: Vec<_> = pairs
                 .into_iter()
                 .filter(|pair| learned.insert(pair.clone()))
@@ -576,7 +881,7 @@ pub fn watch(app: tauri::AppHandle, before: Snapshot, pasted: String, generation
             if pairs.is_empty() {
                 continue;
             }
-            // Do not invoke the LLM: surrounding document text never leaves this process.
+
             profile_service::update_profile_and_schedule(&state, |profile| {
                 if profile.external_correction_learning
                     && GENERATION.load(Ordering::SeqCst) == generation
@@ -589,6 +894,8 @@ pub fn watch(app: tauri::AppHandle, before: Snapshot, pasted: String, generation
                     );
                 }
             });
+
+            log::info!("Learned external correction: {:?}", pairs);
         }
     });
 }
@@ -826,5 +1133,39 @@ mod tests {
         assert!(hot_words.contains(&"同济大学"));
         assert!(hot_words.contains(&"KhentWhispr"));
         assert!(!hot_words.contains(&"the"));
+    }
+
+    #[test]
+    fn validates_safe_external_pairs() {
+        assert!(is_safe_external_pair("teh", "the"));
+        assert!(is_safe_external_pair("speekflow", "SpeakFlow"));
+        assert!(is_safe_external_pair("funtion", "function"));
+        assert!(is_safe_external_pair("speak flow", "SpeakFlow"));
+        assert!(is_safe_external_pair("同机大学", "同济大学"));
+        assert!(!is_safe_external_pair("hello", "hello there"));
+        assert!(!is_safe_external_pair("hello", "goodbye"));
+        assert!(!is_safe_external_pair("", "word"));
+        assert!(!is_safe_external_pair("same", "same"));
+    }
+
+    #[test]
+    fn learns_corrections_from_diff_fallback_when_passage_shifts() {
+        let baseline = "const teh_var = 1;";
+        let updated = "const the_var = 1;";
+        let pairs = token_diff_corrections(baseline, updated);
+        assert_eq!(pairs, vec![("teh".into(), "the".into())]);
+
+        let baseline_multiline = "function main() {\n    let funtion_name = \"test\";\n}";
+        let updated_multiline = "function main() {\n    let function_name = \"test\";\n}";
+        let pairs2 = token_diff_corrections(baseline_multiline, updated_multiline);
+        assert_eq!(pairs2, vec![("funtion".into(), "function".into())]);
+    }
+
+    #[test]
+    fn token_diff_rejects_unrelated_line_rewrites() {
+        let baseline = "const a = 1;";
+        let updated = "const completely_different_identifier = 42;";
+        let pairs = token_diff_corrections(baseline, updated);
+        assert!(pairs.is_empty());
     }
 }
