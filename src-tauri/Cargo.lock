@@ -5811,7 +5811,7 @@ dependencies = [
 
 [[package]]
 name = "speak-flow"
-version = "1.1.6"
+version = "1.1.7"
 dependencies = [
  "arc-swap",
  "base64 0.22.1",
