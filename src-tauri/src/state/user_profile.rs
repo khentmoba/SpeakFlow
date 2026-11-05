@@ -1061,6 +1061,19 @@ mod tests {
     }
 
     #[test]
+    fn keeps_claude_as_an_active_builtin_provider() {
+        // Claude is a preset, not a custom provider. If it is missing from the
+        // builtin list the selection silently collapses to Cerebras.
+        let config = LlmProviderConfig {
+            active: "claude".to_string(),
+            ..Default::default()
+        };
+
+        assert!(LlmProviderConfig::is_builtin_provider("claude"));
+        assert_eq!(config.resolve_active_provider(), "claude");
+    }
+
+    #[test]
     fn resolves_invalid_active_provider_to_latest_custom_provider() {
         let config = LlmProviderConfig {
             active: "missing".to_string(),
