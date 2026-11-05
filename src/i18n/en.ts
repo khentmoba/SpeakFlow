@@ -139,6 +139,8 @@ const en = {
     hideRaw: "Hide raw text",
     showDetails: "Show details",
     hideDetails: "Hide details",
+    correctedBadge: "Polished",
+    correctedBadgeTitle: "Dictation was polished or corrected",
   },
   status: {
     online: "Online",
@@ -726,6 +728,7 @@ const en = {
     correctionFilterAll: "All",
     correctionFilterUser: "User",
     correctionFilterAi: "AI",
+    correctionFilterLearned: "Learned",
     correctionEmpty: "No correction rules",
     correctionOriginalPlaceholder: "Original (e.g. Speekflow)",
     correctionCorrectedPlaceholder: "Corrected (e.g. SpeakFlow)",

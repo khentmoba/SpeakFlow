@@ -31,7 +31,12 @@ function getAnimationDelay(idx: number): { animationDelay: string } {
     : { animationDelay: `${idx * 50}ms` };
 }
 
-const COPY_LABEL = i18n.t("common.copy");
+let currentCopyLabel = i18n.t("common.copy");
+if (typeof i18n.on === "function") {
+  i18n.on("languageChanged", () => {
+    currentCopyLabel = i18n.t("common.copy");
+  });
+}
 
 export default function TranscriptionHistory({
   history,
@@ -67,7 +72,7 @@ export default function TranscriptionHistory({
               </span>
             </div>
             <button
-              aria-label={COPY_LABEL}
+              aria-label={currentCopyLabel}
               className="icon-btn icon-btn-sm"
               onClick={() => onCopy(item.text, item.id)}
             >

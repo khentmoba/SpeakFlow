@@ -560,7 +560,11 @@ pub fn spawn_audio_capture_thread(
                 sample_format
             );
 
-            let err_cb = |e: cpal::StreamError| log::error!("Audio stream error: {}", e);
+            let stop_for_err = stop.clone();
+            let err_cb = move |e: cpal::StreamError| {
+                log::error!("Audio stream error: {}", e);
+                stop_for_err.store(true, Ordering::Relaxed);
+            };
             let stop_cb = stop.clone();
 
             let mk_i16 = {

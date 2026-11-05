@@ -9,48 +9,21 @@ use tauri::{Emitter, Manager};
 use crate::services::screen_capture_service::{self, CapturedScreen};
 use crate::state::AppState;
 
+pub mod geometry;
+#[cfg(test)]
+mod tests;
+
+pub use geometry::*;
+
 const OVERLAY_LABEL: &str = "selection-toolbar";
-const TOOLBAR_WIDTH: f64 = 548.0;
-const TOOLBAR_HEIGHT: f64 = 106.0;
-const RESULT_WIDTH: f64 = 548.0;
-const RESULT_HEIGHT: f64 = 356.0;
 const SELECTION_SETTLE_MS: u64 = 110;
 const MIN_DRAG_DISTANCE_PX: i32 = 4;
 const DUPLICATE_WINDOW_MS: u64 = 700;
-const CURSOR_GAP_LOGICAL: f64 = 12.0;
-const EDGE_MARGIN_LOGICAL: f64 = 8.0;
-const VERTICAL_DIRECTION_THRESHOLD_LOGICAL: f64 = 24.0;
-
-#[derive(Debug, Clone, Copy)]
-struct Anchor {
-    x: i32,
-    y: i32,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct SelectionGesture {
-    start: Anchor,
-    end: Anchor,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct WorkArea {
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PlacementSide {
-    Above,
-    Below,
-}
 
 #[derive(Debug, Clone)]
-struct SelectionScreenshotContext {
-    version: u64,
-    images: Vec<CapturedScreen>,
+pub(super) struct SelectionScreenshotContext {
+    pub(super) version: u64,
+    pub(super) images: Vec<CapturedScreen>,
 }
 
 static CURRENT_SELECTION: OnceLock<parking_lot::Mutex<Option<SelectionDetectedPayload>>> =
@@ -86,7 +59,7 @@ pub fn current_selection_matches(version: u64, selected_text: &str) -> bool {
     })
 }
 
-fn selection_context_matches(
+pub(super) fn selection_context_matches(
     selection: &SelectionDetectedPayload,
     version: u64,
     selected_text: &str,
@@ -121,7 +94,7 @@ pub fn current_selection_screenshots(selected_text: &str) -> Vec<CapturedScreen>
     matching_selection_screenshots(&selection, screenshots.as_ref(), selected_text)
 }
 
-fn matching_selection_screenshots(
+pub(super) fn matching_selection_screenshots(
     selection: &SelectionDetectedPayload,
     context: Option<&SelectionScreenshotContext>,
     selected_text: &str,
@@ -424,765 +397,6 @@ fn position_window(
     Ok(())
 }
 
-fn selection_window_size(expanded: bool) -> (f64, f64) {
-    if expanded {
-        (RESULT_WIDTH, RESULT_HEIGHT)
-    } else {
-        (TOOLBAR_WIDTH, TOOLBAR_HEIGHT)
-    }
-}
-
-fn midpoint(first: i32, second: i32) -> i32 {
-    ((first as i64 + second as i64).div_euclid(2)) as i32
-}
-
-fn compute_selection_window_position(
-    gesture: SelectionGesture,
-    area: WorkArea,
-    window_width: i32,
-    window_height: i32,
-    scale: f64,
-) -> (i32, i32, PlacementSide) {
-    let gap = (CURSOR_GAP_LOGICAL * scale).round() as i32;
-    let edge_margin = (EDGE_MARGIN_LOGICAL * scale).round() as i32;
-    let direction_threshold = (VERTICAL_DIRECTION_THRESHOLD_LOGICAL * scale).round() as i32;
-
-    // Keep the popup close to the release cursor, but pull its center one step
-    // toward the selection midpoint so long drags do not leave it hanging off
-    // the far edge of the selected text.
-    let selection_mid_x = midpoint(gesture.start.x, gesture.end.x);
-    let focus_x = midpoint(selection_mid_x, gesture.end.x);
-    let desired_x = focus_x - window_width / 2;
-
-    let below_y = gesture.end.y + gap;
-    let above_y = gesture.end.y - window_height - gap;
-    let margin_x = edge_margin.min((area.width - window_width).max(0) / 2);
-    let margin_y = edge_margin.min((area.height - window_height).max(0) / 2);
-    let top_limit = area.y + margin_y;
-    let bottom_limit = area.y + area.height - margin_y;
-    let fits_above = above_y >= top_limit;
-    let fits_below = below_y + window_height <= bottom_limit;
-    let prefers_above = gesture.end.y < gesture.start.y - direction_threshold;
-
-    let side = if prefers_above {
-        if fits_above || !fits_below {
-            PlacementSide::Above
-        } else {
-            PlacementSide::Below
-        }
-    } else if fits_below || !fits_above {
-        PlacementSide::Below
-    } else {
-        PlacementSide::Above
-    };
-    let desired_y = match side {
-        PlacementSide::Above => above_y,
-        PlacementSide::Below => below_y,
-    };
-    let (x, y) = clamp_window_top_left(
-        desired_x,
-        desired_y,
-        area.x + margin_x,
-        area.y + margin_y,
-        area.width - margin_x * 2,
-        area.height - margin_y * 2,
-        window_width,
-        window_height,
-    );
-    (x, y, side)
-}
-
-#[cfg(target_os = "windows")]
-fn monitor_work_area(anchor: Anchor) -> Option<WorkArea> {
-    use windows_sys::Win32::Foundation::POINT;
-    use windows_sys::Win32::Graphics::Gdi::{
-        GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
-    };
-
-    // SAFETY: MonitorFromPoint takes the POINT by value and a flag, and dereferences no caller pointers.
-    unsafe {
-        let monitor = MonitorFromPoint(
-            POINT {
-                x: anchor.x,
-                y: anchor.y,
-            },
-            MONITOR_DEFAULTTONEAREST,
-        );
-        if monitor.is_null() {
-            return None;
-        }
-        let mut info: MONITORINFO = std::mem::zeroed();
-        info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
-        if GetMonitorInfoW(monitor, &mut info) == 0 {
-            return None;
-        }
-        Some(WorkArea {
-            x: info.rcWork.left,
-            y: info.rcWork.top,
-            width: info.rcWork.right - info.rcWork.left,
-            height: info.rcWork.bottom - info.rcWork.top,
-        })
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn monitor_work_area(_anchor: Anchor) -> Option<WorkArea> {
-    None
-}
-
-#[allow(clippy::too_many_arguments)]
-fn clamp_window_top_left(
-    desired_x: i32,
-    desired_y: i32,
-    monitor_x: i32,
-    monitor_y: i32,
-    monitor_width: i32,
-    monitor_height: i32,
-    window_width: i32,
-    window_height: i32,
-) -> (i32, i32) {
-    let max_x = monitor_x + monitor_width - window_width;
-    let max_y = monitor_y + monitor_height - window_height;
-    (
-        desired_x.clamp(monitor_x, max_x.max(monitor_x)),
-        desired_y.clamp(monitor_y, max_y.max(monitor_y)),
-    )
-}
-
-#[cfg(test)]
-mod window_position_tests {
-    use super::{
-        clamp_window_top_left, compute_selection_window_position, matching_selection_screenshots,
-        selection_context_matches, Anchor, PlacementSide, SelectionDetectedPayload,
-        SelectionGesture, SelectionScreenshotContext, WorkArea,
-    };
-    use crate::services::screen_capture_service::CapturedScreen;
-
-    const PRIMARY_WORK_AREA: WorkArea = WorkArea {
-        x: 0,
-        y: 0,
-        width: 1920,
-        height: 1040,
-    };
-
-    #[test]
-    fn screenshot_context_is_scoped_to_the_exact_selection_version_and_text() {
-        let selection = SelectionDetectedPayload {
-            version: 7,
-            text: " selected text ".to_string(),
-            character_count: 13,
-            source_window: Some(42),
-        };
-        let context = SelectionScreenshotContext {
-            version: 7,
-            images: vec![CapturedScreen {
-                mime_type: "image/jpeg".to_string(),
-                data_base64: "encoded".to_string(),
-            }],
-        };
-
-        assert_eq!(
-            matching_selection_screenshots(&selection, Some(&context), "selected text").len(),
-            1
-        );
-        assert!(matching_selection_screenshots(&selection, Some(&context), "other").is_empty());
-        assert!(matching_selection_screenshots(
-            &selection,
-            Some(&SelectionScreenshotContext {
-                version: 6,
-                images: context.images,
-            }),
-            "selected text",
-        )
-        .is_empty());
-    }
-
-    #[test]
-    fn replacement_context_requires_the_exact_version_text_and_source_window() {
-        let selection = SelectionDetectedPayload {
-            version: 7,
-            text: "selected text".to_string(),
-            character_count: 13,
-            source_window: Some(42),
-        };
-
-        assert!(selection_context_matches(
-            &selection,
-            7,
-            "selected text",
-            Some(42)
-        ));
-        assert!(!selection_context_matches(
-            &selection,
-            8,
-            "selected text",
-            Some(42)
-        ));
-        assert!(!selection_context_matches(
-            &selection,
-            7,
-            "other text",
-            Some(42)
-        ));
-        assert!(!selection_context_matches(
-            &selection,
-            7,
-            "selected text",
-            Some(99)
-        ));
-    }
-
-    #[test]
-    fn centers_near_the_release_cursor_but_nudges_toward_the_selection() {
-        let (x, y, side) = compute_selection_window_position(
-            SelectionGesture {
-                start: Anchor { x: 400, y: 280 },
-                end: Anchor { x: 700, y: 300 },
-            },
-            PRIMARY_WORK_AREA,
-            548,
-            106,
-            1.0,
-        );
-
-        assert_eq!((x, y, side), (351, 312, PlacementSide::Below));
-        assert_eq!(x + 548 / 2, 625);
-    }
-
-    #[test]
-    fn upward_multiline_selection_places_the_popup_above_the_release_cursor() {
-        assert_eq!(
-            compute_selection_window_position(
-                SelectionGesture {
-                    start: Anchor { x: 700, y: 500 },
-                    end: Anchor { x: 650, y: 250 },
-                },
-                PRIMARY_WORK_AREA,
-                548,
-                106,
-                1.0,
-            ),
-            (388, 132, PlacementSide::Above)
-        );
-    }
-
-    #[test]
-    fn slight_same_line_vertical_jitter_does_not_flip_the_popup() {
-        let (_, y, side) = compute_selection_window_position(
-            SelectionGesture {
-                start: Anchor { x: 400, y: 302 },
-                end: Anchor { x: 700, y: 300 },
-            },
-            PRIMARY_WORK_AREA,
-            548,
-            106,
-            1.0,
-        );
-
-        assert_eq!((y, side), (312, PlacementSide::Below));
-    }
-
-    #[test]
-    fn flips_above_and_keeps_an_edge_margin_near_the_taskbar() {
-        assert_eq!(
-            compute_selection_window_position(
-                SelectionGesture {
-                    start: Anchor { x: 1800, y: 1000 },
-                    end: Anchor { x: 1915, y: 1035 },
-                },
-                PRIMARY_WORK_AREA,
-                548,
-                106,
-                1.0,
-            ),
-            (1364, 917, PlacementSide::Above)
-        );
-    }
-
-    #[test]
-    fn supports_negative_coordinate_work_areas() {
-        assert_eq!(
-            compute_selection_window_position(
-                SelectionGesture {
-                    start: Anchor { x: -1240, y: 35 },
-                    end: Anchor { x: -1200, y: 40 },
-                },
-                WorkArea {
-                    x: -1280,
-                    y: 24,
-                    width: 1280,
-                    height: 984,
-                },
-                548,
-                106,
-                1.0,
-            ),
-            (-1272, 52, PlacementSide::Below)
-        );
-    }
-
-    #[test]
-    fn keeps_a_dragged_position_that_still_fits_after_resize() {
-        assert_eq!(
-            clamp_window_top_left(420, 180, 0, 0, 1920, 1080, 548, 356),
-            (420, 180)
-        );
-    }
-
-    #[test]
-    fn moves_only_enough_to_keep_an_expanded_window_on_screen() {
-        assert_eq!(
-            clamp_window_top_left(1600, 900, 0, 0, 1920, 1080, 548, 356),
-            (1372, 724)
-        );
-    }
-
-    #[test]
-    fn supports_monitors_with_negative_desktop_coordinates() {
-        assert_eq!(
-            clamp_window_top_left(-1800, -20, -1920, 0, 1920, 1080, 548, 356),
-            (-1800, 0)
-        );
-    }
-}
-
-#[cfg(test)]
-#[cfg(target_os = "windows")]
-mod selection_gesture_tests {
-    use super::{
-        capture_mouse_hook_event, Anchor, DoubleClickLimits, HookEvent, MouseSample,
-        SelectionGesture, SelectionGestureTracker, SelectionInputActivity,
-    };
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MOUSEHWHEEL, WM_MOUSEWHEEL,
-        WM_RBUTTONDOWN, WM_XBUTTONDOWN,
-    };
-
-    const POINT: Anchor = Anchor { x: 640, y: 480 };
-    const SOURCE_WINDOW: isize = 42;
-    const OTHER_SOURCE_WINDOW: isize = 84;
-    const DOUBLE_CLICK_LIMITS: DoubleClickLimits = DoubleClickLimits {
-        max_delay_ms: 500,
-        rectangle_width: 4,
-        rectangle_height: 4,
-    };
-
-    fn sample(point: Anchor, scroll_generation: u64, time_ms: u32) -> MouseSample {
-        MouseSample {
-            point,
-            scroll_generation,
-            interruption_generation: 0,
-            time_ms,
-        }
-    }
-
-    fn click(
-        tracker: &mut SelectionGestureTracker,
-        point: Anchor,
-        scroll_generation: u64,
-        time_ms: u32,
-        source_window: Option<isize>,
-    ) -> Option<SelectionGesture> {
-        tracker.begin(sample(point, scroll_generation, time_ms));
-        tracker.finish(
-            sample(point, scroll_generation, time_ms.wrapping_add(10)),
-            source_window,
-            DOUBLE_CLICK_LIMITS,
-        )
-    }
-
-    #[test]
-    fn wheel_assisted_selection_is_eligible_even_when_release_position_is_unchanged() {
-        let mut tracker = SelectionGestureTracker::default();
-        tracker.begin(sample(POINT, 7, 100));
-
-        let gesture = tracker
-            .finish(
-                sample(POINT, 8, 150),
-                Some(SOURCE_WINDOW),
-                DOUBLE_CLICK_LIMITS,
-            )
-            .expect("wheel activity while the button is held indicates selection intent");
-        assert_eq!((gesture.start.x, gesture.start.y), (POINT.x, POINT.y));
-        assert_eq!((gesture.end.x, gesture.end.y), (POINT.x, POINT.y));
-    }
-
-    #[test]
-    fn movement_below_the_existing_threshold_without_scroll_remains_ineligible() {
-        let mut tracker = SelectionGestureTracker::default();
-        tracker.begin(sample(POINT, 7, 100));
-
-        assert!(tracker
-            .finish(
-                sample(
-                    Anchor {
-                        x: POINT.x + 3,
-                        y: POINT.y + 3,
-                    },
-                    7,
-                    150,
-                ),
-                Some(SOURCE_WINDOW),
-                DOUBLE_CLICK_LIMITS
-            )
-            .is_none());
-    }
-
-    #[test]
-    fn ordinary_drag_at_the_existing_threshold_remains_eligible() {
-        for end in [
-            Anchor {
-                x: POINT.x + 4,
-                y: POINT.y,
-            },
-            Anchor {
-                x: POINT.x,
-                y: POINT.y + 4,
-            },
-        ] {
-            let mut tracker = SelectionGestureTracker::default();
-            tracker.begin(sample(POINT, 7, 100));
-
-            assert!(tracker
-                .finish(
-                    sample(end, 7, 150),
-                    Some(SOURCE_WINDOW),
-                    DOUBLE_CLICK_LIMITS,
-                )
-                .is_some());
-        }
-    }
-
-    #[test]
-    fn one_plain_click_remains_ineligible() {
-        let mut tracker = SelectionGestureTracker::default();
-
-        assert!(click(&mut tracker, POINT, 7, 100, Some(SOURCE_WINDOW)).is_none());
-    }
-
-    #[test]
-    fn second_plain_click_in_the_same_window_emits_a_gesture() {
-        let mut tracker = SelectionGestureTracker::default();
-        assert!(click(&mut tracker, POINT, 7, 100, Some(SOURCE_WINDOW)).is_none());
-
-        let gesture = click(&mut tracker, POINT, 7, 350, Some(SOURCE_WINDOW))
-            .expect("the second click should make the native word selection eligible");
-        assert_eq!((gesture.start.x, gesture.start.y), (POINT.x, POINT.y));
-        assert_eq!((gesture.end.x, gesture.end.y), (POINT.x, POINT.y));
-    }
-
-    #[test]
-    fn third_plain_click_remains_eligible_for_native_triple_click_selection() {
-        let mut tracker = SelectionGestureTracker::default();
-        assert!(click(&mut tracker, POINT, 7, 100, Some(SOURCE_WINDOW)).is_none());
-        assert!(click(&mut tracker, POINT, 7, 200, Some(SOURCE_WINDOW)).is_some());
-        assert!(click(&mut tracker, POINT, 7, 300, Some(SOURCE_WINDOW)).is_some());
-    }
-
-    #[test]
-    fn double_click_delay_is_inclusive_and_a_late_click_becomes_the_next_candidate() {
-        let mut boundary_tracker = SelectionGestureTracker::default();
-        assert!(click(&mut boundary_tracker, POINT, 7, 100, Some(SOURCE_WINDOW),).is_none());
-        assert!(click(&mut boundary_tracker, POINT, 7, 600, Some(SOURCE_WINDOW),).is_some());
-
-        let mut late_tracker = SelectionGestureTracker::default();
-        assert!(click(&mut late_tracker, POINT, 7, 100, Some(SOURCE_WINDOW)).is_none());
-        assert!(click(&mut late_tracker, POINT, 7, 601, Some(SOURCE_WINDOW)).is_none());
-        assert!(click(&mut late_tracker, POINT, 7, 800, Some(SOURCE_WINDOW)).is_some());
-    }
-
-    #[test]
-    fn double_click_rectangle_uses_its_full_width_and_height() {
-        for point in [
-            Anchor {
-                x: POINT.x - 2,
-                y: POINT.y - 2,
-            },
-            Anchor {
-                x: POINT.x + 1,
-                y: POINT.y + 1,
-            },
-        ] {
-            let mut tracker = SelectionGestureTracker::default();
-            assert!(click(&mut tracker, POINT, 7, 100, Some(SOURCE_WINDOW)).is_none());
-            assert!(click(&mut tracker, point, 7, 200, Some(SOURCE_WINDOW)).is_some());
-        }
-
-        for point in [
-            Anchor {
-                x: POINT.x - 3,
-                y: POINT.y,
-            },
-            Anchor {
-                x: POINT.x + 2,
-                y: POINT.y,
-            },
-            Anchor {
-                x: POINT.x,
-                y: POINT.y - 3,
-            },
-            Anchor {
-                x: POINT.x,
-                y: POINT.y + 2,
-            },
-        ] {
-            let mut tracker = SelectionGestureTracker::default();
-            assert!(click(&mut tracker, POINT, 7, 100, Some(SOURCE_WINDOW)).is_none());
-            assert!(click(&mut tracker, point, 7, 200, Some(SOURCE_WINDOW)).is_none());
-            assert!(click(&mut tracker, point, 7, 300, Some(SOURCE_WINDOW)).is_some());
-        }
-    }
-
-    #[test]
-    fn clicks_from_different_foreground_windows_do_not_pair() {
-        let mut tracker = SelectionGestureTracker::default();
-        assert!(click(&mut tracker, POINT, 7, 100, Some(SOURCE_WINDOW)).is_none());
-        assert!(click(&mut tracker, POINT, 7, 200, Some(OTHER_SOURCE_WINDOW),).is_none());
-        assert!(click(&mut tracker, POINT, 7, 300, Some(OTHER_SOURCE_WINDOW),).is_some());
-    }
-
-    #[test]
-    fn scroll_between_clicks_breaks_the_pair() {
-        let mut tracker = SelectionGestureTracker::default();
-        assert!(click(&mut tracker, POINT, 7, 100, Some(SOURCE_WINDOW)).is_none());
-        assert!(click(&mut tracker, POINT, 8, 200, Some(SOURCE_WINDOW)).is_none());
-        assert!(click(&mut tracker, POINT, 8, 300, Some(SOURCE_WINDOW)).is_some());
-    }
-
-    #[test]
-    fn drag_selection_clears_the_previous_click_candidate() {
-        let mut tracker = SelectionGestureTracker::default();
-        assert!(click(&mut tracker, POINT, 7, 100, Some(SOURCE_WINDOW)).is_none());
-
-        tracker.begin(sample(POINT, 7, 200));
-        assert!(tracker
-            .finish(
-                sample(
-                    Anchor {
-                        x: POINT.x + 4,
-                        y: POINT.y,
-                    },
-                    7,
-                    250,
-                ),
-                Some(SOURCE_WINDOW),
-                DOUBLE_CLICK_LIMITS,
-            )
-            .is_some());
-
-        assert!(click(&mut tracker, POINT, 7, 300, Some(SOURCE_WINDOW)).is_none());
-        assert!(click(&mut tracker, POINT, 7, 400, Some(SOURCE_WINDOW)).is_some());
-    }
-
-    #[test]
-    fn clear_removes_both_pending_and_previous_click_state() {
-        let mut tracker = SelectionGestureTracker::default();
-        assert!(click(&mut tracker, POINT, 7, 100, Some(SOURCE_WINDOW)).is_none());
-        tracker.clear();
-
-        assert!(click(&mut tracker, POINT, 7, 200, Some(SOURCE_WINDOW)).is_none());
-        assert!(click(&mut tracker, POINT, 7, 300, Some(SOURCE_WINDOW)).is_some());
-    }
-
-    #[test]
-    fn unmatched_button_up_clears_a_stale_click_candidate() {
-        let mut tracker = SelectionGestureTracker::default();
-        assert!(click(&mut tracker, POINT, 7, 100, Some(SOURCE_WINDOW)).is_none());
-        assert!(tracker
-            .finish(
-                sample(POINT, 7, 150),
-                Some(SOURCE_WINDOW),
-                DOUBLE_CLICK_LIMITS,
-            )
-            .is_none());
-
-        assert!(click(&mut tracker, POINT, 7, 200, Some(SOURCE_WINDOW)).is_none());
-    }
-
-    #[test]
-    fn double_click_time_handles_u32_wraparound() {
-        let mut tracker = SelectionGestureTracker::default();
-        assert!(click(&mut tracker, POINT, 7, u32::MAX - 100, Some(SOURCE_WINDOW),).is_none());
-        assert!(click(&mut tracker, POINT, 7, 50, Some(SOURCE_WINDOW)).is_some());
-    }
-
-    #[test]
-    fn scrolling_without_an_active_press_does_not_pollute_the_next_click() {
-        let input_activity = SelectionInputActivity::default();
-        assert!(
-            capture_mouse_hook_event(WM_MOUSEWHEEL, POINT, 50, None, &input_activity,).is_none()
-        );
-
-        let mut tracker = SelectionGestureTracker::default();
-        let Some(HookEvent::LeftDown(sample)) =
-            capture_mouse_hook_event(WM_LBUTTONDOWN, POINT, 100, None, &input_activity)
-        else {
-            panic!("left-button down must be forwarded");
-        };
-        tracker.begin(sample);
-
-        let Some(HookEvent::LeftUp(sample, source_window)) = capture_mouse_hook_event(
-            WM_LBUTTONUP,
-            POINT,
-            150,
-            Some(SOURCE_WINDOW),
-            &input_activity,
-        ) else {
-            panic!("left-button up must be forwarded");
-        };
-        assert!(tracker
-            .finish(sample, source_window, DOUBLE_CLICK_LIMITS)
-            .is_none());
-    }
-
-    #[test]
-    fn low_level_mouse_hook_records_vertical_and_horizontal_wheel_activity() {
-        for wheel_message in [WM_MOUSEWHEEL, WM_MOUSEHWHEEL] {
-            let input_activity = SelectionInputActivity::default();
-            let mut tracker = SelectionGestureTracker::default();
-
-            let Some(HookEvent::LeftDown(sample)) =
-                capture_mouse_hook_event(WM_LBUTTONDOWN, POINT, 100, None, &input_activity)
-            else {
-                panic!("left-button down must be forwarded");
-            };
-            tracker.begin(sample);
-
-            assert!(
-                capture_mouse_hook_event(wheel_message, POINT, 125, None, &input_activity,)
-                    .is_none()
-            );
-
-            let Some(HookEvent::LeftUp(sample, source_window)) = capture_mouse_hook_event(
-                WM_LBUTTONUP,
-                POINT,
-                150,
-                Some(SOURCE_WINDOW),
-                &input_activity,
-            ) else {
-                panic!("left-button up must be forwarded");
-            };
-            assert!(tracker
-                .finish(sample, source_window, DOUBLE_CLICK_LIMITS)
-                .is_some());
-        }
-    }
-
-    #[test]
-    fn other_mouse_buttons_interrupt_a_double_click_sequence() {
-        for interrupt_message in [WM_MBUTTONDOWN, WM_RBUTTONDOWN, WM_XBUTTONDOWN] {
-            let input_activity = SelectionInputActivity::default();
-            let mut tracker = SelectionGestureTracker::default();
-
-            let Some(HookEvent::LeftDown(first_down)) =
-                capture_mouse_hook_event(WM_LBUTTONDOWN, POINT, 100, None, &input_activity)
-            else {
-                panic!("left-button down must be forwarded");
-            };
-            tracker.begin(first_down);
-            let Some(HookEvent::LeftUp(first_up, first_window)) = capture_mouse_hook_event(
-                WM_LBUTTONUP,
-                POINT,
-                110,
-                Some(SOURCE_WINDOW),
-                &input_activity,
-            ) else {
-                panic!("left-button up must be forwarded");
-            };
-            assert!(tracker
-                .finish(first_up, first_window, DOUBLE_CLICK_LIMITS)
-                .is_none());
-
-            assert!(
-                capture_mouse_hook_event(interrupt_message, POINT, 150, None, &input_activity,)
-                    .is_none()
-            );
-
-            let Some(HookEvent::LeftDown(second_down)) =
-                capture_mouse_hook_event(WM_LBUTTONDOWN, POINT, 200, None, &input_activity)
-            else {
-                panic!("left-button down must be forwarded");
-            };
-            tracker.begin(second_down);
-            let Some(HookEvent::LeftUp(second_up, second_window)) = capture_mouse_hook_event(
-                WM_LBUTTONUP,
-                POINT,
-                210,
-                Some(SOURCE_WINDOW),
-                &input_activity,
-            ) else {
-                panic!("left-button up must be forwarded");
-            };
-            assert!(tracker
-                .finish(second_up, second_window, DOUBLE_CLICK_LIMITS)
-                .is_none());
-        }
-    }
-
-    #[test]
-    fn other_mouse_button_during_a_left_press_is_not_treated_as_scroll_selection() {
-        let input_activity = SelectionInputActivity::default();
-        let mut tracker = SelectionGestureTracker::default();
-        let Some(HookEvent::LeftDown(sample)) =
-            capture_mouse_hook_event(WM_LBUTTONDOWN, POINT, 100, None, &input_activity)
-        else {
-            panic!("left-button down must be forwarded");
-        };
-        tracker.begin(sample);
-
-        assert!(
-            capture_mouse_hook_event(WM_RBUTTONDOWN, POINT, 125, None, &input_activity,).is_none()
-        );
-        let Some(HookEvent::LeftUp(sample, source_window)) = capture_mouse_hook_event(
-            WM_LBUTTONUP,
-            Anchor {
-                x: POINT.x + 4,
-                y: POINT.y,
-            },
-            150,
-            Some(SOURCE_WINDOW),
-            &input_activity,
-        ) else {
-            panic!("left-button up must be forwarded");
-        };
-        assert!(tracker
-            .finish(sample, source_window, DOUBLE_CLICK_LIMITS)
-            .is_none());
-    }
-
-    #[test]
-    fn low_level_mouse_hook_preserves_the_message_timestamp() {
-        let input_activity = SelectionInputActivity::default();
-        input_activity
-            .scroll_generation
-            .store(9, std::sync::atomic::Ordering::Relaxed);
-        let Some(HookEvent::LeftDown(sample)) =
-            capture_mouse_hook_event(WM_LBUTTONDOWN, POINT, 1_234, None, &input_activity)
-        else {
-            panic!("left-button down must be forwarded");
-        };
-
-        assert_eq!(sample.time_ms, 1_234);
-        assert_eq!(sample.scroll_generation, 9);
-    }
-
-    #[test]
-    fn low_level_mouse_hook_preserves_the_release_window_snapshot() {
-        let input_activity = SelectionInputActivity::default();
-        let Some(HookEvent::LeftUp(_, source_window)) = capture_mouse_hook_event(
-            WM_LBUTTONUP,
-            POINT,
-            1_234,
-            Some(SOURCE_WINDOW),
-            &input_activity,
-        ) else {
-            panic!("left-button up must be forwarded");
-        };
-
-        assert_eq!(source_window, Some(SOURCE_WINDOW));
-    }
-}
-
 #[cfg(target_os = "windows")]
 fn apply_no_activate_style(window: &tauri::WebviewWindow) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -1235,7 +449,7 @@ fn show_without_activation(window: &tauri::WebviewWindow) {
 
 #[cfg(target_os = "windows")]
 #[derive(Debug, Clone, Copy)]
-enum HookEvent {
+pub(super) enum HookEvent {
     LeftDown(MouseSample),
     LeftUp(MouseSample, Option<isize>),
     Dismiss,
@@ -1243,31 +457,31 @@ enum HookEvent {
 
 #[cfg(target_os = "windows")]
 #[derive(Debug, Clone, Copy)]
-struct MouseSample {
-    point: Anchor,
-    scroll_generation: u64,
-    interruption_generation: u64,
-    time_ms: u32,
+pub(super) struct MouseSample {
+    pub(super) point: Anchor,
+    pub(super) scroll_generation: u64,
+    pub(super) interruption_generation: u64,
+    pub(super) time_ms: u32,
 }
 
 #[cfg(target_os = "windows")]
 #[derive(Debug, Default)]
-struct SelectionInputActivity {
-    scroll_generation: AtomicU64,
-    interruption_generation: AtomicU64,
+pub(super) struct SelectionInputActivity {
+    pub(super) scroll_generation: AtomicU64,
+    pub(super) interruption_generation: AtomicU64,
 }
 
 #[cfg(target_os = "windows")]
 impl SelectionInputActivity {
-    fn record_scroll(&self) {
+    pub(super) fn record_scroll(&self) {
         self.scroll_generation.fetch_add(1, Ordering::Relaxed);
     }
 
-    fn interrupt_selection(&self) {
+    pub(super) fn interrupt_selection(&self) {
         self.interruption_generation.fetch_add(1, Ordering::Relaxed);
     }
 
-    fn sample(&self, point: Anchor, time_ms: u32) -> MouseSample {
+    pub(super) fn sample(&self, point: Anchor, time_ms: u32) -> MouseSample {
         MouseSample {
             point,
             scroll_generation: self.scroll_generation.load(Ordering::Relaxed),
@@ -1279,40 +493,40 @@ impl SelectionInputActivity {
 
 #[cfg(target_os = "windows")]
 #[derive(Debug, Clone, Copy)]
-struct DoubleClickLimits {
-    max_delay_ms: u32,
-    rectangle_width: i32,
-    rectangle_height: i32,
+pub(super) struct DoubleClickLimits {
+    pub(super) max_delay_ms: u32,
+    pub(super) rectangle_width: i32,
+    pub(super) rectangle_height: i32,
 }
 
 #[cfg(target_os = "windows")]
 #[derive(Debug, Clone, Copy)]
-struct ClickCandidate {
-    press: MouseSample,
-    source_window: isize,
+pub(super) struct ClickCandidate {
+    pub(super) press: MouseSample,
+    pub(super) source_window: isize,
 }
 
 #[cfg(target_os = "windows")]
 #[derive(Debug, Default)]
-struct SelectionGestureTracker {
-    pending: Option<MouseSample>,
-    previous_click: Option<ClickCandidate>,
+pub(super) struct SelectionGestureTracker {
+    pub(super) pending: Option<MouseSample>,
+    pub(super) previous_click: Option<ClickCandidate>,
 }
 
 #[cfg(target_os = "windows")]
 impl SelectionGestureTracker {
-    fn begin(&mut self, sample: MouseSample) {
+    pub(super) fn begin(&mut self, sample: MouseSample) {
         if self.pending.replace(sample).is_some() {
             self.previous_click = None;
         }
     }
 
-    fn clear(&mut self) {
+    pub(super) fn clear(&mut self) {
         self.pending = None;
         self.previous_click = None;
     }
 
-    fn finish(
+    pub(super) fn finish(
         &mut self,
         sample: MouseSample,
         source_window: Option<isize>,
@@ -1376,19 +590,6 @@ fn clicks_form_double_click(
             limits.rectangle_width,
             limits.rectangle_height,
         )
-}
-
-#[cfg(target_os = "windows")]
-fn point_inside_centered_rectangle(center: Anchor, point: Anchor, width: i32, height: i32) -> bool {
-    fn coordinate_inside_span(center: i32, value: i32, size: i32) -> bool {
-        let size = i64::from(size.max(1));
-        let start = i64::from(center) - size / 2;
-        let value = i64::from(value);
-        value >= start && value < start + size
-    }
-
-    coordinate_inside_span(center.x, point.x, width)
-        && coordinate_inside_span(center.y, point.y, height)
 }
 
 #[cfg(target_os = "windows")]
@@ -1522,7 +723,7 @@ fn is_other_mouse_button_down(message: u32) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn capture_mouse_hook_event(
+pub(super) fn capture_mouse_hook_event(
     message: u32,
     point: Anchor,
     time_ms: u32,
