@@ -84,10 +84,7 @@ pub(super) fn shortcut_mods_to_reg_mods(mods: &ShortcutModifiers) -> u32 {
 #[cfg(target_os = "windows")]
 pub(super) fn ensure_reg_hotkey_backend() -> Result<(), AppError> {
     let backend_running = {
-        let guard = match reg_backend_slot().lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
+        let guard = reg_backend_slot().lock();
         guard.is_some()
     };
     if backend_running {
@@ -137,10 +134,7 @@ pub(super) fn ensure_reg_hotkey_backend() -> Result<(), AppError> {
                     }
                     WM_NULL => {
                         // Drain command channel
-                        let rx_guard = match reg_hotkey_cmd_channel().1.lock() {
-                            Ok(g) => g,
-                            Err(p) => p.into_inner(),
-                        };
+                        let rx_guard = reg_hotkey_cmd_channel().1.lock();
                         while let Ok(cmd) = rx_guard.try_recv() {
                             match cmd {
                                 RegHotkeyCmd::Register {
@@ -206,10 +200,7 @@ pub(super) fn ensure_reg_hotkey_backend() -> Result<(), AppError> {
         })?
         .map_err(AppError::Other)?;
 
-    let mut guard = match reg_backend_slot().lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
+    let mut guard = reg_backend_slot().lock();
     *guard = Some(RegisterHotkeyBackend { thread_id, handle });
     Ok(())
 }
@@ -245,10 +236,7 @@ pub(super) fn register_via_reg_hotkey(
 
     // Wake the backend thread
     let tid = {
-        let guard = match reg_backend_slot().lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
+        let guard = reg_backend_slot().lock();
         guard.as_ref().map(|b| b.thread_id)
     };
     if let Some(tid) = tid {
@@ -283,10 +271,7 @@ pub(super) fn unregister_reg_hotkey_id(id: i32) {
         .send(RegHotkeyCmd::Unregister { id });
 
     let tid = {
-        let guard = match reg_backend_slot().lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
+        let guard = reg_backend_slot().lock();
         guard.as_ref().map(|b| b.thread_id)
     };
     if let Some(tid) = tid {
@@ -298,10 +283,7 @@ pub(super) fn unregister_reg_hotkey_id(id: i32) {
 #[cfg(target_os = "windows")]
 pub(super) fn stop_reg_hotkey_backend() {
     let backend = {
-        let mut guard = match reg_backend_slot().lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
+        let mut guard = reg_backend_slot().lock();
         guard.take()
     };
 

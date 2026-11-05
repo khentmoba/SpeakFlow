@@ -18,10 +18,7 @@ pub(super) fn monitor_slot() -> &'static Mutex<Option<UnifiedHotkeyMonitor>> {
 #[cfg(target_os = "windows")]
 pub(super) fn stop_unified_hotkey_monitor() {
     let monitor = {
-        let mut guard = match monitor_slot().lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
+        let mut guard = monitor_slot().lock();
         guard.take()
     };
 
@@ -64,10 +61,7 @@ pub(super) fn install_hook_on_thread() -> Result<HookHandle, String> {
 #[cfg(target_os = "windows")]
 pub(super) fn ensure_unified_hotkey_monitor(_app_handle: tauri::AppHandle) -> Result<(), AppError> {
     let monitor_running = {
-        let guard = match monitor_slot().lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
+        let guard = monitor_slot().lock();
         guard.is_some()
     };
     if monitor_running {
@@ -131,10 +125,7 @@ pub(super) fn ensure_unified_hotkey_monitor(_app_handle: tauri::AppHandle) -> Re
         .map_err(|e| AppError::Other(format!("Timed out waiting for hotkey listener: {}", e)))?
         .map_err(AppError::Other)?;
 
-    let mut guard = match monitor_slot().lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
+    let mut guard = monitor_slot().lock();
     *guard = Some(UnifiedHotkeyMonitor { thread_id, handle });
     Ok(())
 }
@@ -213,10 +204,7 @@ pub(super) fn build_hook_state_with_backend(
 #[cfg(target_os = "windows")]
 pub(super) fn sync_hotkey_monitor_lifecycle(app_handle: tauri::AppHandle) -> Result<(), AppError> {
     let (has_llkh, _has_any) = {
-        let guard = match unified_hook_state_slot().lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
+        let guard = unified_hook_state_slot().lock();
         let has_llkh = [
             guard.dictation.as_ref(),
             guard.translation.as_ref(),

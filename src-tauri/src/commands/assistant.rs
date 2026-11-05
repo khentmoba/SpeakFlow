@@ -20,7 +20,7 @@ pub async fn set_assistant_hotkey(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     shortcut: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let normalized = shortcut
         .as_deref()
         .map(str::trim)
@@ -40,7 +40,7 @@ pub async fn set_assistant_hotkey(
 pub async fn set_assistant_system_prompt(
     state: tauri::State<'_, AppState>,
     prompt: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let prompt = prompt
         .as_deref()
         .map(str::trim)
@@ -57,7 +57,7 @@ pub async fn set_assistant_system_prompt(
 pub async fn set_assistant_screen_context_enabled(
     state: tauri::State<'_, AppState>,
     enabled: bool,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile.assistant_screen_context_enabled = enabled;
         profile.ai_polish_screen_context_enabled = enabled;
@@ -317,7 +317,7 @@ pub async fn set_web_search_config(
     enabled: bool,
     provider: WebSearchProvider,
     max_results: Option<u8>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile.web_search.enabled = enabled;
         profile.web_search.provider = provider;
@@ -335,7 +335,7 @@ pub async fn set_web_search_api_key(
     state: tauri::State<'_, AppState>,
     provider: WebSearchProvider,
     api_key: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let keyring_user = web_search_keyring_user(&provider)
         .ok_or_else(|| "The current search provider does not use a separate API key".to_string())?;
     state.with_web_search_key_operation(|| {
@@ -350,7 +350,7 @@ pub async fn get_web_search_api_key(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     provider: WebSearchProvider,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     let cache_key = web_search_provider_cache_key(&provider);
     let keyring_user = web_search_keyring_user(&provider)
         .ok_or_else(|| "The current search provider does not use a separate API key".to_string())?;

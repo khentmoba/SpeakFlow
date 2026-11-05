@@ -1,3 +1,4 @@
+use crate::utils::AppError;
 use std::time::Instant;
 
 use tauri::Emitter;
@@ -15,20 +16,20 @@ fn emit_history_updated(app_handle: &tauri::AppHandle, id: Option<i64>) {
 #[tauri::command]
 pub async fn list_transcription_history(
     filter: history_service::HistoryQuery,
-) -> Result<history_service::HistoryPage, String> {
-    history_service::list(filter).await
+) -> Result<history_service::HistoryPage, AppError> {
+    history_service::list(filter).await.map_err(AppError::Other)
 }
 
 #[tauri::command]
-pub async fn get_transcription_history_stats() -> Result<history_service::HistoryStats, String> {
-    history_service::stats().await
+pub async fn get_transcription_history_stats() -> Result<history_service::HistoryStats, AppError> {
+    history_service::stats().await.map_err(AppError::Other)
 }
 
 #[tauri::command]
 pub async fn delete_transcription_history(
     app_handle: tauri::AppHandle,
     id: i64,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     let removed = history_service::delete(id).await?;
     if removed {
         emit_history_updated(&app_handle, Some(id));
@@ -94,7 +95,7 @@ fn export_markdown(records: &[history_service::HistoryRecord]) -> String {
 pub async fn export_transcription_history(
     window: tauri::WebviewWindow,
     format: String,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, AppError> {
     let records = history_service::all_records().await?;
     let normalized_format = format.trim().to_ascii_lowercase();
     let (extension, filter_label, data) = match normalized_format.as_str() {
@@ -105,7 +106,11 @@ pub async fn export_transcription_history(
             serde_json::to_vec_pretty(&records)
                 .map_err(|error| format!("Failed to serialize history: {error}"))?,
         ),
-        _ => return Err("History export format must be JSON or Markdown".into()),
+        _ => {
+            return Err(AppError::Other(
+                "History export format must be JSON or Markdown".into(),
+            ))
+        }
     };
     let file_name = format!("speak-flow-history.{extension}");
     let mut dialog = rfd::AsyncFileDialog::new()
@@ -270,10 +275,12 @@ pub async fn reprocess_transcription_history(
     state: tauri::State<'_, AppState>,
     id: i64,
     kind: String,
-) -> Result<history_service::HistoryRecord, String> {
+) -> Result<history_service::HistoryRecord, AppError> {
     let kind = kind.trim().to_ascii_lowercase();
     if kind != "polish" && kind != "asr" {
-        return Err("Reprocessing mode must be polish or asr".into());
+        return Err(AppError::Other(
+            "Reprocessing mode must be polish or asr".into(),
+        ));
     }
 
     let stored = history_service::get_for_reprocess(id)
@@ -292,7 +299,7 @@ pub async fn reprocess_transcription_history(
     if let Ok(record) = result.as_ref() {
         emit_history_updated(&app_handle, Some(record.id));
     }
-    result
+    result.map_err(AppError::Other)
 }
 
 pub async fn persist_history_insert(

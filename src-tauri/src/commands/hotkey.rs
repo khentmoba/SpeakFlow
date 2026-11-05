@@ -5,9 +5,9 @@ use crate::commands::audio::{
 use crate::state::{AppState, RecordingSlot, RecordingTrigger};
 use crate::utils::AppError;
 #[cfg(target_os = "windows")]
-use std::sync::atomic::AtomicU32;
+use parking_lot::Mutex;
 #[cfg(target_os = "windows")]
-use std::sync::Mutex;
+use std::sync::atomic::AtomicU32;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, OnceLock,
@@ -330,10 +330,7 @@ fn ensure_hotkey_not_conflicting(
 ) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        let guard = match unified_hook_state_slot().lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
+        let guard = unified_hook_state_slot().lock();
         for (other_kind, state) in [
             (HotkeyKind::Dictation, guard.dictation.as_ref()),
             (HotkeyKind::Translation, guard.translation.as_ref()),

@@ -1,3 +1,4 @@
+use crate::utils::AppError;
 use std::sync::atomic::Ordering;
 
 use crate::services::{jev_service, profile_service};
@@ -46,7 +47,7 @@ pub async fn set_jev_config(
     state: tauri::State<'_, AppState>,
     enabled: bool,
     provider: JevProvider,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile.jev.enabled = enabled;
         profile.jev.provider = provider;
@@ -58,7 +59,7 @@ pub async fn set_jev_config(
 pub async fn set_jev_provider(
     state: tauri::State<'_, AppState>,
     provider: JevProvider,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile.jev.provider = provider;
     });
@@ -69,7 +70,7 @@ pub async fn set_jev_provider(
 pub async fn set_polish_mode(
     state: tauri::State<'_, AppState>,
     mode: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let mode = FeatureMode::parse(&mode)?;
     state
         .profile
@@ -86,7 +87,7 @@ pub async fn set_jev_features(
     state: tauri::State<'_, AppState>,
     correction_review: bool,
     polish_audit: bool,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile.jev.correction_review = correction_review;
         profile.jev.polish_audit = polish_audit;
@@ -98,7 +99,7 @@ pub async fn set_jev_features(
 pub async fn set_screen_context_mode(
     state: tauri::State<'_, AppState>,
     mode: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let mode = FeatureMode::parse(&mode)?;
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         apply_screen_context_mode(profile, mode);
@@ -110,7 +111,7 @@ pub async fn set_screen_context_mode(
 pub async fn set_web_search_mode(
     state: tauri::State<'_, AppState>,
     mode: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let mode = FeatureMode::parse(&mode)?;
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         apply_web_search_mode(profile, mode);
@@ -122,8 +123,8 @@ pub async fn set_web_search_mode(
 pub async fn get_jev_api_key(
     app_handle: tauri::AppHandle,
     provider: JevProvider,
-) -> Result<String, String> {
-    jev_service::load_api_key_for_provider(&app_handle, provider)
+) -> Result<String, AppError> {
+    jev_service::load_api_key_for_provider(&app_handle, provider).map_err(AppError::Other)
 }
 
 #[tauri::command]
@@ -131,8 +132,8 @@ pub async fn set_jev_api_key(
     app_handle: tauri::AppHandle,
     provider: JevProvider,
     api_key: String,
-) -> Result<(), String> {
-    jev_service::save_or_delete_api_key(&app_handle, provider, &api_key)
+) -> Result<(), AppError> {
+    jev_service::save_or_delete_api_key(&app_handle, provider, &api_key).map_err(AppError::Other)
 }
 
 #[cfg(test)]
