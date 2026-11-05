@@ -9,6 +9,7 @@ pub mod grok_build_oauth;
 pub mod history;
 pub mod hotkey;
 pub mod jev;
+pub mod magpie;
 #[cfg(test)]
 mod polish_credential_tests;
 pub mod profile;

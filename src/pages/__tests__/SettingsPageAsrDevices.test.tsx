@@ -29,6 +29,7 @@ const tauriMock = vi.hoisted(() => ({
   getOpenaiCodexOauthStatus: vi.fn(),
   getClaudeOauthStatus: vi.fn(),
   getAiPolishConfig: vi.fn(),
+  detectMagpie: vi.fn(),
   startClaudeOauth: vi.fn(),
   completeClaudeOauth: vi.fn(),
   syncClaudeOauth: vi.fn(),
@@ -272,6 +273,7 @@ function resetMocks(profile: UserProfile = baseProfile) {
   tauriMock.getOpenaiCodexOauthStatus.mockResolvedValue({ loggedIn: false });
   tauriMock.getClaudeOauthStatus.mockResolvedValue({ loggedIn: false });
   tauriMock.getAiPolishConfig.mockResolvedValue({ enabled: false, provider: "cerebras" });
+  tauriMock.detectMagpie.mockResolvedValue({ available: false, running: false, gatewayUrl: "http://127.0.0.1:3425/v1" });
   tauriMock.isAutostartEnabled.mockResolvedValue(false);
   tauriMock.listAiModels.mockResolvedValue({ models: [], sourceUrl: "" });
   tauriMock.listAlibabaAsrModels.mockResolvedValue({

@@ -496,6 +496,9 @@
     ],
     "commands::claude_oauth::complete_claude_oauth": [
       "oauth"
+    ],
+    "commands::magpie::detect_magpie": [
+      "providers"
     ]
   },
   "events": {
@@ -2278,6 +2281,7 @@
     "commands::profile::retry_profile_save": "src-tauri/src/commands/profile.rs#pub async fn retry_profile_save",
     "commands::ai_polish::get_ai_polish_config": "src-tauri/src/commands/ai_polish.rs#fn get_ai_polish_config(",
     "commands::claude_oauth::start_claude_oauth": "src-tauri/src/commands/claude_oauth.rs#fn start_claude_oauth(",
-    "commands::claude_oauth::complete_claude_oauth": "src-tauri/src/commands/claude_oauth.rs#fn complete_claude_oauth("
+    "commands::claude_oauth::complete_claude_oauth": "src-tauri/src/commands/claude_oauth.rs#fn complete_claude_oauth(",
+    "commands::magpie::detect_magpie": "src-tauri/src/commands/magpie.rs#fn detect_magpie("
   }
 }

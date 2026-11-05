@@ -84,6 +84,18 @@ describe("Claude provider preset", () => {
     expect(claude.models).toContain("claude-sonnet-4-5");
   });
 
+  it("resolves Magpie to its local gateway, but keeps it out of the default list", () => {
+    expect(llmProviderOptions.some((option) => option.key === "magpie")).toBe(false);
+    expect(isFixedPresetProvider("magpie")).toBe(true);
+    expect(findLlmPreset("magpie")).toMatchObject({
+      key: "magpie",
+      baseUrl: "http://127.0.0.1:3425/v1",
+    });
+    expect(resolveLlmBaseUrl("magpie", "https://stale.example")).toBe(
+      "http://127.0.0.1:3425/v1",
+    );
+  });
+
   it("does not offer Antigravity, whose API is not OpenAI-compatible", () => {
     expect(isFixedPresetProvider("antigravity")).toBe(false);
   });

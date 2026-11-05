@@ -76,6 +76,19 @@ export const llmProviderOptions: ReadonlyArray<LlmProviderOption> = [
   },
 ];
 
+/**
+ * Magpie's local gateway. Kept out of `llmProviderOptions` because it is only
+ * offered when Magpie is installed or answering on this machine.
+ */
+export const magpieProviderOption: LlmProviderOption = {
+  key: "magpie",
+  label: "Magpie",
+  descKey: "settings.magpieDesc",
+  baseUrl: "http://127.0.0.1:3425/v1",
+  defaultModel: "",
+  models: [],
+};
+
 export const reasoningModeOptions: ReadonlyArray<{
   key: LlmReasoningMode;
   labelKey: string;
@@ -89,11 +102,13 @@ export const reasoningModeOptions: ReadonlyArray<{
 ];
 
 export function findLlmPreset(key: string): LlmProviderOption {
+  if (key === magpieProviderOption.key) return magpieProviderOption;
   return llmProviderOptions.find((option) => option.key === key) ?? llmProviderOptions[0];
 }
 
 export function isFixedPresetProvider(key: string): boolean {
-  return llmProviderOptions.some((option) => option.key === key);
+  return key === magpieProviderOption.key
+    || llmProviderOptions.some((option) => option.key === key);
 }
 
 export function resolveLlmBaseUrl(key: string, customBaseUrl?: string | null): string {

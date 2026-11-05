@@ -17,6 +17,7 @@ use super::oauth_callback::{
 use crate::services::claude_oauth_service;
 use crate::services::grok_build_oauth_service;
 use crate::services::llm_provider::KEYRING_SERVICE;
+use crate::services::magpie_service;
 use crate::state::oauth_session::OAuthOperation;
 use crate::state::user_profile::{ClaudeAuthMode, LlmProviderConfig, OpenaiAuthMode, XaiAuthMode};
 use crate::state::AppState;
@@ -1486,6 +1487,18 @@ pub async fn resolve_provider_auth_with_auth_mode(
     claude_auth_mode: Option<ClaudeAuthMode>,
 ) -> Result<ResolvedProviderAuth, String> {
     let manual_api_key = manual_api_key.trim();
+
+    if magpie_service::is_magpie_provider(provider) {
+        // Magpie's gateway is local and takes any bearer, so there is no key
+        // to store or prompt for.
+        return Ok(ResolvedProviderAuth::api_key(
+            if manual_api_key.is_empty() {
+                magpie_service::MAGPIE_GATEWAY_KEY.to_string()
+            } else {
+                manual_api_key.to_string()
+            },
+        ));
+    }
 
     if provider == XAI_PROVIDER {
         let effective_mode = grok_build_oauth_service::effective_xai_auth_mode(

@@ -19,6 +19,7 @@ pub(super) const SILICONFLOW: &str = "siliconflow";
 pub(super) const OPENROUTER: &str = "openrouter";
 pub(super) const CUSTOM: &str = "custom";
 pub(super) const CLAUDE: &str = "claude";
+pub(super) const MAGPIE: &str = "magpie";
 
 /// 预置服务商列表（用于判断是否为预置）
 pub(super) const PRESET_PROVIDERS: &[&str] = &[
@@ -30,6 +31,7 @@ pub(super) const PRESET_PROVIDERS: &[&str] = &[
     OPENROUTER,
     CUSTOM,
     CLAUDE,
+    MAGPIE,
 ];
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -76,6 +78,9 @@ pub(crate) fn default_endpoint_parts(provider: &str) -> (&'static str, &'static 
             10,
         ),
         CLAUDE => ("https://api.anthropic.com", "claude-sonnet-4-5", 15),
+        // Magpie routes to whichever subscription it holds, so the model is
+        // chosen from its own list rather than guessed here.
+        MAGPIE => ("http://127.0.0.1:3425/v1", "", 30),
         CUSTOM => ("http://127.0.0.1:8000", "gpt-6-luna", 10),
         _ => ("https://api.cerebras.ai", "qwen-3.8-27b", 5),
     }

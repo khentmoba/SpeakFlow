@@ -17,6 +17,7 @@ vi.mock("@/api/tauri", () => ({
   syncOpenaiCodexOauth: vi.fn(),
   startOpenaiCodexOauthDeviceCode: vi.fn(),
   completeOpenaiCodexOauthDeviceCode: vi.fn(),
+  listAiModels: vi.fn(),
   getClaudeOauthStatus: vi.fn(),
   startClaudeOauth: vi.fn(),
   completeClaudeOauth: vi.fn(),
@@ -72,6 +73,13 @@ describe("AiModelsSettingsSection", () => {
     vi.mocked(tauri.completeClaudeOauth).mockResolvedValue({ loggedIn: true });
     vi.mocked(tauri.logoutClaudeOauth).mockResolvedValue(undefined);
     vi.mocked(tauri.syncClaudeOauth).mockResolvedValue({ loggedIn: true });
+    vi.mocked(tauri.listAiModels).mockResolvedValue({
+      models: [
+        { id: "claude/claude-haiku-5-5" },
+        { id: "antigravity/gemini-4-argon" },
+      ],
+      sourceUrl: "http://127.0.0.1:3425/v1/models",
+    });
   });
 
   afterEach(() => {
@@ -252,6 +260,62 @@ describe("AiModelsSettingsSection", () => {
 
     const field = screen.getByRole("textbox", { name: "settings.modelLabel" });
     expect(field).toHaveValue("house-model-7b");
+  });
+
+  it("lists Magpie's own models and picks one when none is saved", async () => {
+    const onRefresh = vi.fn();
+    render(
+      <AiModelsSettingsSection
+        profile={createMockProfile("magpie")}
+        allProviderOptions={[
+          ...mockProviders,
+          {
+            key: "magpie",
+            label: "Magpie",
+            desc: "Your local Magpie gateway",
+            baseUrl: "http://127.0.0.1:3425/v1",
+            isCustom: false,
+          },
+        ]}
+        onRefreshProfile={onRefresh}
+        magpieStatus={{
+          available: true,
+          running: true,
+          gatewayUrl: "http://127.0.0.1:3425/v1",
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(tauri.listAiModels).toHaveBeenCalledWith("magpie", undefined, "", false);
+    });
+    await waitFor(() => {
+      expect(tauri.setLlmProviderConfig).toHaveBeenCalledWith(
+        "magpie",
+        undefined,
+        "claude/claude-haiku-5-5",
+      );
+    });
+    expect(screen.getByText("settings.magpieRunning")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "settings.apiKey" })).not.toBeInTheDocument();
+  });
+
+  it("warns when the Magpie gateway is not running", async () => {
+    render(
+      <AiModelsSettingsSection
+        profile={createMockProfile("magpie")}
+        allProviderOptions={mockProviders}
+        onRefreshProfile={vi.fn()}
+        magpieStatus={{
+          available: true,
+          running: false,
+          gatewayUrl: "http://127.0.0.1:3425/v1",
+        }}
+      />,
+    );
+
+    expect(await screen.findByText("settings.magpieNotRunning")).toBeInTheDocument();
+    expect(screen.getByText("settings.magpieStartHint")).toBeInTheDocument();
   });
 
   it("offers an API key field for providers without a sign-in", async () => {

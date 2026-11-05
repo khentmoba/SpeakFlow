@@ -65,6 +65,7 @@ pub fn keyring_user_for_provider(provider: &str) -> String {
         SILICONFLOW => "siliconflow-api-key".to_string(),
         OPENROUTER => "openrouter-api-key".to_string(),
         CLAUDE => "claude-api-key".to_string(),
+        MAGPIE => "magpie-api-key".to_string(),
         CUSTOM => "custom-api-key".to_string(),
         CEREBRAS => "cerebras-api-key".to_string(),
         id => format!("custom-{id}-api-key"),

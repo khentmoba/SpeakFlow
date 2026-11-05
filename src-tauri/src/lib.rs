@@ -336,6 +336,7 @@ pub fn run() {
             commands::jev::set_jev_config,
             commands::jev::set_jev_provider,
             commands::jev::set_polish_mode,
+            commands::magpie::detect_magpie,
             commands::jev::set_jev_features,
             commands::jev::set_screen_context_mode,
             commands::jev::set_web_search_mode,

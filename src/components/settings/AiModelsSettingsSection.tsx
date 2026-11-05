@@ -10,6 +10,7 @@ import {
   getAiPolishConfig,
   getClaudeOauthStatus,
   getOpenaiCodexOauthStatus,
+  listAiModels,
   loginOpenaiCodexOauth,
   logoutClaudeOauth,
   logoutOpenaiCodexOauth,
@@ -23,7 +24,9 @@ import {
   syncOpenaiCodexOauth,
 } from "@/api/tauri";
 import { findLlmPreset } from "@/lib/llmModelOptions";
+import type { MagpieStatus } from "@/api/tauri";
 import type {
+  AiModelInfo,
   ClaudeAuthMode,
   ClaudeOauthStatus,
   OpenaiAuthMode,
@@ -42,12 +45,14 @@ export interface AiModelsSettingsSectionProps {
     isCustom: boolean;
   }>;
   onRefreshProfile: () => Promise<UserProfile | undefined> | Promise<void> | void;
+  magpieStatus?: MagpieStatus | null;
 }
 
 export default function AiModelsSettingsSection({
   profile,
   allProviderOptions,
   onRefreshProfile,
+  magpieStatus = null,
 }: AiModelsSettingsSectionProps) {
   const { t } = useTranslation();
 
@@ -85,6 +90,8 @@ export default function AiModelsSettingsSection({
   const [deviceCodeSubmitting, setDeviceCodeSubmitting] = useState(false);
   const [claudeCode, setClaudeCode] = useState("");
   const [claudeSignInStarted, setClaudeSignInStarted] = useState(false);
+  const [magpieModels, setMagpieModels] = useState<AiModelInfo[]>([]);
+  const [magpieModelsError, setMagpieModelsError] = useState<string | null>(null);
 
   const loadKey = useCallback(async (provider: string) => {
     try {
@@ -124,6 +131,37 @@ export default function AiModelsSettingsSection({
       cancelled = true;
     };
   }, []);
+
+  // Magpie decides which models exist, so its list comes from the gateway.
+  useEffect(() => {
+    if (activeProvider !== "magpie") return;
+    let cancelled = false;
+    setMagpieModelsError(null);
+    listAiModels("magpie", undefined, "", false)
+      .then((payload) => {
+        if (cancelled) return;
+        setMagpieModels(payload.models);
+        // A fresh selection has no model yet; take the first one Magpie lists.
+        if (!savedModel && payload.models.length > 0) {
+          const first = payload.models[0].id;
+          setModelDraft(first);
+          void setLlmProviderConfig("magpie", undefined, first).then(() => {
+            void onRefreshProfile();
+          });
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setMagpieModels([]);
+          setMagpieModelsError(
+            err instanceof Error ? err.message : t("toast.settingsSaveFailed"),
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProvider, savedModel, onRefreshProfile, t]);
 
   useEffect(() => {
     setModelDraft(savedModel);
@@ -407,12 +445,18 @@ export default function AiModelsSettingsSection({
         <div className="settings-column" style={{ gap: 6 }}>
           <span className="settings-option-desc">{t("settings.modelLabel")}</span>
           <div style={{ display: "flex", gap: 8 }}>
-            {preset.models.length > 0 && (
+            {(activeProvider === "magpie" ? magpieModels.length > 0 : preset.models.length > 0) && (
               <select
                 className="settings-input"
                 style={{ flex: 1 }}
                 aria-label={t("settings.modelPresetLabel")}
-                value={preset.models.includes(modelDraft) ? modelDraft : ""}
+                value={
+                  (activeProvider === "magpie"
+                    ? magpieModels.some((model) => model.id === modelDraft)
+                    : preset.models.includes(modelDraft))
+                    ? modelDraft
+                    : ""
+                }
                 onChange={(e) => {
                   if (!e.target.value) return;
                   setModelDraft(e.target.value);
@@ -428,7 +472,10 @@ export default function AiModelsSettingsSection({
                 }}
               >
                 <option value="">{t("settings.canInputModelName")}</option>
-                {preset.models.map((model) => (
+                {(activeProvider === "magpie"
+                  ? magpieModels.map((model) => model.id)
+                  : preset.models
+                ).map((model) => (
                   <option key={model} value={model}>
                     {model}
                   </option>
@@ -768,7 +815,74 @@ export default function AiModelsSettingsSection({
           </div>
         )}
 
-        {!["openai", "claude"].includes(activeProvider) && (
+        {activeProvider === "magpie" && (
+          <div className="oauth-card">
+            <div className="oauth-card-head">
+              <span
+                className="oauth-status-dot"
+                data-connected={Boolean(magpieStatus?.running)}
+              />
+              <strong className="oauth-card-title">{t("settings.magpieLabel")}</strong>
+              <span className="oauth-card-meta">
+                {magpieStatus?.running
+                  ? t("settings.magpieRunning")
+                  : t("settings.magpieNotRunning")}
+              </span>
+            </div>
+
+            <p className="settings-hint" style={{ margin: 0 }}>
+              {t("settings.magpieHint")}
+            </p>
+
+            <span
+              className="settings-option-desc"
+              style={{
+                fontSize: 11,
+                color: "var(--color-text-tertiary)",
+                wordBreak: "break-all",
+                userSelect: "text",
+              }}
+            >
+              {magpieStatus?.gatewayUrl ?? "http://127.0.0.1:3425/v1"}
+            </span>
+
+            {magpieModelsError && <p className="settings-error">{magpieModelsError}</p>}
+
+            {!magpieStatus?.running && (
+              <p className="settings-hint" style={{ margin: 0 }}>
+                {t("settings.magpieStartHint")}
+              </p>
+            )}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className="btn-ghost"
+                style={{ fontSize: 12, padding: "6px 12px" }}
+                onClick={() => {
+                  setMagpieModelsError(null);
+                  listAiModels("magpie", undefined, "", true)
+                    .then((payload) => {
+                      setMagpieModels(payload.models);
+                      toast.success(
+                        t("settings.magpieModelsLoaded", { count: payload.models.length }),
+                      );
+                    })
+                    .catch((err: unknown) =>
+                      setMagpieModelsError(
+                        err instanceof Error ? err.message : t("toast.settingsSaveFailed"),
+                      ),
+                    );
+                }}
+              >
+                <RefreshCw size={12} style={{ display: "inline", marginRight: 4 }} />
+                {t("settings.magpieRefreshModels")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!["openai", "claude", "magpie"].includes(activeProvider) && (
           <div className="settings-column" style={{ gap: 6 }}>
             <span className="settings-option-desc">{t("settings.apiKey")}</span>
             <SecretInput

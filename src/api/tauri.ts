@@ -230,6 +230,15 @@ export function setAiPolishConfig(enabled: boolean, apiKey?: string, provider?: 
   });
 }
 
+export interface MagpieStatus {
+  available: boolean;
+  running: boolean;
+  gatewayUrl: string;
+  source?: string | null;
+}
+
+export const detectMagpie = createNoArgCommand<MagpieStatus>("detect_magpie");
+
 export interface AiPolishConfig {
   enabled: boolean;
   provider: string;

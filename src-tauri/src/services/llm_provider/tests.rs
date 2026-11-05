@@ -1507,3 +1507,73 @@ async fn custom_image_support_retains_model_detail_probe() {
     assert_eq!(support, vec![Some(true)]);
     assert_image_metadata_requests(&requests, "/v1/models/deepseek-v4-pro", 1);
 }
+
+#[test]
+fn magpie_points_at_the_local_gateway() {
+    let config = LlmProviderConfig {
+        active: "magpie".to_string(),
+        custom_model: Some("claude/claude-haiku-5-5".to_string()),
+        ..LlmProviderConfig::default()
+    };
+
+    let endpoint = endpoint_for_config(&config);
+    assert_eq!(endpoint.provider, "magpie");
+    assert_eq!(
+        endpoint.api_url,
+        "http://127.0.0.1:3425/v1/chat/completions"
+    );
+    assert_eq!(endpoint.model, "claude/claude-haiku-5-5");
+    assert_eq!(endpoint.api_format, ApiFormat::OpenaiCompat);
+
+    assert_eq!(
+        models_url(&config, "magpie", None),
+        "http://127.0.0.1:3425/v1/models"
+    );
+}
+
+#[test]
+fn magpie_requests_carry_the_gateway_bearer() {
+    let headers = build_auth_headers(
+        &ApiFormat::OpenaiCompat,
+        crate::services::magpie_service::MAGPIE_GATEWAY_KEY,
+    )
+    .expect("headers build");
+
+    assert_eq!(
+        headers
+            .get("Authorization")
+            .and_then(|value| value.to_str().ok()),
+        Some("Bearer magpie")
+    );
+}
+
+/// End-to-end check against a running Magpie. Ignored because CI has no
+/// gateway; run it on a machine with Magpie to confirm the wire contract.
+#[tokio::test]
+#[ignore = "needs a running Magpie gateway on 127.0.0.1:3425"]
+async fn live_magpie_gateway_answers_the_built_request() {
+    let config = LlmProviderConfig {
+        active: "magpie".to_string(),
+        custom_model: Some("claude/claude-haiku-5-5".to_string()),
+        ..LlmProviderConfig::default()
+    };
+    let endpoint = endpoint_for_config(&config);
+    let body = crate::services::llm_client::build_llm_body(
+        &endpoint,
+        "You reply with one short word.",
+        &crate::services::llm_client::LlmUserInput::from("Reply with the single word: ok"),
+        crate::services::llm_client::LlmRequestOptions::default(),
+    );
+    let answer = crate::services::llm_client::send_llm_request(
+        &reqwest::Client::new(),
+        &endpoint,
+        crate::services::magpie_service::MAGPIE_GATEWAY_KEY,
+        &body,
+        32,
+        None,
+        crate::services::llm_client::LlmRequestOptions::default(),
+    )
+    .await
+    .expect("magpie answered");
+    assert!(!answer.trim().is_empty());
+}

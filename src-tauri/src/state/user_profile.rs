@@ -683,6 +683,7 @@ impl LlmProviderConfig {
                 | "siliconflow"
                 | "openrouter"
                 | "claude"
+                | "magpie"
                 | "custom"
         )
     }
