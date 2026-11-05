@@ -101,6 +101,7 @@ pub fn play_assistant_stop_sound() {
 fn play_wav_async(wav: &[u8]) {
     use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_MEMORY};
 
+    // SAFETY: wav is a static OnceLock buffer that lives for the whole process, so asynchronous playback never reads freed memory.
     unsafe {
         PlaySoundW(
             wav.as_ptr() as *const u16,

@@ -17,6 +17,7 @@ fn ipc_test_server() {
         return;
     };
     if mode == "closed_stdin" {
+        // SAFETY: Test-only fault injection: the fixture deliberately closes its stdin handle to simulate a broken pipe and never uses it again.
         unsafe {
             windows_sys::Win32::Foundation::CloseHandle(std::io::stdin().as_raw_handle());
         }
@@ -24,6 +25,7 @@ fn ipc_test_server() {
     println!("{{\"test_ready\":true}}");
     std::io::stdout().flush().unwrap();
     if mode == "closed_stdout" {
+        // SAFETY: Test-only fault injection: the fixture deliberately closes its stdout handle to simulate a broken pipe and never uses it again.
         unsafe {
             windows_sys::Win32::Foundation::CloseHandle(std::io::stdout().as_raw_handle());
         }

@@ -105,6 +105,7 @@ use windows_sys::Win32::Foundation::HWND;
 pub fn get_foreground_app() -> Option<ForegroundApp> {
     use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 
+    // SAFETY: GetForegroundWindow takes no arguments, and the handle is null-checked before any other call uses it.
     unsafe {
         let hwnd = GetForegroundWindow();
         if hwnd.is_null() {

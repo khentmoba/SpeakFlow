@@ -24,13 +24,14 @@ class FixtureIsolation(unittest.TestCase):
                 "run_audio_lease_test_in_child",
                 "tlc_history_leases_replay_public_sqlite_operations",
             ],
-            "src-tauri/src/services/funasr_service.rs": ["run_in_isolated_cache"],
+            "src-tauri/src/services/funasr_service/model_readiness_tests.rs": ["run_in_isolated_cache"],
         }.items():
             for name in functions:
-                # Fixture helpers are indented inside Rust test modules.
+                # The helper closes at its own indentation: 4 spaces inside a test module, column 0 in a file module.
                 source = (ROOT / path).read_text(encoding="utf-8")
                 start = source.index(f"fn {name}(")
-                fixture = source[start:source.index("\n    }", start)]
+                indent = re.match(r" *", source[source.rfind("\n", 0, start) + 1 : start]).group(0)
+                fixture = source[start:source.index(f"\n{indent}}}", start)]
                 self.assertIn('.env("SPEAK_FLOW_DATA_DIR", &directory)', fixture)
                 self.assertNotIn('"LIGHT_WHISPER_DATA_DIR"', fixture)
 

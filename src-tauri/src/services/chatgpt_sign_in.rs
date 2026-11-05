@@ -511,23 +511,22 @@ fn session_from_tokens(
     if let Some(scope) = tokens.scope {
         registration.scopes = scope.split_whitespace().map(str::to_string).collect();
     }
-    if tokens.access_token.trim().is_empty()
-        || tokens
-            .refresh_token
-            .as_deref()
-            .is_none_or(|t| t.trim().is_empty())
-    {
+    let complete_refresh_token = tokens
+        .refresh_token
+        .filter(|token| !token.trim().is_empty())
+        .filter(|_| !tokens.access_token.trim().is_empty());
+    let Some(refresh_token) = complete_refresh_token else {
         return Err(
             "ChatGPT sign-in did not return complete credentials. Please sign in again.".into(),
         );
-    }
+    };
     Ok(OpenaiCodexOauthSession {
         email: registration.email.clone(),
         account_id: Some(registration.subject.clone()),
         registration: Some(registration),
         id_token: tokens.id_token.unwrap_or_default(),
         access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token.unwrap(),
+        refresh_token,
         expires_at_ms: tokens
             .expires_in
             .map(|s| now_ms().saturating_add(s.saturating_mul(1000))),

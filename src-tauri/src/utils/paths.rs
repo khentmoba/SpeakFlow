@@ -228,6 +228,7 @@ fn replace_file_atomic(from: &Path, to: &Path) -> Result<(), std::io::Error> {
     let mut to_wide: Vec<u16> = to.as_os_str().encode_wide().collect();
     from_wide.push(0);
     to_wide.push(0);
+    // SAFETY: Both paths are NUL-terminated UTF-16 buffers that outlive the call, and the flags are plain integers.
     let ok = unsafe {
         MoveFileExW(
             from_wide.as_ptr(),

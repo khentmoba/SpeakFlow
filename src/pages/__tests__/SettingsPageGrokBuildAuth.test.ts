@@ -14,10 +14,15 @@ const userProfileSource = readFileSync(
   resolve(process.cwd(), "src-tauri/src/state/user_profile.rs"),
   "utf8",
 );
-const llmProviderSource = readFileSync(
-  resolve(process.cwd(), "src-tauri/src/services/llm_provider.rs"),
-  "utf8",
-);
+// llm_provider is split into submodules; the contract checks read the production files together.
+const llmProviderSource = [
+  "src-tauri/src/services/llm_provider.rs",
+  "src-tauri/src/services/llm_provider/endpoint.rs",
+  "src-tauri/src/services/llm_provider/reasoning.rs",
+  "src-tauri/src/services/llm_provider/tests.rs",
+]
+  .map((relativePath) => readRepo(relativePath))
+  .join("\n");
 const codexOauthSource = readFileSync(
   resolve(process.cwd(), "src-tauri/src/services/codex_oauth_service.rs"),
   "utf8",
@@ -114,7 +119,7 @@ describe("Grok Build backend wiring contract", () => {
     expect(grokOauthSource).toContain("openid profile email offline_access grok-cli:access api:access");
     expect(grokOauthSource).toContain("http://127.0.0.1:56121/callback");
     expect(grokOauthSource).toContain("KEYRING_SERVICE");
-    expect(readRepo("src-tauri/src/services/llm_provider.rs")).toContain(
+    expect(llmProviderSource).toContain(
       'pub const KEYRING_SERVICE: &str = "speak-flow"',
     );
     expect(grokOauthSource).toContain("grok-build-oauth");

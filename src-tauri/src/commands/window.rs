@@ -14,6 +14,7 @@ fn show_subtitle_without_activation(window: &tauri::WebviewWindow) -> Result<(),
     let hwnd = window
         .hwnd()
         .map_err(|e| tauri_error("Failed to get subtitle window handle", e))?;
+    // SAFETY: hwnd is the live window handle Tauri just returned; SetWindowPos takes only that handle and integer arguments.
     let shown = unsafe {
         SetWindowPos(
             hwnd.0,
@@ -68,6 +69,7 @@ fn find_cursor_monitor(app_handle: &tauri::AppHandle) -> Option<tauri::Monitor> 
     use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
     let mut point = POINT { x: 0, y: 0 };
+    // SAFETY: point is a valid writable POINT local.
     if unsafe { GetCursorPos(&mut point) } == 0 {
         return None;
     }
@@ -160,6 +162,7 @@ pub(crate) fn set_subtitle_window_interactive(
             let hwnd = window
                 .hwnd()
                 .map_err(|e| tauri_error("Failed to get subtitle window handle", e))?;
+            // SAFETY: hwnd is the live window handle Tauri just returned; the style calls take only that handle and integer flags.
             unsafe {
                 let style = GetWindowLongPtrW(hwnd.0, GWL_EXSTYLE)
                     | WS_EX_NOACTIVATE as isize
@@ -200,6 +203,7 @@ pub(crate) fn set_subtitle_window_interactive(
 
 #[cfg(target_os = "windows")]
 pub fn trim_process_working_set() {
+    // SAFETY: GetCurrentProcess returns a pseudo-handle for this process; the sizes are integers that only adjust working-set limits.
     unsafe {
         use windows_sys::Win32::System::Threading::{GetCurrentProcess, SetProcessWorkingSetSize};
         SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX);
@@ -419,6 +423,7 @@ pub fn hide_subtitle_window_inner(app_handle: &tauri::AppHandle) -> Result<Strin
             let hwnd = window
                 .hwnd()
                 .map_err(|e| tauri_error("Failed to get subtitle window handle", e))?;
+            // SAFETY: hwnd is the live window handle Tauri just returned; ShowWindow takes only that handle and a flag.
             unsafe { ShowWindow(hwnd.0, SW_HIDE) };
         }
         #[cfg(not(target_os = "windows"))]

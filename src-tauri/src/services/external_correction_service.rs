@@ -28,6 +28,7 @@ fn is_same_process(hwnd1: isize, hwnd2: isize) -> bool {
     use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
     let mut pid1 = 0u32;
     let mut pid2 = 0u32;
+    // SAFETY: pid1 and pid2 are valid writable u32 locals, and the window handles are plain values that Windows validates.
     unsafe {
         GetWindowThreadProcessId(hwnd1 as _, &mut pid1);
         GetWindowThreadProcessId(hwnd2 as _, &mut pid2);
@@ -50,9 +51,11 @@ fn capture_field(expected: Option<&Snapshot>) -> Option<Snapshot> {
         struct ComGuard;
         impl Drop for ComGuard {
             fn drop(&mut self) {
+                // SAFETY: Runs only from the guard created after CoInitializeEx succeeded on this thread, so the call balances that initialization.
                 unsafe { CoUninitialize() };
             }
         }
+        // SAFETY: GetForegroundWindow takes no arguments and returns a window handle value or null.
         let window = unsafe { GetForegroundWindow() } as isize;
         if window == 0 {
             return None;
@@ -62,6 +65,7 @@ fn capture_field(expected: Option<&Snapshot>) -> Option<Snapshot> {
                 return None;
             }
         }
+        // SAFETY: The reserved argument is null as required. A negative result means this thread was not initialized, so no uninitialize is owed.
         if unsafe { CoInitializeEx(std::ptr::null(), COINIT_MULTITHREADED as u32) } < 0 {
             return None;
         }

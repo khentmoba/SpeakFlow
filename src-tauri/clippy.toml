@@ -1,0 +1,2 @@
+# Test code may use unwrap() to fail fast on fixture setup; production code may not.
+allow-unwrap-in-tests = true

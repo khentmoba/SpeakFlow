@@ -91,6 +91,7 @@ fn send_inputs_to_target(inputs: &[INPUT], target: Option<isize>) -> Result<(), 
 
     for chunk in inputs.chunks(SENDINPUT_CHUNK_SIZE) {
         ensure_paste_target(target)?;
+        // SAFETY: chunk is a live slice of INPUT values; the count and element size passed match that memory layout.
         let sent = unsafe {
             SendInput(
                 chunk.len() as u32,
@@ -124,6 +125,7 @@ fn release_stuck_modifiers() -> Result<(), AppError> {
 
     let release: Vec<INPUT> = MODIFIER_VKS
         .iter()
+        // SAFETY: GetAsyncKeyState takes only an integer virtual-key code and no pointers, so any value is valid.
         .filter(|&&vk| unsafe { GetAsyncKeyState(vk as i32) } < 0)
         .map(|&vk| make_key_input(vk, 0, KEYEVENTF_KEYUP))
         .collect();
@@ -422,14 +424,18 @@ pub(crate) async fn paste_text_to_target(
             ensure_paste_target(target)?;
 
             // ② 临时关闭前台窗口的输入法，防止 Unicode 输入被 IME 拦截
+            // SAFETY: GetForegroundWindow takes no arguments and returns a window handle value or null.
             let hwnd = unsafe { GetForegroundWindow() };
+            // SAFETY: ImmGetDefaultIMEWnd receives only an HWND value; a stale or null handle yields null or failure without touching our memory.
             let ime_wnd_ptr = unsafe { ImmGetDefaultIMEWnd(hwnd) };
             // 将 *mut c_void 转为 usize 以跨越 await（HWND 本质是个数值句柄）
             let ime_wnd = ime_wnd_ptr as usize;
             let ime_was_open = if ime_wnd != 0 {
                 let open =
+                    // SAFETY: IMC_GETOPENSTATUS passes no pointer; ime_wnd is the handle ImmGetDefaultIMEWnd returned, and Win32 rejects invalid handles.
                     unsafe { SendMessageW(ime_wnd as _, WM_IME_CONTROL, IMC_GETOPENSTATUS, 0) };
                 if open != 0 {
+                    // SAFETY: IMC_SETOPENSTATUS passes no pointer, and ime_wnd is the handle ImmGetDefaultIMEWnd returned earlier.
                     unsafe {
                         SendMessageW(ime_wnd as _, WM_IME_CONTROL, IMC_SETOPENSTATUS, 0);
                     }
@@ -476,6 +482,7 @@ pub(crate) async fn paste_text_to_target(
             // ④ 无论发送成功与否都必须恢复输入法，否则用户 IME 会卡在关闭状态
             if ime_was_open {
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                // SAFETY: IMC_SETOPENSTATUS passes no pointer, and ime_wnd is the handle ImmGetDefaultIMEWnd returned earlier.
                 unsafe {
                     SendMessageW(ime_wnd as _, WM_IME_CONTROL, IMC_SETOPENSTATUS, 1);
                 }

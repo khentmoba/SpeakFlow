@@ -39,48 +39,9 @@ import { readLocalStorage, writeLocalStorage } from "@/lib/storage";
 import { useTranslation } from "react-i18next";
 
 import { engineOptions, engineOptionLabel } from "@/lib/asrEngineOptions";
+import { isOnlineEngineKey, asrCapabilityTagKeys, inputOptions, recordingModeOptions, sourceLabels, sourceColors, findRecordingModeOption } from "@/pages/settings/settingsOptions";
 
 const CorrectionRulesModal = lazy(() => import("@/components/settings/CorrectionRulesModal"));
-
-const ONLINE_ENGINES: ReadonlySet<string> = new Set(["glm-asr", "alibaba-asr"]);
-const isOnlineEngineKey = (engine: string) => ONLINE_ENGINES.has(engine);
-
-const asrCapabilityTagKeys = (engineKey: string) => {
-  const capability = getAsrEngineCapability(engineKey);
-  if (!capability) return [];
-  return [
-    capability.execution === "local" ? "settings.capabilityLocal" : "settings.capabilityCloud",
-    capability.interim ? "settings.capabilityFinalInterim" : "settings.capabilityFinalOnly",
-  ];
-};
-
-const inputOptions = [
-  { key: "sendInput" as const, icon: Keyboard, labelKey: "settings.directInput", descKey: "settings.directInputDesc" },
-  { key: "clipboard" as const, icon: ClipboardPaste, labelKey: "settings.clipboardPaste", descKey: "settings.clipboardPasteDesc" },
-];
-
-const recordingModeOptions: Array<{
-  key: "hold" | "toggle";
-  labelKey: string;
-  descKey: string;
-}> = [
-  { key: "hold", labelKey: "settings.holdToTalk", descKey: "settings.holdToTalkDesc" },
-  { key: "toggle", labelKey: "settings.toggleMode", descKey: "settings.toggleModeDesc" },
-];
-
-const sourceLabels: Record<string, string> = {
-  user: "settings.sourceManual",
-  learned: "settings.sourceLearned",
-};
-
-const sourceColors: Record<string, string> = {
-  user: "var(--color-accent)",
-  learned: "var(--color-learned)",
-};
-
-function findRecordingModeOption(mode: "hold" | "toggle") {
-  return recordingModeOptions.find((option) => option.key === mode) ?? recordingModeOptions[0];
-}
 
 export default function SettingsPage({
   onNavigate,

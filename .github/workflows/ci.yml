@@ -204,6 +204,16 @@ jobs:
           cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
           cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
 
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2
+        with:
+          tool: cargo-audit@0.22.2
+
+      - name: Audit Rust dependencies
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          cargo audit --file src-tauri/Cargo.lock
+
       - name: Run Rust tests
         run: >-
           cargo test --manifest-path src-tauri/Cargo.toml --all-targets --locked --
