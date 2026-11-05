@@ -1,6 +1,7 @@
 pub mod ai_polish;
 pub mod assistant;
 pub mod audio;
+pub mod claude_oauth;
 pub mod clipboard;
 pub mod codex_oauth;
 pub mod funasr;

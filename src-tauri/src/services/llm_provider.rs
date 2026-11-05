@@ -64,6 +64,7 @@ pub fn keyring_user_for_provider(provider: &str) -> String {
         DEEPSEEK => "deepseek-api-key".to_string(),
         SILICONFLOW => "siliconflow-api-key".to_string(),
         OPENROUTER => "openrouter-api-key".to_string(),
+        CLAUDE => "claude-api-key".to_string(),
         CUSTOM => "custom-api-key".to_string(),
         CEREBRAS => "cerebras-api-key".to_string(),
         id => format!("custom-{id}-api-key"),
@@ -84,7 +85,16 @@ pub fn build_auth_headers(
     };
     match api_format {
         ApiFormat::Anthropic => {
-            headers.insert("x-api-key", parse(api_key)?);
+            // A Claude subscription token authenticates with a bearer token; a
+            // plain Anthropic API key uses x-api-key.
+            match crate::services::claude_oauth_service::decode_claude_oauth_access_token(api_key) {
+                Some(token) => {
+                    headers.insert("authorization", parse(&format!("Bearer {token}"))?);
+                }
+                None => {
+                    headers.insert("x-api-key", parse(api_key)?);
+                }
+            }
             headers.insert("anthropic-version", parse("2023-06-01")?);
             headers.insert("content-type", parse("application/json")?);
         }

@@ -772,6 +772,59 @@ describe("Grok Build OAuth IPC wrappers", () => {
   });
 });
 
+describe("Claude OAuth IPC wrappers", () => {
+  it("routes the two-step Claude sign-in through Tauri invoke", async () => {
+    const {
+      getClaudeOauthStatus,
+      startClaudeOauth,
+      completeClaudeOauth,
+      logoutClaudeOauth,
+      syncClaudeOauth,
+    } = await import("@/api/tauri");
+
+    invokeMock.invoke
+      .mockResolvedValueOnce({ loggedIn: false })
+      .mockResolvedValueOnce({ authorizeUrl: "https://claude.com/cai/oauth/authorize?x=1", state: "st" })
+      .mockResolvedValueOnce({ loggedIn: true, email: "c@example.com" })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ loggedIn: true, email: "sync@example.com" });
+
+    await expect(getClaudeOauthStatus()).resolves.toEqual({ loggedIn: false });
+    await expect(startClaudeOauth()).resolves.toEqual({
+      authorizeUrl: "https://claude.com/cai/oauth/authorize?x=1",
+      state: "st",
+    });
+    await expect(completeClaudeOauth("code#st")).resolves.toEqual({
+      loggedIn: true,
+      email: "c@example.com",
+    });
+    await expect(logoutClaudeOauth()).resolves.toBeUndefined();
+    await expect(syncClaudeOauth()).resolves.toEqual({
+      loggedIn: true,
+      email: "sync@example.com",
+    });
+
+    expect(invokeMock.invoke).toHaveBeenNthCalledWith(1, "get_claude_oauth_status");
+    expect(invokeMock.invoke).toHaveBeenNthCalledWith(2, "start_claude_oauth");
+    expect(invokeMock.invoke).toHaveBeenNthCalledWith(3, "complete_claude_oauth", {
+      code: "code#st",
+    });
+    expect(invokeMock.invoke).toHaveBeenNthCalledWith(4, "logout_claude_oauth");
+    expect(invokeMock.invoke).toHaveBeenNthCalledWith(5, "sync_claude_oauth");
+  });
+
+  it("routes sync_openai_codex_oauth through Tauri invoke", async () => {
+    const { syncOpenaiCodexOauth } = await import("@/api/tauri");
+    invokeMock.invoke.mockResolvedValueOnce({ loggedIn: true, email: "openai@example.com" });
+
+    await expect(syncOpenaiCodexOauth()).resolves.toEqual({
+      loggedIn: true,
+      email: "openai@example.com",
+    });
+    expect(invokeMock.invoke).toHaveBeenCalledWith("sync_openai_codex_oauth");
+  });
+});
+
 describe("setPolishStructureLevel payload", () => {
   it("persists the selected structure level through its dedicated command", async () => {
     const { setPolishStructureLevel } = await import("@/api/tauri");

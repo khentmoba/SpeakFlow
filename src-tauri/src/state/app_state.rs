@@ -12,6 +12,7 @@ use tokio::sync::Mutex;
 
 use super::oauth_session::OAuthSessionState;
 use super::user_profile::{LlmProviderConfig, UserProfile};
+use crate::services::claude_oauth_service::ClaudeOauthSession;
 use crate::services::codex_oauth_service::OpenaiCodexOauthSession;
 use crate::services::grok_build_oauth_service::GrokBuildOauthSession;
 
@@ -397,6 +398,7 @@ pub struct ProfileState {
     pub ai_polish_enabled: Arc<AtomicBool>,
     pub openai_codex_oauth_session: OAuthSessionState<OpenaiCodexOauthSession>,
     pub grok_build_oauth_session: OAuthSessionState<GrokBuildOauthSession>,
+    pub claude_oauth_session: OAuthSessionState<ClaudeOauthSession>,
     pub online_asr_api_key: Arc<parking_lot::Mutex<String>>,
     pub web_search_api_keys: Arc<parking_lot::Mutex<HashMap<String, String>>>,
     web_search_key_operation: parking_lot::Mutex<()>,
@@ -575,6 +577,14 @@ impl AppState {
 
     pub fn grok_build_oauth_state(&self) -> &OAuthSessionState<GrokBuildOauthSession> {
         &self.profile.grok_build_oauth_session
+    }
+
+    pub fn read_claude_oauth_session(&self) -> Option<ClaudeOauthSession> {
+        self.profile.claude_oauth_session.read()
+    }
+
+    pub fn claude_oauth_state(&self) -> &OAuthSessionState<ClaudeOauthSession> {
+        &self.profile.claude_oauth_session
     }
 
     pub fn read_online_asr_api_key(&self) -> String {

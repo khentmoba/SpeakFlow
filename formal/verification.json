@@ -92,6 +92,18 @@
     "commands::codex_oauth::get_openai_codex_oauth_status": [
       "oauth"
     ],
+    "commands::codex_oauth::sync_openai_codex_oauth": [
+      "oauth"
+    ],
+    "commands::claude_oauth::logout_claude_oauth": [
+      "oauth"
+    ],
+    "commands::claude_oauth::get_claude_oauth_status": [
+      "oauth"
+    ],
+    "commands::claude_oauth::sync_claude_oauth": [
+      "oauth"
+    ],
     "commands::grok_build_oauth::login_grok_build_oauth": [
       "oauth"
     ],
@@ -474,6 +486,16 @@
     ],
     "commands::profile::retry_profile_save": [
       "profile-save"
+    ],
+    "commands::ai_polish::get_ai_polish_config": [
+      "keys",
+      "preferences"
+    ],
+    "commands::claude_oauth::start_claude_oauth": [
+      "oauth"
+    ],
+    "commands::claude_oauth::complete_claude_oauth": [
+      "oauth"
     ]
   },
   "events": {
@@ -2149,6 +2171,10 @@
     "commands::codex_oauth::logout_openai_codex_oauth": "src-tauri/src/commands/codex_oauth.rs#fn logout_openai_codex_oauth(",
     "commands::codex_oauth::remove_chatgpt_account": "src-tauri/src/commands/codex_oauth.rs#fn remove_chatgpt_account(",
     "commands::codex_oauth::get_openai_codex_oauth_status": "src-tauri/src/commands/codex_oauth.rs#fn get_openai_codex_oauth_status(",
+    "commands::codex_oauth::sync_openai_codex_oauth": "src-tauri/src/commands/codex_oauth.rs#fn sync_openai_codex_oauth(",
+    "commands::claude_oauth::logout_claude_oauth": "src-tauri/src/commands/claude_oauth.rs#fn logout_claude_oauth(",
+    "commands::claude_oauth::get_claude_oauth_status": "src-tauri/src/commands/claude_oauth.rs#fn get_claude_oauth_status(",
+    "commands::claude_oauth::sync_claude_oauth": "src-tauri/src/commands/claude_oauth.rs#fn sync_claude_oauth(",
     "commands::grok_build_oauth::login_grok_build_oauth": "src-tauri/src/commands/grok_build_oauth.rs#fn login_grok_build_oauth(",
     "commands::grok_build_oauth::start_grok_build_oauth_device_code": "src-tauri/src/commands/grok_build_oauth.rs#fn start_grok_build_oauth_device_code(",
     "commands::grok_build_oauth::complete_grok_build_oauth_device_code": "src-tauri/src/commands/grok_build_oauth.rs#fn complete_grok_build_oauth_device_code(",
@@ -2249,6 +2275,9 @@
     "commands::funasr::set_gpu_idle_seconds": "src-tauri/src/commands/funasr.rs#fn set_gpu_idle_seconds(",
     "commands::updater::install_app_update": "src-tauri/src/commands/updater.rs#fn install_app_update(",
     "commands::profile::get_profile_save_status": "src-tauri/src/commands/profile.rs#pub fn get_profile_save_status",
-    "commands::profile::retry_profile_save": "src-tauri/src/commands/profile.rs#pub async fn retry_profile_save"
+    "commands::profile::retry_profile_save": "src-tauri/src/commands/profile.rs#pub async fn retry_profile_save",
+    "commands::ai_polish::get_ai_polish_config": "src-tauri/src/commands/ai_polish.rs#fn get_ai_polish_config(",
+    "commands::claude_oauth::start_claude_oauth": "src-tauri/src/commands/claude_oauth.rs#fn start_claude_oauth(",
+    "commands::claude_oauth::complete_claude_oauth": "src-tauri/src/commands/claude_oauth.rs#fn complete_claude_oauth("
   }
 }

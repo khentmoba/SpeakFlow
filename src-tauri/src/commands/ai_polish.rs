@@ -50,6 +50,25 @@ pub async fn set_ai_polish_config<R: tauri::Runtime>(
     Ok(())
 }
 
+/// Runtime AI polish state. It is not persisted in the profile, so the
+/// settings page has to read it back instead of assuming a default.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiPolishConfig {
+    pub enabled: bool,
+    pub provider: String,
+}
+
+#[tauri::command]
+pub async fn get_ai_polish_config(
+    state: tauri::State<'_, AppState>,
+) -> Result<AiPolishConfig, AppError> {
+    Ok(AiPolishConfig {
+        enabled: state.profile.ai_polish_enabled.load(Ordering::Acquire),
+        provider: state.active_llm_provider(),
+    })
+}
+
 fn update_ai_polish_api_key<R: tauri::Runtime>(
     app_handle: &tauri::AppHandle<R>,
     state: &AppState,
@@ -115,6 +134,8 @@ fn anthropic_models() -> Vec<AiModelInfo> {
     [
         "claude-opus-4-6",
         "claude-sonnet-4-6",
+        "claude-sonnet-4-5",
+        "claude-haiku-4-5",
         "claude-haiku-4-5-20251001",
         "claude-sonnet-4-5-20250929",
         "claude-sonnet-4-20250514",
@@ -443,6 +464,7 @@ pub async fn list_ai_models(
         &api_key,
         openai_auth_mode.or(config.openai_auth_mode),
         xai_auth_mode.or(config.xai_auth_mode),
+        config.claude_auth_mode,
     )
     .await?;
     let api_key = auth.api_key;
@@ -450,6 +472,11 @@ pub async fn list_ai_models(
         if provider == "xai" {
             return Err(AppError::Other(
                 "Please enter an API Key or complete Grok Build sign-in first".to_string(),
+            ));
+        }
+        if provider == crate::services::claude_oauth_service::CLAUDE_PROVIDER {
+            return Err(AppError::Other(
+                "Please enter an API Key or connect Claude first".to_string(),
             ));
         }
         return Err(AppError::Other(
@@ -460,11 +487,14 @@ pub async fn list_ai_models(
     let (chatgpt_token, inference_uses_chatgpt_backend) =
         codex_models_auth_context(&provider, &api_key, auth.chatgpt_token);
 
-    let is_anthropic = config
-        .custom_providers
-        .iter()
-        .find(|p| p.id == provider)
-        .is_some_and(|p| p.api_format == ApiFormat::Anthropic);
+    // The built-in Claude preset speaks the Anthropic Messages API too, so its
+    // model list needs x-api-key rather than a bearer token.
+    let is_anthropic = provider == crate::services::claude_oauth_service::CLAUDE_PROVIDER
+        || config
+            .custom_providers
+            .iter()
+            .find(|p| p.id == provider)
+            .is_some_and(|p| p.api_format == ApiFormat::Anthropic);
 
     let grok_oauth_token = grok_build_oauth_service::decode_grok_build_oauth_access_token(&api_key);
     let model_list_format = if codex_oauth_service::is_chatgpt_plan_auth(&api_key) {
@@ -527,9 +557,10 @@ pub async fn list_ai_models(
     } else if let Some(token) = grok_oauth_token {
         req = req.headers(grok_build_oauth_service::grok_cli_request_headers(&token)?);
     } else if is_anthropic {
-        req = req
-            .header("x-api-key", &api_key)
-            .header("anthropic-version", "2023-06-01");
+        req = req.headers(llm_provider::build_auth_headers(
+            &ApiFormat::Anthropic,
+            &api_key,
+        )?);
     } else {
         req = req.header(
             "Authorization",
@@ -571,6 +602,8 @@ pub async fn list_ai_models(
                             )
                         })?;
                     codex_models_headers(&token)?
+                } else if is_anthropic {
+                    llm_provider::build_auth_headers(&ApiFormat::Anthropic, &refreshed)?
                 } else {
                     llm_provider::build_auth_headers(&ApiFormat::OpenaiCompat, &refreshed)?
                 };

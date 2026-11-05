@@ -14,10 +14,11 @@ use super::oauth_callback::{
     callback_html, decode_jwt_claims, delete_keyring_password, deserialize_interval_secs,
     generate_pkce_pair, generate_state, now_ms, respond_with_html,
 };
+use crate::services::claude_oauth_service;
 use crate::services::grok_build_oauth_service;
 use crate::services::llm_provider::KEYRING_SERVICE;
 use crate::state::oauth_session::OAuthOperation;
-use crate::state::user_profile::{LlmProviderConfig, OpenaiAuthMode, XaiAuthMode};
+use crate::state::user_profile::{ClaudeAuthMode, LlmProviderConfig, OpenaiAuthMode, XaiAuthMode};
 use crate::state::AppState;
 use crate::utils::paths;
 
@@ -1313,6 +1314,16 @@ pub async fn recover_rejected_auth(
             .await
             .map(Some);
     }
+    if provider == claude_oauth_service::CLAUDE_PROVIDER {
+        // A Claude subscription token can expire mid-session; refresh it once
+        // instead of failing the request.
+        if claude_oauth_service::decode_claude_oauth_access_token(rejected).is_none() {
+            return Ok(None);
+        }
+        return claude_oauth_service::resolve_oauth_origin_api_key(app, state)
+            .await
+            .map(Some);
+    }
     if provider != OPENAI_PROVIDER || !is_oauth_origin_auth(rejected) {
         return Ok(None);
     }
@@ -1340,6 +1351,107 @@ pub async fn recover_rejected_auth(
     Ok(Some(refreshed))
 }
 
+pub fn sync_from_system(
+    app_handle: &tauri::AppHandle,
+    state: &AppState,
+) -> Result<OpenaiCodexOauthStatus, String> {
+    let session = read_system_session()?
+        .ok_or("No ChatGPT sign-in found in Codex or Magpie on this machine.")?;
+
+    let login = state.openai_codex_oauth_state().begin_login();
+    let operation = login.token();
+    let status = make_status(Some(&session));
+    let committed = state
+        .openai_codex_oauth_state()
+        .commit(operation, session, |session| {
+            save_session_to_storage(app_handle, session)
+        })?;
+    if !committed {
+        return Err("The ChatGPT sign-in changed while syncing. Please retry.".to_string());
+    }
+    Ok(status)
+}
+
+fn read_system_session() -> Result<Option<OpenaiCodexOauthSession>, String> {
+    let home = dirs::home_dir().ok_or("Cannot locate user home directory")?;
+
+    let magpie_logins = home.join(".config").join("magpie").join("logins.json");
+    if let Ok(content) = std::fs::read_to_string(&magpie_logins) {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(session) = session_from_magpie_logins(&json) {
+                return Ok(Some(session));
+            }
+        }
+    }
+
+    let codex_auth = home.join(".codex").join("auth.json");
+    if let Ok(content) = std::fs::read_to_string(&codex_auth) {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(session) = session_from_codex_auth(&json) {
+                return Ok(Some(session));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+fn session_from_magpie_logins(json: &serde_json::Value) -> Option<OpenaiCodexOauthSession> {
+    for entry in json.as_array().into_iter().flatten() {
+        if entry.get("agent").and_then(|value| value.as_str()) != Some("codex") {
+            continue;
+        }
+        // Prefer an account that is switched on.
+        if entry.get("on").and_then(|value| value.as_bool()) == Some(false) {
+            continue;
+        }
+        let Some(tokens) = entry.get("auth").and_then(|auth| auth.get("tokens")) else {
+            continue;
+        };
+        let Some(mut session) = session_from_codex_tokens(tokens) else {
+            continue;
+        };
+        session.email = entry
+            .get("user")
+            .and_then(|value| value.as_str())
+            .map(str::to_string);
+        return Some(session);
+    }
+    None
+}
+
+fn session_from_codex_auth(json: &serde_json::Value) -> Option<OpenaiCodexOauthSession> {
+    session_from_codex_tokens(json.get("tokens")?)
+}
+
+fn session_from_codex_tokens(tokens: &serde_json::Value) -> Option<OpenaiCodexOauthSession> {
+    let access_token = tokens.get("access_token")?.as_str()?.trim().to_string();
+    let refresh_token = tokens.get("refresh_token")?.as_str()?.trim().to_string();
+    if access_token.is_empty() || refresh_token.is_empty() {
+        return None;
+    }
+    let mut session = OpenaiCodexOauthSession {
+        registration: None,
+        id_token: tokens
+            .get("id_token")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        access_token,
+        refresh_token,
+        api_key: String::new(),
+        expires_at_ms: None,
+        account_id: tokens
+            .get("account_id")
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
+        email: None,
+        plan_type: None,
+    };
+    enrich_session_from_tokens(&mut session, None);
+    Some(session)
+}
+
 pub async fn resolve_api_key_for_provider_with_auth_mode(
     app_handle: &tauri::AppHandle,
     state: &AppState,
@@ -1347,6 +1459,7 @@ pub async fn resolve_api_key_for_provider_with_auth_mode(
     manual_api_key: &str,
     auth_mode_override: Option<OpenaiAuthMode>,
     xai_auth_mode_override: Option<XaiAuthMode>,
+    claude_auth_mode_override: Option<ClaudeAuthMode>,
 ) -> Result<String, String> {
     resolve_provider_auth_with_auth_mode(
         app_handle,
@@ -1355,6 +1468,7 @@ pub async fn resolve_api_key_for_provider_with_auth_mode(
         manual_api_key,
         auth_mode_override,
         xai_auth_mode_override,
+        claude_auth_mode_override,
     )
     .await
     .map(|auth| auth.api_key)
@@ -1369,6 +1483,7 @@ pub async fn resolve_provider_auth_with_auth_mode(
     manual_api_key: &str,
     auth_mode: Option<OpenaiAuthMode>,
     xai_auth_mode: Option<XaiAuthMode>,
+    claude_auth_mode: Option<ClaudeAuthMode>,
 ) -> Result<ResolvedProviderAuth, String> {
     let manual_api_key = manual_api_key.trim();
 
@@ -1381,6 +1496,21 @@ pub async fn resolve_provider_auth_with_auth_mode(
             XaiAuthMode::ApiKey => Ok(ResolvedProviderAuth::api_key(manual_api_key.to_string())),
             XaiAuthMode::Oauth => {
                 grok_build_oauth_service::resolve_oauth_origin_api_key(app_handle, state)
+                    .await
+                    .map(ResolvedProviderAuth::api_key)
+            }
+        };
+    }
+
+    if provider == claude_oauth_service::CLAUDE_PROVIDER {
+        let effective_mode = claude_oauth_service::effective_claude_auth_mode(
+            claude_auth_mode,
+            state.read_claude_oauth_session().is_some(),
+        );
+        return match effective_mode {
+            ClaudeAuthMode::ApiKey => Ok(ResolvedProviderAuth::api_key(manual_api_key.to_string())),
+            ClaudeAuthMode::Oauth => {
+                claude_oauth_service::resolve_oauth_origin_api_key(app_handle, state)
                     .await
                     .map(ResolvedProviderAuth::api_key)
             }
@@ -1671,5 +1801,58 @@ mod tests {
         assert!(write_metadata_at(&target_directory, &metadata).is_err());
 
         std::fs::remove_dir_all(root).expect("temporary metadata cleanup");
+    }
+
+    #[test]
+    fn magpie_sync_skips_switched_off_and_unusable_accounts() {
+        let json = serde_json::json!([
+            {
+                "agent": "codex",
+                "on": false,
+                "auth": { "tokens": { "access_token": "off-access", "refresh_token": "off-refresh" } }
+            },
+            {
+                "agent": "claude",
+                "on": true,
+                "auth": { "tokens": { "access_token": "other-access", "refresh_token": "other-refresh" } }
+            },
+            {
+                "agent": "codex",
+                "on": true,
+                "auth": { "tokens": { "access_token": "  " } }
+            },
+            {
+                "agent": "codex",
+                "on": true,
+                "user": "on@example.com",
+                "auth": {
+                    "tokens": {
+                        "access_token": "on-access",
+                        "refresh_token": "on-refresh",
+                        "account_id": "acc-1"
+                    }
+                }
+            }
+        ]);
+
+        let session = session_from_magpie_logins(&json).expect("an enabled account is used");
+        assert_eq!(session.access_token, "on-access");
+        assert_eq!(session.refresh_token, "on-refresh");
+        assert_eq!(session.account_id.as_deref(), Some("acc-1"));
+        assert_eq!(session.email.as_deref(), Some("on@example.com"));
+    }
+
+    #[test]
+    fn codex_auth_file_requires_both_tokens() {
+        let complete = serde_json::json!({
+            "tokens": { "access_token": "acc", "refresh_token": "ref" }
+        });
+        assert!(session_from_codex_auth(&complete).is_some());
+
+        let missing_refresh = serde_json::json!({
+            "tokens": { "access_token": "acc" }
+        });
+        assert!(session_from_codex_auth(&missing_refresh).is_none());
+        assert!(session_from_codex_auth(&serde_json::json!({})).is_none());
     }
 }

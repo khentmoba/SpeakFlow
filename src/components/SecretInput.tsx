@@ -12,6 +12,8 @@ interface SecretInputProps {
   ariaLabel?: string;
   ariaLabelShow?: string;
   ariaLabelHide?: string;
+  /** Commit point for callers that persist on blur rather than per keystroke. */
+  onBlur?: () => void;
 }
 
 export default function SecretInput({
@@ -24,6 +26,7 @@ export default function SecretInput({
   ariaLabel,
   ariaLabelShow,
   ariaLabelHide,
+  onBlur,
 }: SecretInputProps) {
   const { t } = useTranslation();
   const effectiveShowLabel = ariaLabelShow ?? t("common.show");
@@ -39,6 +42,7 @@ export default function SecretInput({
         aria-label={ariaLabel ?? placeholder}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur}
         style={{ flex: 1, padding: "10px 36px 10px 12px", ...inputStyle }}
       />
       <button

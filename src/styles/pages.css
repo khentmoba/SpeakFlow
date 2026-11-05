@@ -2892,3 +2892,64 @@ select:disabled { cursor: not-allowed; opacity: 0.6; }
   select::picker(select), select:open::picker(select), select::picker-icon,
   .picker-popover, .correction-dialog { transition: none; animation: none; }
 }
+
+/* Provider sign-in card (ChatGPT / Claude subscriptions) */
+.oauth-card {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.oauth-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.oauth-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-text-tertiary);
+}
+
+.oauth-status-dot[data-connected="true"] {
+  background: var(--color-success);
+}
+
+.oauth-card-title {
+  font-size: 13px;
+  color: var(--color-text-primary);
+}
+
+.oauth-card-meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.oauth-device-code {
+  margin-top: 6px;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-tertiary);
+  border: 1px dashed var(--color-border-accent);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.oauth-device-code-value {
+  font-family: var(--font-mono, monospace);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 2px;
+  color: var(--color-accent);
+  user-select: all;
+}

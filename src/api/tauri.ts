@@ -19,6 +19,9 @@ import type {
   LlmReasoningMode,
   LlmReasoningSupport,
   ModelCheckResult,
+  ClaudeAuthMode,
+  ClaudeOauthStart,
+  ClaudeOauthStatus,
   GrokBuildOauthDeviceCodeChallenge,
   GrokBuildOauthStatus,
   OpenaiAuthMode,
@@ -171,6 +174,14 @@ export function completeOpenaiCodexOauthDeviceCode(
   return invokeCommand<OpenaiCodexOauthStatus>("complete_openai_codex_oauth_device_code", { challenge });
 }
 export const logoutOpenaiCodexOauth = createNoArgCommand<void>("logout_openai_codex_oauth");
+export const syncOpenaiCodexOauth = createNoArgCommand<OpenaiCodexOauthStatus>("sync_openai_codex_oauth");
+export const getClaudeOauthStatus = createNoArgCommand<ClaudeOauthStatus>("get_claude_oauth_status");
+export const startClaudeOauth = createNoArgCommand<ClaudeOauthStart>("start_claude_oauth");
+export function completeClaudeOauth(code: string): Promise<ClaudeOauthStatus> {
+  return invokeCommand<ClaudeOauthStatus>("complete_claude_oauth", { code });
+}
+export const logoutClaudeOauth = createNoArgCommand<void>("logout_claude_oauth");
+export const syncClaudeOauth = createNoArgCommand<ClaudeOauthStatus>("sync_claude_oauth");
 export const getGrokBuildOauthStatus = createNoArgCommand<GrokBuildOauthStatus>("get_grok_build_oauth_status");
 export const loginGrokBuildOauth = createNoArgCommand<GrokBuildOauthStatus>("login_grok_build_oauth");
 export const startGrokBuildOauthDeviceCode = createNoArgCommand<GrokBuildOauthDeviceCodeChallenge>("start_grok_build_oauth_device_code");
@@ -218,6 +229,13 @@ export function setAiPolishConfig(enabled: boolean, apiKey?: string, provider?: 
     ...(provider === undefined ? {} : { provider }),
   });
 }
+
+export interface AiPolishConfig {
+  enabled: boolean;
+  provider: string;
+}
+
+export const getAiPolishConfig = createNoArgCommand<AiPolishConfig>("get_ai_polish_config");
 
 export function getAiPolishApiKey(provider?: string): Promise<string> {
   return invokeCommand<string>("get_ai_polish_api_key", provider === undefined ? undefined : { provider });
@@ -365,6 +383,7 @@ export function setLlmProviderConfig(
   assistantProvider?: string | null,
   openaiAuthMode?: OpenaiAuthMode | null,
   xaiAuthMode?: XaiAuthMode | null,
+  claudeAuthMode?: ClaudeAuthMode | null,
 ): Promise<void> {
   const args: InvokeArgs = {
     active,
@@ -376,6 +395,7 @@ export function setLlmProviderConfig(
     assistantModel: assistantModel ?? null,
     openaiAuthMode: openaiAuthMode ?? null,
     xaiAuthMode: xaiAuthMode ?? null,
+    claudeAuthMode: claudeAuthMode ?? null,
   };
   if (assistantProvider !== undefined) {
     args.assistantProvider = assistantProvider;

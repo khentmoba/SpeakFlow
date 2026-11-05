@@ -41,6 +41,7 @@ pub async fn describe_images(
         &manual_api_key,
         config.openai_auth_mode,
         config.xai_auth_mode,
+        config.claude_auth_mode,
     )
     .await?;
     if api_key.trim().is_empty() {

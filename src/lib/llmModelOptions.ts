@@ -66,6 +66,14 @@ export const llmProviderOptions: ReadonlyArray<LlmProviderOption> = [
     defaultModel: "~deepseek/deepseek-flash-latest",
     models: ["~deepseek/deepseek-flash-latest"],
   },
+  {
+    key: "claude",
+    label: "Anthropic Claude",
+    descKey: "settings.claudeDesc",
+    baseUrl: "https://api.anthropic.com",
+    defaultModel: "claude-sonnet-4-5",
+    models: ["claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+  },
 ];
 
 export const reasoningModeOptions: ReadonlyArray<{

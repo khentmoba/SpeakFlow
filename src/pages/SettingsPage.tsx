@@ -23,6 +23,7 @@ import SecretInput from "@/components/SecretInput";
 import Kbd from "@/components/Kbd";
 import TitleBar from "@/components/TitleBar";
 import AppearanceSettingsSection from "@/components/settings/AppearanceSettingsSection";
+import AiModelsSettingsSection from "@/components/settings/AiModelsSettingsSection";
 import SystemSettingsSections from "@/components/settings/SystemSettingsSections";
 import AppProfileRulesSettingsSection from "@/components/settings/AppProfileRulesSettingsSection";
 import HistorySettingsSection from "@/components/settings/HistorySettingsSection";
@@ -65,6 +66,7 @@ export default function SettingsPage({
   const navSections = useMemo(() => [
     { id: "appearance", labelKey: "settings.appearance" },
     { id: "engine", labelKey: "settings.engine" },
+    { id: "ai-models", labelKey: "settings.aiModels" },
     { id: "hotkey", labelKey: "settings.hotkeySection" },
     { id: "microphone", labelKey: "settings.microphone" },
     { id: "input", labelKey: "settings.inputMethod" },
@@ -664,6 +666,12 @@ export default function SettingsPage({
               </div>
             )}
           </section>
+
+          <AiModelsSettingsSection
+            profile={profile}
+            allProviderOptions={allProviderOptions}
+            onRefreshProfile={refreshProfile}
+          />
 
           {/* Hotkey */}
           <section

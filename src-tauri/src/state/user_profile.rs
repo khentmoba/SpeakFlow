@@ -513,6 +513,14 @@ pub enum XaiAuthMode {
     Oauth,
 }
 
+/// Anthropic 认证方式选择（仅当 provider 为 claude 时生效）
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ClaudeAuthMode {
+    ApiKey,
+    Oauth,
+}
+
 /// AI 润色的结构化改写强度。与模型推理深度彼此独立。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -628,6 +636,9 @@ pub struct LlmProviderConfig {
     /// Some(ApiKey) / Some(Oauth) = 用户通过设置页明确选定后存进来
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xai_auth_mode: Option<XaiAuthMode>,
+    /// Anthropic 认证方式：None = 按 Claude 登录状态推断；Some(..) = 用户显式选择
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_auth_mode: Option<ClaudeAuthMode>,
 }
 
 impl Default for LlmProviderConfig {
@@ -656,6 +667,7 @@ impl Default for LlmProviderConfig {
             openai_auth_mode: None,
             openai_fast_mode: false,
             xai_auth_mode: None,
+            claude_auth_mode: None,
         }
     }
 }
@@ -664,7 +676,14 @@ impl LlmProviderConfig {
     pub(crate) fn is_builtin_provider(provider: &str) -> bool {
         matches!(
             provider,
-            "cerebras" | "openai" | "xai" | "deepseek" | "siliconflow" | "openrouter" | "custom"
+            "cerebras"
+                | "openai"
+                | "xai"
+                | "deepseek"
+                | "siliconflow"
+                | "openrouter"
+                | "claude"
+                | "custom"
         )
     }
 

@@ -154,6 +154,7 @@ fn named_presets_ignore_custom_endpoint_overrides() {
         openai_auth_mode: None,
         openai_fast_mode: false,
         xai_auth_mode: None,
+        claude_auth_mode: None,
     };
 
     let endpoint = endpoint_for_config(&config);
@@ -192,6 +193,7 @@ fn named_presets_preserve_manual_model_override() {
         openai_auth_mode: None,
         openai_fast_mode: false,
         xai_auth_mode: None,
+        claude_auth_mode: None,
     };
 
     let endpoint = endpoint_for_config(&config);
@@ -226,6 +228,7 @@ fn custom_preset_keeps_custom_endpoint_and_model() {
         openai_auth_mode: None,
         openai_fast_mode: false,
         xai_auth_mode: None,
+        claude_auth_mode: None,
     };
 
     let endpoint = endpoint_for_config(&config);
@@ -295,6 +298,7 @@ fn invalid_active_provider_falls_back_to_latest_custom_provider() {
         openai_auth_mode: None,
         openai_fast_mode: false,
         xai_auth_mode: None,
+        claude_auth_mode: None,
     };
 
     let endpoint = endpoint_for_config(&config);
@@ -333,6 +337,7 @@ fn assistant_endpoint_uses_separate_model_for_builtin_provider() {
         openai_auth_mode: None,
         openai_fast_mode: false,
         xai_auth_mode: None,
+        claude_auth_mode: None,
     };
 
     let endpoint = assistant_endpoint_for_config(&config);
@@ -377,6 +382,7 @@ fn assistant_endpoint_uses_separate_model_for_custom_provider() {
         openai_auth_mode: None,
         openai_fast_mode: false,
         xai_auth_mode: None,
+        claude_auth_mode: None,
     };
 
     let endpoint = assistant_endpoint_for_config(&config);

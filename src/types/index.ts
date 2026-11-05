@@ -127,6 +127,21 @@ export interface GrokBuildOauthDeviceCodeChallenge {
   intervalSecs: number;
 }
 
+export interface ClaudeOauthStart {
+  authorizeUrl: string;
+  state: string;
+}
+
+export interface ClaudeOauthStatus {
+  loggedIn: boolean;
+  email?: string | null;
+  organizationName?: string | null;
+  planType?: string | null;
+  expiresAtMs?: number | null;
+}
+
+export type ClaudeAuthMode = "api_key" | "oauth";
+
 // 热词来源
 export type HotWordSource = "user" | "learned";
 
@@ -232,6 +247,7 @@ export interface LlmProviderConfig {
   openai_auth_mode?: OpenaiAuthMode | null;
   openai_fast_mode?: boolean;
   xai_auth_mode?: XaiAuthMode | null;
+  claude_auth_mode?: ClaudeAuthMode | null;
 }
 
 // 用户画像

@@ -66,3 +66,11 @@ pub async fn get_openai_codex_oauth_status(
 ) -> Result<codex_oauth_service::OpenaiCodexOauthStatus, AppError> {
     Ok(codex_oauth_service::status(state.inner()))
 }
+
+#[tauri::command]
+pub async fn sync_openai_codex_oauth(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<codex_oauth_service::OpenaiCodexOauthStatus, AppError> {
+    codex_oauth_service::sync_from_system(&app_handle, state.inner()).map_err(AppError::Other)
+}

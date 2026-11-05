@@ -202,6 +202,8 @@ pub fn run() {
                         });
                     }
 
+                    // Credentials from other tools are adopted only when the user
+                    // asks for it (the Settings "Sync" action), never at startup.
                     if services::codex_oauth_service::sync_runtime_session(
                         &app_handle,
                         state.inner(),
@@ -219,6 +221,14 @@ pub fn run() {
                     {
                         log::info!("已从密钥环加载 Grok Build OAuth 会话");
                         spawn_grok_build_oauth_prewarm(app_handle.clone());
+                    }
+                    if services::claude_oauth_service::sync_runtime_session(
+                        &app_handle,
+                        state.inner(),
+                    )
+                    .is_some()
+                    {
+                        log::info!("已从密钥环加载 Anthropic Claude OAuth 会话");
                     }
                     spawn_funasr_startup(app_handle);
                 });
@@ -282,6 +292,12 @@ pub fn run() {
             commands::codex_oauth::logout_openai_codex_oauth,
             commands::codex_oauth::remove_chatgpt_account,
             commands::codex_oauth::get_openai_codex_oauth_status,
+            commands::codex_oauth::sync_openai_codex_oauth,
+            commands::claude_oauth::start_claude_oauth,
+            commands::claude_oauth::complete_claude_oauth,
+            commands::claude_oauth::logout_claude_oauth,
+            commands::claude_oauth::get_claude_oauth_status,
+            commands::claude_oauth::sync_claude_oauth,
             commands::grok_build_oauth::login_grok_build_oauth,
             commands::grok_build_oauth::start_grok_build_oauth_device_code,
             commands::grok_build_oauth::complete_grok_build_oauth_device_code,
@@ -309,6 +325,7 @@ pub fn run() {
             commands::audio::set_sound_enabled,
             commands::funasr::set_r2t2_config,
             commands::ai_polish::set_ai_polish_config,
+            commands::ai_polish::get_ai_polish_config,
             commands::ai_polish::get_ai_polish_api_key,
             commands::ai_polish::set_ai_polish_api_key,
             commands::ai_polish::set_ai_polish_screen_context_enabled,
