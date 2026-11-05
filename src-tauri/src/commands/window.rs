@@ -198,12 +198,24 @@ pub(crate) fn set_subtitle_window_interactive(
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+pub fn trim_process_working_set() {
+    unsafe {
+        use windows_sys::Win32::System::Threading::{GetCurrentProcess, SetProcessWorkingSetSize};
+        SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn trim_process_working_set() {}
+
 #[tauri::command]
 pub async fn hide_main_window(app_handle: tauri::AppHandle) -> Result<String, AppError> {
     let window = require_window(&app_handle, "main", "Main window does not exist")?;
     window
         .hide()
         .map_err(|e| tauri_error("Failed to hide main window", e))?;
+    trim_process_working_set();
     Ok("Main window hidden".to_string())
 }
 

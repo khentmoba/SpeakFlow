@@ -247,6 +247,7 @@ pub fn run() {
                 if window.label() == "main" {
                     api.prevent_close();
                     let _ = window.hide();
+                    commands::window::trim_process_working_set();
                 }
             }
         })

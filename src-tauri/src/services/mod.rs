@@ -46,3 +46,5 @@ mod llm_reasoning_negotiation_tests;
 mod openai_fast_mode_oauth_tests;
 #[cfg(test)]
 mod openrouter_regression_tests;
+#[cfg(test)]
+mod perf_benchmarks;

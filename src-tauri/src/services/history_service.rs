@@ -172,7 +172,13 @@ fn configure_runtime_connection(connection: &Connection) -> Result<(), String> {
         .busy_timeout(std::time::Duration::from_secs(5))
         .map_err(|error| format!("Failed to set history database busy timeout: {error}"))?;
     connection
-        .execute_batch("PRAGMA synchronous = NORMAL;")
+        .execute_batch(
+            "PRAGMA synchronous = NORMAL; \
+             PRAGMA journal_mode = WAL; \
+             PRAGMA cache_size = -8000; \
+             PRAGMA mmap_size = 268435456; \
+             PRAGMA temp_store = MEMORY;",
+        )
         .map_err(|error| format!("Failed to configure history database connection: {error}"))?;
     Ok(())
 }

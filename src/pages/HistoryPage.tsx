@@ -48,13 +48,24 @@ function formatLatency(ms?: number | null): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(ms >= 10_000 ? 1 : 2)}s` : `${ms}ms`;
 }
 
+const dateTimeFormatCache = new Map<string, Intl.DateTimeFormat>();
+
+function getDateFormat(language: string): Intl.DateTimeFormat {
+  let formatter = dateTimeFormatCache.get(language);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(language, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    dateTimeFormatCache.set(language, formatter);
+  }
+  return formatter;
+}
+
 function recordDate(value: number, language: string): string {
-  return new Intl.DateTimeFormat(language, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+  return getDateFormat(language).format(new Date(value));
 }
 
 export default function HistoryPage({
