@@ -67,21 +67,22 @@ fn destination(href: &str) -> Option<String> {
 
 fn parse_results(html: &str, max: usize) -> Result<Vec<SearchResult>, String> {
     let doc = Html::parse_document(html);
-    let selector = |value| Selector::parse(value).expect("static Bing selector");
-    if doc
-        .select(&selector(
-            "#b_captcha, #b_captcha_container, #challenge-form, iframe[src*='captcha']",
-        ))
-        .next()
-        .is_some()
-    {
+    let captcha_sel = Selector::parse(
+        "#b_captcha, #b_captcha_container, #challenge-form, iframe[src*='captcha']",
+    )
+    .map_err(|error| format!("Invalid captcha selector: {error:?}"))?;
+    if doc.select(&captcha_sel).next().is_some() {
         return Err("SEARCH_ACCESS_DENIED".into());
     }
-    let anchor = selector("h2 a");
-    let snippet = selector(".b_caption p, .b_snippet, p");
+    let anchor =
+        Selector::parse("h2 a").map_err(|error| format!("Invalid anchor selector: {error:?}"))?;
+    let snippet = Selector::parse(".b_caption p, .b_snippet, p")
+        .map_err(|error| format!("Invalid snippet selector: {error:?}"))?;
+    let item_sel = Selector::parse("#b_results .b_algo")
+        .map_err(|error| format!("Invalid item selector: {error:?}"))?;
     let mut results = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    for item in doc.select(&selector("#b_results .b_algo")) {
+    for item in doc.select(&item_sel) {
         let Some(link) = item.select(&anchor).next() else {
             continue;
         };
@@ -107,7 +108,9 @@ fn parse_results(html: &str, max: usize) -> Result<Vec<SearchResult>, String> {
             break;
         }
     }
-    if results.is_empty() && doc.select(&selector("#b_results .b_no")).next().is_none() {
+    let empty_sel = Selector::parse("#b_results .b_no")
+        .map_err(|error| format!("Invalid empty selector: {error:?}"))?;
+    if results.is_empty() && doc.select(&empty_sel).next().is_none() {
         return Err("SEARCH_INVALID_RESPONSE".into());
     }
     Ok(results)

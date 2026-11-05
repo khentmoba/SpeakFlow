@@ -68,7 +68,7 @@ export default function CorrectionRulesModal({
   useEffect(() => {
     setExternalLearning(Boolean(profile?.external_correction_learning));
   }, [profile?.external_correction_learning]);
-  const [sourceFilter, setSourceFilter] = useState<"all" | "user" | "ai">("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "user" | "ai" | "learned">("all");
   const dialogRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [closing, setClosing] = useState(false);
@@ -222,7 +222,7 @@ export default function CorrectionRulesModal({
             className="settings-input"
             style={{ flex: 1, padding: "6px 10px", fontSize: 12 }}
           />
-          {(["all", "user", "ai"] as const).map((filter) => (
+          {(["all", "user", "ai", "learned"] as const).map((filter) => (
             <button
               key={filter}
               type="button"
@@ -239,7 +239,9 @@ export default function CorrectionRulesModal({
                 ? t("settings.correctionFilterAll")
                 : filter === "user"
                   ? t("settings.correctionFilterUser")
-                  : t("settings.correctionFilterAi")}
+                  : filter === "ai"
+                    ? t("settings.correctionFilterAi")
+                    : t("settings.correctionFilterLearned")}
             </button>
           ))}
         </div>

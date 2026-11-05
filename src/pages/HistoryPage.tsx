@@ -352,6 +352,11 @@ export default function HistoryPage({
                     </div>
                     <div className="history-card-flags">
                       {record.reprocessedFromId != null && <span>{t("historyPage.reprocessed")}</span>}
+                      {hasDistinctRaw && (
+                        <span className="history-flag-corrected" title={t("historyPage.correctedBadgeTitle")}>
+                          {t("historyPage.correctedBadge")}
+                        </span>
+                      )}
                       {record.audioAvailable && <span title={t("historyPage.audioSaved")}><FileAudio size={11} /></span>}
                     </div>
                   </header>

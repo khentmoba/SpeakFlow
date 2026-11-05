@@ -13,7 +13,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
-import { Copy, ExternalLink, MessageCircle, Send, X } from "lucide-react";
+import { Copy, ExternalLink, MessageCircle } from "lucide-react";
 import { searchNoticeKey } from "@/lib/searchNotice";
 import GoogleSearchEntryPoint from "@/features/assistant/GoogleSearchEntryPoint";
 import {
@@ -56,6 +56,7 @@ import {
   validInterimSegments,
   mergeAssistantSources,
 } from "@/pages/subtitle/overlayModel";
+import { SubtitleConversation } from "@/pages/subtitle/SubtitleConversation";
 
 const MarkdownContent = lazy(() => import("@/components/MarkdownContent"));
 
@@ -1111,103 +1112,24 @@ export default function SubtitleOverlay() {
         onClick={assistantInteractive ? (event) => event.stopPropagation() : undefined}
       >
         {conversationOpen ? (
-          <section
-            className="subtitle-conversation"
-            role="dialog"
-            aria-label={t("subtitle.conversation.title")}
-          >
-            <header className="subtitle-conversation-header">
-              <div className="subtitle-conversation-title">
-                <MessageCircle size={15} aria-hidden="true" />
-                <span>{t("subtitle.conversation.title")}</span>
-              </div>
-              <button
-                type="button"
-                className="subtitle-conversation-close"
-                onClick={handleCloseConversation}
-                aria-label={t("subtitle.conversation.close")}
-                title={t("subtitle.conversation.close")}
-              >
-                <X size={15} aria-hidden="true" />
-              </button>
-            </header>
-
-            <div
-              ref={conversationListRef}
-              className="subtitle-conversation-messages"
-              aria-label={t("subtitle.conversation.history")}
-              role="log"
-              aria-live="polite"
-              aria-busy={conversationBusy}
-              tabIndex={0}
-              onScroll={handleConversationScroll}
-            >
-              {conversationMessages.map((message) => (
-                <article
-                  key={message.id}
-                  className={`subtitle-conversation-message is-${message.role}`}
-                >
-                  <div className="subtitle-conversation-row">
-                    {message.role === "assistant" && (
-                      <span className="subtitle-conversation-assistant-mark" aria-hidden="true">
-                        <MessageCircle size={12} />
-                      </span>
-                    )}
-                    <div className="subtitle-conversation-bubble">
-                      {message.role === "assistant" ? renderAssistantContent(message.content) : message.content}
-                    </div>
-                  </div>
-                  {message.role === "assistant" && renderSources(message.sources)}
-                  {message.role === "assistant" && message.googleSearchEntryPoint && (
-                    <GoogleSearchEntryPoint
-                      html={message.googleSearchEntryPoint}
-                      label="Google Search"
-                      onOpen={handleOpenAssistantUrl}
-                    />
-                  )}
-                </article>
-              ))}
-              {conversationBusy && (
-                <article className="subtitle-conversation-message is-assistant is-streaming">
-                  <div className="subtitle-conversation-row">
-                    <span className="subtitle-conversation-assistant-mark" aria-hidden="true">
-                      <MessageCircle size={12} />
-                    </span>
-                    <div className="subtitle-conversation-bubble">
-                      {conversationDraft ? renderAssistantContent(conversationDraft, true) : t("subtitle.conversation.thinking")}
-                    </div>
-                  </div>
-                </article>
-              )}
-            </div>
-
-            {conversationError && (
-              <div className="subtitle-conversation-error" role="status">{conversationError}</div>
-            )}
-
-            <form className="subtitle-conversation-composer" onSubmit={handleConversationSubmit}>
-              <textarea
-                ref={conversationInputRef}
-                value={conversationInput}
-                onChange={(event) => setConversationInput(event.target.value)}
-                onKeyDown={handleConversationKeyDown}
-                placeholder={t("subtitle.conversation.placeholder")}
-                aria-label={t("subtitle.conversation.placeholder")}
-                rows={1}
-                maxLength={6000}
-                disabled={conversationBusy || !assistantRequest.trim()}
-              />
-              <button
-                type="submit"
-                className="subtitle-conversation-send"
-                disabled={conversationBusy || !assistantRequest.trim() || !conversationInput.trim()}
-                aria-label={t("subtitle.conversation.send")}
-                title={t("subtitle.conversation.send")}
-              >
-                <Send size={15} aria-hidden="true" />
-              </button>
-            </form>
-          </section>
+          <SubtitleConversation
+            conversationListRef={conversationListRef}
+            conversationInputRef={conversationInputRef}
+            conversationMessages={conversationMessages}
+            conversationBusy={conversationBusy}
+            conversationDraft={conversationDraft}
+            conversationError={conversationError}
+            conversationInput={conversationInput}
+            assistantRequest={assistantRequest}
+            onCloseConversation={handleCloseConversation}
+            onConversationScroll={handleConversationScroll}
+            onConversationSubmit={handleConversationSubmit}
+            onConversationKeyDown={handleConversationKeyDown}
+            onInputChange={setConversationInput}
+            onOpenAssistantUrl={handleOpenAssistantUrl}
+            onOpenSource={handleOpenSource}
+            renderAssistantContent={renderAssistantContent}
+          />
         ) : (
           <>
             {interactiveAssistantResult && (

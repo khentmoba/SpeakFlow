@@ -176,6 +176,7 @@ impl WindowsSpeechCapture {
                 Ok(_) | Err(WasapiError::EventTimeout) => {}
                 Err(err) => {
                     log::error!("Windows native audio stream error: {}", err);
+                    stop.store(true, Ordering::Relaxed);
                     break;
                 }
             }

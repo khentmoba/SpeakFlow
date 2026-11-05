@@ -655,7 +655,10 @@ pub async fn stats() -> Result<HistoryStats, String> {
                 value: None,
             });
         }
-        let cache = slot.as_mut().expect("statistics connection initialized");
+        let cache = match slot.as_mut() {
+            Some(c) => c,
+            None => return Err("Failed to initialize statistics connection".to_string()),
+        };
         let version = stats_data_version(&cache.connection)?;
         if let Some((cached_version, value)) = &cache.value {
             if *cached_version == version {

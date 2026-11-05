@@ -15,10 +15,7 @@ struct StartOwnership {
 impl HotkeyStartOwner {
     pub(crate) fn begin(&self) -> u64 {
         let mut inner = self.inner.lock();
-        inner.generation = inner
-            .generation
-            .checked_add(1)
-            .expect("hotkey generation exhausted");
+        inner.generation = inner.generation.wrapping_add(1);
         inner.active = true;
         inner.session_id = None;
         inner.generation

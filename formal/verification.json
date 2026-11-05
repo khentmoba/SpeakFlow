@@ -1130,7 +1130,7 @@
         "src/pages/SelectionOverlay.tsx"
       ],
       "evidence": [
-        "src-tauri/src/services/selection_service.rs#replacement_context_requires_the_exact_version_text_and_source_window",
+        "src-tauri/src/services/selection_service/tests.rs#replacement_context_requires_the_exact_version_text_and_source_window",
         "src/pages/__tests__/SelectionOverlay.test.tsx"
       ],
       "assumptions": "OS selection and paste operations are external; two context versions represent arbitrary text, not recognition correctness. State changes use a window-targeted event after publication plus a post-subscription bootstrap snapshot; listener failure falls back to single-flight slow snapshots, checked by implementation tests."
