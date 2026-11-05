@@ -1,6 +1,8 @@
+use crate::utils::AppError;
+use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -35,7 +37,7 @@ pub async fn set_ai_polish_config<R: tauri::Runtime>(
     enabled: bool,
     api_key: Option<String>,
     provider: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     if let Some(api_key) = api_key {
         update_ai_polish_api_key(&app_handle, state.inner(), api_key, provider)?;
     }
@@ -67,8 +69,8 @@ pub async fn set_ai_polish_api_key<R: tauri::Runtime>(
     state: tauri::State<'_, AppState>,
     api_key: String,
     provider: Option<String>,
-) -> Result<(), String> {
-    update_ai_polish_api_key(&app_handle, state.inner(), api_key, provider)
+) -> Result<(), AppError> {
+    update_ai_polish_api_key(&app_handle, state.inner(), api_key, provider).map_err(AppError::Other)
 }
 
 #[tauri::command]
@@ -76,7 +78,7 @@ pub async fn get_ai_polish_api_key<R: tauri::Runtime>(
     app_handle: tauri::AppHandle<R>,
     state: tauri::State<'_, AppState>,
     provider: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     let provider = provider.unwrap_or_else(|| state.active_llm_provider());
     Ok(llm_provider::load_api_key_for_provider(
         &app_handle,
@@ -88,7 +90,7 @@ pub async fn get_ai_polish_api_key<R: tauri::Runtime>(
 pub async fn set_ai_polish_screen_context_enabled(
     state: tauri::State<'_, AppState>,
     enabled: bool,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile.ai_polish_screen_context_enabled = enabled;
         profile.assistant_screen_context_enabled = enabled;
@@ -100,7 +102,7 @@ pub async fn set_ai_polish_screen_context_enabled(
 pub async fn set_screen_context_enabled(
     state: tauri::State<'_, AppState>,
     enabled: bool,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile.ai_polish_screen_context_enabled = enabled;
         profile.assistant_screen_context_enabled = enabled;
@@ -197,9 +199,7 @@ fn codex_models_cache_key(
 }
 
 fn cached_codex_models(cache_key: &str, now: Instant) -> Option<Vec<AiModelInfo>> {
-    let cache = codex_models_cache()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let cache = codex_models_cache().lock();
     let cached = cache.get(cache_key)?;
     if now.duration_since(cached.fetched_at) > CODEX_MODELS_CACHE_TTL {
         return None;
@@ -208,22 +208,17 @@ fn cached_codex_models(cache_key: &str, now: Instant) -> Option<Vec<AiModelInfo>
 }
 
 fn store_codex_models(cache_key: &str, models: &[AiModelInfo]) {
-    codex_models_cache()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(
-            cache_key.to_string(),
-            CachedCodexModels {
-                fetched_at: Instant::now(),
-                models: models.to_vec(),
-            },
-        );
+    codex_models_cache().lock().insert(
+        cache_key.to_string(),
+        CachedCodexModels {
+            fetched_at: Instant::now(),
+            models: models.to_vec(),
+        },
+    );
 }
 
 fn remove_cached_codex_models_for_identity(identity: &str) {
-    let mut cache = codex_models_cache()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut cache = codex_models_cache().lock();
     cache.remove(&format!(
         "{}:{identity}",
         ModelListFormat::CodexApi.cache_partition()
@@ -439,7 +434,7 @@ pub async fn list_ai_models(
     force_refresh: bool,
     openai_auth_mode: Option<OpenaiAuthMode>,
     xai_auth_mode: Option<XaiAuthMode>,
-) -> Result<AiModelListPayload, String> {
+) -> Result<AiModelListPayload, AppError> {
     let config = state.llm_provider_config();
     let auth = codex_oauth_service::resolve_provider_auth_with_auth_mode(
         &app_handle,
@@ -453,9 +448,13 @@ pub async fn list_ai_models(
     let api_key = auth.api_key;
     if api_key.is_empty() {
         if provider == "xai" {
-            return Err("Please enter an API Key or complete Grok Build sign-in first".to_string());
+            return Err(AppError::Other(
+                "Please enter an API Key or complete Grok Build sign-in first".to_string(),
+            ));
         }
-        return Err("Please enter an API Key or complete OpenAI Codex sign-in first".to_string());
+        return Err(AppError::Other(
+            "Please enter an API Key or complete OpenAI Codex sign-in first".to_string(),
+        ));
     }
 
     let (chatgpt_token, inference_uses_chatgpt_backend) =
@@ -566,7 +565,11 @@ pub async fn list_ai_models(
                                 }
                             })
                         })
-                        .ok_or("ChatGPT sign-in expired. Please sign in again.")?;
+                        .ok_or_else(|| {
+                            AppError::Other(
+                                "ChatGPT sign-in expired. Please sign in again.".to_string(),
+                            )
+                        })?;
                     codex_models_headers(&token)?
                 } else {
                     llm_provider::build_auth_headers(&ApiFormat::OpenaiCompat, &refreshed)?
@@ -595,7 +598,7 @@ pub async fn list_ai_models(
                 if let Some(identity) = codex_cache_identity.as_deref() {
                     remove_cached_codex_models_for_identity(identity);
                 }
-                return Err(error);
+                return Err(AppError::Other(error));
             }
             if let Some(fallback) = cached_codex_fallback(
                 codex_cache_key.as_deref(),
@@ -605,7 +608,7 @@ pub async fn list_ai_models(
             ) {
                 return Ok(fallback);
             }
-            return Err(error);
+            return Err(AppError::Other(error));
         }
         Err(e) => {
             let error = format!("Failed to fetch model list: {e}");
@@ -617,7 +620,7 @@ pub async fn list_ai_models(
             ) {
                 return Ok(fallback);
             }
-            return Err(error);
+            return Err(AppError::Other(error));
         }
     };
 
@@ -633,7 +636,7 @@ pub async fn list_ai_models(
             ) {
                 return Ok(fallback);
             }
-            return Err(error);
+            return Err(AppError::Other(error));
         }
     };
 
@@ -648,7 +651,7 @@ pub async fn list_ai_models(
             ) {
                 return Ok(fallback);
             }
-            return Err(error);
+            return Err(AppError::Other(error));
         }
     };
     if model_list_format.is_codex() {
@@ -951,20 +954,17 @@ mod tests {
     fn codex_fallback_rejects_expired_catalogs() {
         let cache_key = "codex-api:expired-cache-test";
         let fetched_at = Instant::now();
-        codex_models_cache()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .insert(
-                cache_key.to_string(),
-                CachedCodexModels {
-                    fetched_at,
-                    models: vec![AiModelInfo {
-                        id: "stale-model".to_string(),
-                        display_name: None,
-                        owned_by: Some("openai".to_string()),
-                    }],
-                },
-            );
+        codex_models_cache().lock().insert(
+            cache_key.to_string(),
+            CachedCodexModels {
+                fetched_at,
+                models: vec![AiModelInfo {
+                    id: "stale-model".to_string(),
+                    display_name: None,
+                    owned_by: Some("openai".to_string()),
+                }],
+            },
+        );
 
         // Advance the read clock; subtracting the TTL can underflow on fresh Windows runners.
         assert!(cached_codex_fallback(
@@ -981,10 +981,7 @@ mod tests {
             fetched_at + CODEX_MODELS_CACHE_TTL + Duration::from_secs(1),
         )
         .is_none());
-        codex_models_cache()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .remove(cache_key);
+        codex_models_cache().lock().remove(cache_key);
     }
 }
 
@@ -994,7 +991,7 @@ pub async fn set_assistant_api_key(
     state: tauri::State<'_, AppState>,
     api_key: String,
     provider: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let provider = provider
         .unwrap_or_else(|| state.with_profile(|p| p.llm_provider.resolve_assistant_provider()));
     let keyring_user = llm_provider::keyring_user_for_provider(&provider);
@@ -1010,7 +1007,7 @@ pub async fn get_assistant_api_key(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     provider: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     let provider = provider
         .unwrap_or_else(|| state.with_profile(|p| p.llm_provider.resolve_assistant_provider()));
     Ok(llm_provider::load_api_key_for_provider(

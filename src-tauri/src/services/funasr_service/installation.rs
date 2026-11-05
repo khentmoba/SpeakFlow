@@ -332,6 +332,22 @@ fn extract_tar_xz_archive(
 ) -> Result<usize, AppError> {
     log::info!("Starting TAR.XZ engine archive extraction");
 
+    let extracted = unpack_tar_xz_entries(archive, engine_dir, |count| {
+        report_extract_progress(handle, progress_gate, count, None, false);
+    })?;
+
+    if extracted > 0 && !extracted.is_multiple_of(200) {
+        report_extract_progress(handle, progress_gate, extracted, None, true);
+    }
+
+    Ok(extracted)
+}
+
+fn unpack_tar_xz_entries(
+    archive: &std::path::Path,
+    engine_dir: &std::path::Path,
+    mut on_entry: impl FnMut(usize),
+) -> Result<usize, AppError> {
     let file = std::fs::File::open(archive)
         .map_err(|e| AppError::Asr(format!("Failed to open engine archive: {}", e)))?;
     let decoder = xz2::read::XzDecoder::new(file);
@@ -344,16 +360,15 @@ fn extract_tar_xz_archive(
     {
         let mut entry = entry_result
             .map_err(|e| AppError::Asr(format!("Failed to read archive entry: {}", e)))?;
-        entry
+        // Ok(false) means tar refused the entry (a `..` component) and wrote nothing.
+        let unpacked = entry
             .unpack_in(engine_dir)
             .map_err(|e| AppError::Asr(format!("Failed to write file: {}", e)))?;
+        if !unpacked {
+            return Err(AppError::Asr("Archive contains unsafe path".to_string()));
+        }
         extracted += 1;
-
-        report_extract_progress(handle, progress_gate, extracted, None, false);
-    }
-
-    if extracted > 0 && !extracted.is_multiple_of(200) {
-        report_extract_progress(handle, progress_gate, extracted, None, true);
+        on_entry(extracted);
     }
 
     Ok(extracted)
@@ -712,6 +727,40 @@ mod tests {
             status_commit: Arc::new(parking_lot::Mutex::new(())),
             expected_generation: 1,
         }
+    }
+
+    #[test]
+    fn tar_archive_entry_escaping_engine_dir_fails_extraction() {
+        let root =
+            std::env::temp_dir().join(format!("speak-flow-tar-escape-{}", rand::random::<u64>()));
+        let engine_dir = root.join("engine");
+        std::fs::create_dir_all(&engine_dir).expect("create engine dir");
+        let archive = root.join("engine.tar.xz");
+
+        let payload = b"escaped";
+        let name = b"../escaped.txt";
+        let mut header = tar::Header::new_gnu();
+        header.as_old_mut().name[..name.len()].copy_from_slice(name);
+        header.set_size(payload.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        let mut builder = tar::Builder::new(Vec::new());
+        builder
+            .append(&header, &payload[..])
+            .expect("append escaping entry");
+        let tar_bytes = builder.into_inner().expect("finish tar");
+        let mut encoder = xz2::write::XzEncoder::new(Vec::new(), 1);
+        std::io::Write::write_all(&mut encoder, &tar_bytes).expect("compress tar");
+        std::fs::write(&archive, encoder.finish().expect("finish xz")).expect("write archive");
+
+        let result = unpack_tar_xz_entries(&archive, &engine_dir, |_| {});
+
+        assert!(
+            matches!(&result, Err(AppError::Asr(message)) if message.contains("unsafe path")),
+            "escaping entry must fail extraction, got {result:?}"
+        );
+        assert!(!root.join("escaped.txt").exists());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

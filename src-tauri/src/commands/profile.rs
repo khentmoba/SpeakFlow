@@ -1,3 +1,4 @@
+use crate::utils::AppError;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
@@ -15,7 +16,7 @@ const PROFILE_EXPORT_FILE_NAME: &str = "speak-flow-profile.json";
 pub async fn set_external_correction_learning(
     state: tauri::State<'_, AppState>,
     enabled: bool,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     crate::services::external_correction_service::cancel();
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile.external_correction_learning = enabled;
@@ -30,7 +31,7 @@ pub async fn submit_user_correction(
     original: String,
     corrected: String,
     raw_original: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let orig_trimmed = original.trim();
     let corr_trimmed = corrected.trim();
     if raw_original.is_none()
@@ -234,7 +235,7 @@ fn parse_correction_pairs(raw: &str) -> Vec<(String, String)> {
 }
 
 #[tauri::command]
-pub async fn get_user_profile(state: tauri::State<'_, AppState>) -> Result<UserProfile, String> {
+pub async fn get_user_profile(state: tauri::State<'_, AppState>) -> Result<UserProfile, AppError> {
     Ok(state.snapshot_profile())
 }
 
@@ -244,12 +245,12 @@ pub fn get_profile_save_status() -> profile_service::ProfileSaveStatus {
 }
 
 #[tauri::command]
-pub async fn retry_profile_save(state: tauri::State<'_, AppState>) -> Result<(), String> {
+pub async fn retry_profile_save(state: tauri::State<'_, AppState>) -> Result<(), AppError> {
     profile_service::save_profile_async(state.inner())
         .await
         .map_err(|error| {
             log::warn!("重试保存用户画像失败: {error}");
-            "Failed to save settings. Please try again.".to_string()
+            AppError::Other("Failed to save settings. Please try again.".to_string())
         })
 }
 
@@ -257,12 +258,12 @@ pub async fn retry_profile_save(state: tauri::State<'_, AppState>) -> Result<(),
 pub async fn set_autostart_minimized(
     state: tauri::State<'_, AppState>,
     enabled: bool,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let previous = state
         .update_profile_mut(|profile| std::mem::replace(&mut profile.autostart_minimized, enabled));
     if let Err(error) = profile_service::save_profile_async(state.inner()).await {
         state.update_profile_mut(|profile| profile.autostart_minimized = previous);
-        return Err(error);
+        return Err(AppError::Other(error));
     }
     Ok(())
 }
@@ -273,9 +274,11 @@ pub async fn set_history_settings(
     enabled: bool,
     save_audio: bool,
     retention_days: u32,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     if retention_days > 3650 {
-        return Err("History retention cannot exceed 3,650 days".into());
+        return Err(AppError::Other(
+            "History retention cannot exceed 3,650 days".into(),
+        ));
     }
     // 清理是可能失败的 I/O；先完成它再提交内存/profile 状态，避免命令报错但
     // 设置实际上已经改变。
@@ -294,15 +297,17 @@ pub async fn set_history_settings(
 pub async fn set_app_profile_rules(
     state: tauri::State<'_, AppState>,
     rules: Vec<AppProfileRule>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     if rules.len() > profile_service::MAX_APP_PROFILE_RULES {
-        return Err(format!(
+        return Err(AppError::Other(format!(
             "A maximum of {} app rules is allowed",
             profile_service::MAX_APP_PROFILE_RULES
-        ));
+        )));
     }
     if rules.iter().any(|rule| rule.process_name.trim().is_empty()) {
-        return Err("Every app rule must have a process name".into());
+        return Err(AppError::Other(
+            "Every app rule must have a process name".into(),
+        ));
     }
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile.app_profile_rules = rules;
@@ -316,7 +321,7 @@ pub async fn add_hot_word(
     state: tauri::State<'_, AppState>,
     text: String,
     weight: u8,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile_service::add_hot_word(profile, text, weight);
     });
@@ -327,7 +332,7 @@ pub async fn add_hot_word(
 pub async fn remove_hot_word(
     state: tauri::State<'_, AppState>,
     text: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile_service::remove_hot_word(profile, &text);
     });
@@ -350,7 +355,7 @@ pub async fn set_llm_provider_config(
     assistant_provider_set: Option<bool>,
     openai_auth_mode: Option<crate::state::user_profile::OpenaiAuthMode>,
     xai_auth_mode: Option<crate::state::user_profile::XaiAuthMode>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let active_uses_custom_endpoint = active == "custom"
         || state.with_profile(|profile| {
             profile
@@ -423,7 +428,7 @@ pub async fn set_screen_vision_config(
     enabled: bool,
     provider: Option<String>,
     model: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let provider = provider
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
@@ -440,7 +445,9 @@ pub async fn set_screen_vision_config(
             config.has_valid_screen_vision_model()
         });
         if !valid {
-            return Err("Select a valid vision model provider and model".to_string());
+            return Err(AppError::Other(
+                "Select a valid vision model provider and model".to_string(),
+            ));
         }
     }
 
@@ -460,10 +467,12 @@ pub async fn set_screen_vision_config(
 pub async fn get_screen_vision_api_key(
     app_handle: tauri::AppHandle,
     provider: String,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     let provider = provider.trim();
     if provider.is_empty() {
-        return Err("Vision model provider cannot be empty".to_string());
+        return Err(AppError::Other(
+            "Vision model provider cannot be empty".to_string(),
+        ));
     }
     Ok(llm_provider::load_api_key_for_provider(
         &app_handle,
@@ -476,13 +485,16 @@ pub async fn set_screen_vision_api_key(
     app_handle: tauri::AppHandle,
     provider: String,
     api_key: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let provider = provider.trim();
     if provider.is_empty() {
-        return Err("Vision model provider cannot be empty".to_string());
+        return Err(AppError::Other(
+            "Vision model provider cannot be empty".to_string(),
+        ));
     }
     let keyring_user = llm_provider::keyring_user_for_provider(provider);
     llm_provider::save_or_delete_api_key(&app_handle, &keyring_user, api_key.trim())
+        .map_err(AppError::Other)
 }
 
 #[tauri::command]
@@ -492,7 +504,7 @@ pub async fn get_llm_reasoning_support(
     model: Option<String>,
     api_format: Option<ApiFormat>,
     reasoning_mode: Option<LlmReasoningMode>,
-) -> Result<llm_provider::LlmReasoningSupport, String> {
+) -> Result<llm_provider::LlmReasoningSupport, AppError> {
     let endpoint = llm_provider::endpoint_for_preview(
         provider.trim(),
         base_url.as_deref(),
@@ -610,7 +622,7 @@ pub async fn add_custom_provider(
     base_url: String,
     model: String,
     api_format: ApiFormat,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     let (name, base_url, model) = normalize_custom_provider_fields(&name, &base_url, &model)?;
     // 用毫秒时间戳生成 id 在 UI 快速点击时可能撞 ID（同一毫秒两次添加）；
     // 拼一段随机后缀 + 在 push 前查重，确保 id 唯一。
@@ -655,7 +667,7 @@ pub async fn update_custom_provider(
     base_url: Option<String>,
     model: Option<String>,
     api_format: Option<ApiFormat>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     // 先校验入参，再进 profile 闭包。这样校验失败不会污染 profile 状态。
     let normalized_name = match name.as_deref() {
         Some(n) => Some(validate_provider_name(n)?),
@@ -695,7 +707,10 @@ pub async fn update_custom_provider(
         }
     });
     if !found {
-        return Err(format!("Custom provider not found: {}", id));
+        return Err(AppError::Other(format!(
+            "Custom provider not found: {}",
+            id
+        )));
     }
     Ok(())
 }
@@ -705,7 +720,7 @@ pub async fn remove_custom_provider(
     _app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     id: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         let fallback_provider = profile.llm_provider.fallback_provider_after_removal(&id);
         profile.llm_provider.custom_providers.retain(|p| p.id != id);
@@ -724,7 +739,7 @@ pub async fn remove_custom_provider(
 pub async fn set_translation_target(
     state: tauri::State<'_, AppState>,
     target: Option<String>,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     let target = target
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
@@ -750,7 +765,7 @@ pub async fn set_translation_hotkey(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     shortcut: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let normalized = shortcut
         .as_deref()
         .map(str::trim)
@@ -770,7 +785,7 @@ pub async fn set_translation_hotkey(
 pub async fn set_openai_fast_mode(
     state: tauri::State<'_, AppState>,
     enabled: bool,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile.llm_provider.openai_fast_mode = enabled;
     });
@@ -781,7 +796,7 @@ pub async fn set_openai_fast_mode(
 pub async fn set_custom_prompt(
     state: tauri::State<'_, AppState>,
     prompt: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let prompt = prompt
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
@@ -795,7 +810,7 @@ pub async fn set_custom_prompt(
 pub async fn set_polish_structure_level(
     state: tauri::State<'_, AppState>,
     level: PolishStructureLevel,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile.polish_structure_level = level;
     });
@@ -806,7 +821,7 @@ pub async fn set_polish_structure_level(
 pub async fn export_user_profile(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, AppState>,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, AppError> {
     let data = serde_json::to_string_pretty(&state.snapshot_profile())
         .map_err(|e| format!("Serialization failed: {}", e))?;
     // rfd's async backend uses a dedicated STA thread on Windows. A reused
@@ -838,7 +853,7 @@ pub async fn import_user_profile(
     _app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     json_data: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let imported: UserProfile = serde_json::from_str(&json_data)
         .map_err(|e| format!("Failed to parse profile data: {}", e))?;
     state.update_profile_mut(|profile| {
@@ -996,8 +1011,10 @@ pub async fn run_correction_validation(
 pub async fn validate_corrections(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
-) -> Result<u32, String> {
-    run_correction_validation(&app_handle, state.inner()).await
+) -> Result<u32, AppError> {
+    run_correction_validation(&app_handle, state.inner())
+        .await
+        .map_err(AppError::Other)
 }
 
 #[tauri::command]
@@ -1009,7 +1026,7 @@ pub async fn set_correction_validation_config(
     provider_set: Option<bool>,
     model: Option<String>,
     model_set: Option<bool>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let normalized_provider = normalize_optional_string_update(provider);
     let normalized_model = normalize_optional_string_update(model);
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
@@ -1032,11 +1049,13 @@ pub async fn add_correction_rule(
     state: tauri::State<'_, AppState>,
     original: String,
     corrected: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let original = original.trim();
     let corrected = corrected.trim();
     if original.is_empty() || corrected.is_empty() || original == corrected {
-        return Err("A correction rule needs two different, non-empty texts".to_string());
+        return Err(AppError::Other(
+            "A correction rule needs two different, non-empty texts".to_string(),
+        ));
     }
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile_service::add_manual_correction(profile, original, corrected);
@@ -1049,7 +1068,7 @@ pub async fn remove_correction(
     state: tauri::State<'_, AppState>,
     original: String,
     corrected: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile
             .correction_patterns

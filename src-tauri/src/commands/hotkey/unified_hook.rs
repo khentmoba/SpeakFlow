@@ -70,10 +70,7 @@ pub(super) fn set_unified_hook_state(
     kind: HotkeyKind,
     state: Option<Arc<UnifiedHookState>>,
 ) -> Option<Arc<UnifiedHookState>> {
-    let mut guard = match unified_hook_state_slot().lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
+    let mut guard = unified_hook_state_slot().lock();
     let slot = match kind {
         HotkeyKind::Dictation => &mut guard.dictation,
         HotkeyKind::Translation => &mut guard.translation,
@@ -86,10 +83,7 @@ pub(super) fn set_unified_hook_state(
 
 #[cfg(target_os = "windows")]
 pub(super) fn get_unified_hook_states() -> UnifiedHookBundle {
-    let guard = match unified_hook_state_slot().lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
+    let guard = unified_hook_state_slot().lock();
     guard.clone()
 }
 

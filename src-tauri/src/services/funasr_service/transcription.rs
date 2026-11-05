@@ -100,6 +100,11 @@ pub(super) fn profile_r2t2_options(
         .then(|| state.with_profile(|profile| profile.r2t2.clone()))
 }
 
+const _: () = assert!(
+    cfg!(target_endian = "little"),
+    "encode_pcm16_base64 reinterprets i16 memory as little-endian PCM bytes"
+);
+
 pub(super) fn encode_pcm16_base64(samples: &[i16]) -> String {
     use base64::Engine;
 
@@ -108,7 +113,7 @@ pub(super) fn encode_pcm16_base64(samples: &[i16]) -> String {
     // 192000 次小拷贝 + 一次 384KB Vec 分配，interim loop 每 ~220ms 一次的热点。
     let byte_slice: &[u8] =
         // SAFETY: i16 samples are contiguous and initialized, len * 2 is their exact byte length, and the slice borrows samples for its lifetime.
-        unsafe { std::slice::from_raw_parts(samples.as_ptr() as *const u8, samples.len() * 2) };
+        unsafe { std::slice::from_raw_parts(samples.as_ptr().cast::<u8>(), samples.len() * 2) };
     base64::engine::general_purpose::STANDARD.encode(byte_slice)
 }
 

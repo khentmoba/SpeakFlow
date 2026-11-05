@@ -71,6 +71,12 @@ impl Serialize for AppError {
     }
 }
 
+impl From<String> for AppError {
+    fn from(message: String) -> Self {
+        AppError::Other(message)
+    }
+}
+
 impl From<tauri::Error> for AppError {
     fn from(err: tauri::Error) -> Self {
         AppError::Tauri(err.to_string())
@@ -165,6 +171,17 @@ mod tests {
             serde_json::Value::String("ASR error: err".to_string()),
             "message field must equal AppError::to_string() output \
              (Display impl from #[error(...)] above)"
+        );
+    }
+
+    #[test]
+    fn string_errors_convert_to_other_with_their_message() {
+        let err = AppError::from("Model list failed".to_string());
+        assert_eq!(err.code(), "OTHER_ERROR");
+        let value = serde_json::to_value(&err).expect("AppError must serialize");
+        assert_eq!(
+            value["message"],
+            serde_json::Value::String("Model list failed".to_string())
         );
     }
 

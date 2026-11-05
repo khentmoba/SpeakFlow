@@ -565,67 +565,86 @@ pub async fn cleanup_audio_if_unreferenced(audio_file: String) -> Result<(), Str
     })?
 }
 
+/// Escapes LIKE wildcards so search text matches literally. Pair with `ESCAPE '\'`.
+fn escape_like(input: &str) -> String {
+    let mut escaped = String::with_capacity(input.len());
+    for ch in input.chars() {
+        if matches!(ch, '\\' | '%' | '_') {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped
+}
+
 pub async fn list(query: HistoryQuery) -> Result<HistoryPage, String> {
     initialize().await?;
     tokio::task::spawn_blocking(move || {
         let connection = open_connection()?;
-        let search = query.query.trim().to_string();
-        let mode = query.mode.trim().to_string();
-        let status = query.status.trim().to_string();
-        let limit = query.limit.clamp(1, MAX_PAGE_SIZE);
-        let where_clause = r#"
+        list_with_connection(&connection, query)
+    })
+    .await
+    .map_err(|error| format!("Failed to execute transcription history query task: {error}"))?
+}
+
+fn list_with_connection(
+    connection: &Connection,
+    query: HistoryQuery,
+) -> Result<HistoryPage, String> {
+    let search = escape_like(query.query.trim());
+    let mode = query.mode.trim().to_string();
+    let status = query.status.trim().to_string();
+    let limit = query.limit.clamp(1, MAX_PAGE_SIZE);
+    let where_clause = r#"
             WHERE (
-                ?1 = '' OR text LIKE '%' || ?1 || '%' OR original_text LIKE '%' || ?1 || '%'
-                OR COALESCE(source_text, '') LIKE '%' || ?1 || '%'
-                OR COALESCE(app_process, '') LIKE '%' || ?1 || '%'
-                OR COALESCE(app_window_title, '') LIKE '%' || ?1 || '%'
+                ?1 = '' OR text LIKE '%' || ?1 || '%' ESCAPE '\' OR original_text LIKE '%' || ?1 || '%' ESCAPE '\'
+                OR COALESCE(source_text, '') LIKE '%' || ?1 || '%' ESCAPE '\'
+                OR COALESCE(app_process, '') LIKE '%' || ?1 || '%' ESCAPE '\'
+                OR COALESCE(app_window_title, '') LIKE '%' || ?1 || '%' ESCAPE '\'
             )
             AND (?2 = '' OR mode = ?2)
             AND (
                 ?3 = '' OR status = ?3 OR (?3 = 'failed' AND status != 'success')
             )
         "#;
-        let total: u64 = connection
-            .query_row(
-                &format!("SELECT COUNT(*) FROM transcription_history {where_clause}"),
-                params![search, mode, status],
-                |row| row.get::<_, i64>(0),
-            )
-            .map(|value| u64::try_from(value).unwrap_or_default())
-            .map_err(|error| format!("Failed to count transcription history: {error}"))?;
+    let total: u64 = connection
+        .query_row(
+            &format!("SELECT COUNT(*) FROM transcription_history {where_clause}"),
+            params![search, mode, status],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|value| u64::try_from(value).unwrap_or_default())
+        .map_err(|error| format!("Failed to count transcription history: {error}"))?;
 
-        let sql = format!(
-            "SELECT {HISTORY_COLUMNS} FROM transcription_history {where_clause} \
+    let sql = format!(
+        "SELECT {HISTORY_COLUMNS} FROM transcription_history {where_clause} \
              ORDER BY created_at DESC, id DESC LIMIT ?4 OFFSET ?5"
-        );
-        let mut statement = connection
-            .prepare(&sql)
-            .map_err(|error| format!("Failed to prepare history query: {error}"))?;
-        let rows = statement
-            .query_map(
-                params![
-                    search,
-                    mode,
-                    status,
-                    i64::from(limit),
-                    i64::from(query.offset)
-                ],
-                map_stored_record,
-            )
-            .map_err(|error| format!("Failed to query transcription history: {error}"))?;
-        let items = rows
-            .map(|row| row.map(|stored| stored.record))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("Failed to parse transcription history: {error}"))?;
-        let has_more = u64::from(query.offset) + (items.len() as u64) < total;
-        Ok(HistoryPage {
-            items,
-            total,
-            has_more,
-        })
+    );
+    let mut statement = connection
+        .prepare(&sql)
+        .map_err(|error| format!("Failed to prepare history query: {error}"))?;
+    let rows = statement
+        .query_map(
+            params![
+                search,
+                mode,
+                status,
+                i64::from(limit),
+                i64::from(query.offset)
+            ],
+            map_stored_record,
+        )
+        .map_err(|error| format!("Failed to query transcription history: {error}"))?;
+    let items = rows
+        .map(|row| row.map(|stored| stored.record))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Failed to parse transcription history: {error}"))?;
+    let has_more = u64::from(query.offset) + (items.len() as u64) < total;
+    Ok(HistoryPage {
+        items,
+        total,
+        has_more,
     })
-    .await
-    .map_err(|error| format!("Failed to execute transcription history query task: {error}"))?
 }
 
 fn latency_stats(mut values: Vec<u64>) -> LatencyStats {
@@ -919,11 +938,63 @@ mod tests {
 
     use super::{
         cleanup_expired_with_connection, configure_connection, get_for_reprocess_with_connection,
-        latency_stats, map_stored_record, now_millis, release_audio_lease_with_connection,
-        safe_audio_path, table_has_column, HISTORY_COLUMNS, HISTORY_SCHEMA_VERSION,
+        latency_stats, list_with_connection, map_stored_record, now_millis,
+        release_audio_lease_with_connection, safe_audio_path, table_has_column, HistoryQuery,
+        HISTORY_COLUMNS, HISTORY_SCHEMA_VERSION,
     };
 
     include!("history_stats_tests.rs");
+
+    #[test]
+    fn history_search_matches_like_wildcards_literally() {
+        let connection = Connection::open_in_memory().expect("open in-memory history database");
+        configure_connection(&connection).expect("initialize history schema");
+        for (session_id, text) in [
+            (1_i64, "rate 100% sure"),
+            (2, "rate 1000 sure"),
+            (3, "a_b"),
+            (4, "axb"),
+        ] {
+            connection
+                .execute(
+                    r#"
+                    INSERT INTO transcription_history (
+                        session_id, created_at, updated_at, mode, status, text, original_text, source_text,
+                        duration_sec, language, engine, provider, model, app_process,
+                        app_window_title, app_rule_name, audio_file, asr_ms, polish_ms,
+                        total_ms, raw_first_status, error, reprocessed_from_id
+                    ) VALUES (
+                        ?1, ?2, ?2, 'dictation', 'success', ?3, ?3, 'selected text',
+                        1.25, 'en', 'sensevoice', 'openai', 'gpt-test', 'Code.exe',
+                        'README - Code', 'Editor', NULL, 120, 240, 380, 'replaced', NULL, NULL
+                    )
+                    "#,
+                    params![session_id, now_millis(), text],
+                )
+                .expect("insert history fixture");
+        }
+        let search = |query: &str| {
+            list_with_connection(
+                &connection,
+                HistoryQuery {
+                    query: query.to_string(),
+                    mode: String::new(),
+                    status: String::new(),
+                    limit: 50,
+                    offset: 0,
+                },
+            )
+            .expect("search history")
+            .items
+            .into_iter()
+            .map(|record| record.text)
+            .collect::<Vec<_>>()
+        };
+
+        assert_eq!(search("100%"), vec!["rate 100% sure"]);
+        assert_eq!(search("a_b"), vec!["a_b"]);
+        assert_eq!(search("100").len(), 2);
+    }
 
     #[test]
     fn latency_percentiles_are_stable() {

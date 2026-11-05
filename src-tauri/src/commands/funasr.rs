@@ -829,6 +829,11 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::
             copy_dir_recursive(&src_path, &dst_path)?;
         } else {
             std::fs::copy(&src_path, &dst_path)?;
+            // The source is deleted after the switch, so the copy must be on disk first.
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&dst_path)?
+                .sync_all()?;
         }
     }
     Ok(())

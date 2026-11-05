@@ -71,13 +71,13 @@ pub async fn set_selection_assistant_config(
     provider: Option<String>,
     model: Option<String>,
     reasoning_mode: LlmReasoningMode,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let translation_target = translation_target.trim().to_string();
     if translation_target.is_empty() || translation_target.chars().count() > 80 {
-        return Err(
+        return Err(AppError::Other(
             "Translation target language must not be empty and cannot exceed 80 characters"
                 .to_string(),
-        );
+        ));
     }
     let mut excluded_apps = excluded_apps
         .into_iter()
@@ -101,7 +101,9 @@ pub async fn set_selection_assistant_config(
             .as_deref()
             .ok_or_else(|| "The separate selection model has no provider configured".to_string())?;
         if model.is_none() {
-            return Err("Separate selection model name cannot be empty".to_string());
+            return Err(AppError::Other(
+                "Separate selection model name cannot be empty".to_string(),
+            ));
         }
         validate_provider(state.inner(), selected_provider)?;
     }
@@ -154,10 +156,11 @@ pub async fn set_selection_api_key(
     state: tauri::State<'_, AppState>,
     provider: String,
     api_key: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let provider = validate_provider(state.inner(), &provider)?;
     let user = llm_provider::keyring_user_for_provider(&provider);
     llm_provider::save_or_delete_api_key(&app_handle, &user, api_key.trim())
+        .map_err(AppError::Other)
 }
 
 #[tauri::command]
@@ -165,7 +168,7 @@ pub async fn get_selection_api_key(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     provider: String,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     let provider = validate_provider(state.inner(), &provider)?;
     Ok(llm_provider::load_api_key_for_provider(
         &app_handle,
@@ -177,18 +180,18 @@ pub async fn get_selection_api_key(
 pub async fn resize_selection_window(
     app_handle: tauri::AppHandle,
     expanded: bool,
-) -> Result<(), String> {
-    selection_service::set_selection_window_expanded(&app_handle, expanded)
+) -> Result<(), AppError> {
+    selection_service::set_selection_window_expanded(&app_handle, expanded).map_err(AppError::Other)
 }
 
 #[tauri::command]
-pub async fn hide_selection_assistant(app_handle: tauri::AppHandle) -> Result<(), String> {
-    selection_service::hide_selection_window(&app_handle)
+pub async fn hide_selection_assistant(app_handle: tauri::AppHandle) -> Result<(), AppError> {
+    selection_service::hide_selection_window(&app_handle).map_err(AppError::Other)
 }
 
 #[tauri::command]
-pub async fn start_selection_window_drag(app_handle: tauri::AppHandle) -> Result<(), String> {
-    selection_service::start_selection_window_drag(&app_handle)
+pub async fn start_selection_window_drag(app_handle: tauri::AppHandle) -> Result<(), AppError> {
+    selection_service::start_selection_window_drag(&app_handle).map_err(AppError::Other)
 }
 
 #[tauri::command]
