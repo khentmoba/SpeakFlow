@@ -924,6 +924,7 @@ async fn generate_content_inner(
         &assistant_manual_api_key,
         config.openai_auth_mode,
         config.xai_auth_mode,
+        config.claude_auth_mode,
     )
     .await
     .map_err(AppError::Other)?;

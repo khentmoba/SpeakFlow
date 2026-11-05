@@ -18,6 +18,8 @@ pub(super) const DEEPSEEK: &str = "deepseek";
 pub(super) const SILICONFLOW: &str = "siliconflow";
 pub(super) const OPENROUTER: &str = "openrouter";
 pub(super) const CUSTOM: &str = "custom";
+pub(super) const CLAUDE: &str = "claude";
+pub(super) const MAGPIE: &str = "magpie";
 
 /// 预置服务商列表（用于判断是否为预置）
 pub(super) const PRESET_PROVIDERS: &[&str] = &[
@@ -28,6 +30,8 @@ pub(super) const PRESET_PROVIDERS: &[&str] = &[
     SILICONFLOW,
     OPENROUTER,
     CUSTOM,
+    CLAUDE,
+    MAGPIE,
 ];
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -62,7 +66,7 @@ pub(super) static AUTO_REASONING_STRATEGY_CACHE: OnceLock<
     parking_lot::Mutex<HashMap<String, AutoReasoningStrategy>>,
 > = OnceLock::new();
 
-pub(super) fn default_endpoint_parts(provider: &str) -> (&'static str, &'static str, u64) {
+pub(crate) fn default_endpoint_parts(provider: &str) -> (&'static str, &'static str, u64) {
     match provider {
         OPENAI => ("https://api.openai.com", "gpt-6-luna", 10),
         XAI => ("https://api.x.ai", "grok-4.7", 10),
@@ -73,6 +77,10 @@ pub(super) fn default_endpoint_parts(provider: &str) -> (&'static str, &'static 
             "~deepseek/deepseek-flash-latest",
             10,
         ),
+        CLAUDE => ("https://api.anthropic.com", "claude-sonnet-4-5", 15),
+        // Magpie routes to whichever subscription it holds, so the model is
+        // chosen from its own list rather than guessed here.
+        MAGPIE => ("http://127.0.0.1:3425/v1", "", 30),
         CUSTOM => ("http://127.0.0.1:8000", "gpt-6-luna", 10),
         _ => ("https://api.cerebras.ai", "qwen-3.8-27b", 5),
     }
@@ -81,6 +89,7 @@ pub(super) fn default_endpoint_parts(provider: &str) -> (&'static str, &'static 
 pub(super) fn default_api_suffix(provider: &str) -> &'static str {
     match provider {
         OPENAI | XAI => "responses",
+        CLAUDE => "messages",
         _ => "chat/completions",
     }
 }
@@ -183,17 +192,25 @@ pub(super) fn endpoint_for_provider(
         let use_active_overrides = provider == config.resolve_active_provider();
         let use_custom_endpoint = provider == CUSTOM && use_active_overrides;
         let api_suffix = default_api_suffix(provider);
+        let api_format = if provider == CLAUDE {
+            ApiFormat::Anthropic
+        } else {
+            ApiFormat::OpenaiCompat
+        };
+        let api_url = if provider == CLAUDE {
+            normalize_anthropic_url(default_base_url)
+        } else if use_custom_endpoint {
+            normalize_api_url(
+                config.custom_base_url.as_deref(),
+                default_base_url,
+                api_suffix,
+            )
+        } else {
+            normalize_api_url(None, default_base_url, api_suffix)
+        };
         LlmEndpoint {
             provider: provider.to_string(),
-            api_url: if use_custom_endpoint {
-                normalize_api_url(
-                    config.custom_base_url.as_deref(),
-                    default_base_url,
-                    api_suffix,
-                )
-            } else {
-                normalize_api_url(None, default_base_url, api_suffix)
-            },
+            api_url,
             model: model_override
                 .or(config
                     .custom_model
@@ -204,7 +221,7 @@ pub(super) fn endpoint_for_provider(
                 .unwrap_or(default_model)
                 .to_string(),
             timeout_secs,
-            api_format: ApiFormat::OpenaiCompat,
+            api_format,
         }
     } else if let Some(cp) = config.custom_providers.iter().find(|p| p.id == provider) {
         let model = model_override.unwrap_or(&cp.model);
@@ -470,6 +487,7 @@ pub fn endpoint_for_preview(
             openai_auth_mode: None,
             openai_fast_mode: false,
             xai_auth_mode: None,
+            claude_auth_mode: None,
         }
     } else {
         LlmProviderConfig {
@@ -502,6 +520,7 @@ pub fn endpoint_for_preview(
             openai_auth_mode: None,
             openai_fast_mode: false,
             xai_auth_mode: None,
+            claude_auth_mode: None,
         }
     };
 

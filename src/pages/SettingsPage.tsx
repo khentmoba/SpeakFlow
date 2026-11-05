@@ -16,13 +16,16 @@ import {
   setSoundEnabled,
   setRecordingMode,
   hideMainWindow,
+  detectMagpie,
 } from "@/api/tauri";
+import type { MagpieStatus } from "@/api/tauri";
 import type { UserProfile } from "@/types";
 import { useRecordingContext } from "@/contexts/RecordingContext";
 import SecretInput from "@/components/SecretInput";
 import Kbd from "@/components/Kbd";
 import TitleBar from "@/components/TitleBar";
 import AppearanceSettingsSection from "@/components/settings/AppearanceSettingsSection";
+import AiModelsSettingsSection from "@/components/settings/AiModelsSettingsSection";
 import SystemSettingsSections from "@/components/settings/SystemSettingsSections";
 import AppProfileRulesSettingsSection from "@/components/settings/AppProfileRulesSettingsSection";
 import HistorySettingsSection from "@/components/settings/HistorySettingsSection";
@@ -34,6 +37,7 @@ import { PADDING, INPUT_METHOD_KEY, DEFAULT_HOTKEY, SOUND_ENABLED_KEY, RECORDING
 import { formatAsrEngineDescription, getAsrEngineCapability } from "@/lib/asrEngineCapabilities";
 import {
   llmProviderOptions,
+  magpieProviderOption,
 } from "@/lib/llmModelOptions";
 import { readLocalStorage, writeLocalStorage } from "@/lib/storage";
 import { useTranslation } from "react-i18next";
@@ -65,6 +69,7 @@ export default function SettingsPage({
   const navSections = useMemo(() => [
     { id: "appearance", labelKey: "settings.appearance" },
     { id: "engine", labelKey: "settings.engine" },
+    { id: "ai-models", labelKey: "settings.aiModels" },
     { id: "hotkey", labelKey: "settings.hotkeySection" },
     { id: "microphone", labelKey: "settings.microphone" },
     { id: "input", labelKey: "settings.inputMethod" },
@@ -320,11 +325,41 @@ export default function SettingsPage({
   const selectedDeviceMissing = Boolean(selectedInputDeviceName)
     && !inputDevices.some((device) => device.name === selectedInputDeviceName);
 
-  const allProviderOptions = useMemo(() => llmProviderOptions.map((opt) => ({
-    key: opt.key, label: opt.label, desc: t(opt.descKey), baseUrl: opt.baseUrl, isCustom: false,
-  })).concat((profile?.llm_provider.custom_providers ?? []).map((provider) => ({
-    key: provider.id, label: provider.name, desc: provider.api_format, baseUrl: provider.base_url, isCustom: true,
-  }))), [profile, t]);
+  const [magpieStatus, setMagpieStatus] = useState<MagpieStatus | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    detectMagpie()
+      .then((status) => {
+        if (!cancelled) setMagpieStatus(status);
+      })
+      .catch(() => {
+        // No Magpie on this machine, or the probe failed: leave it out.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const allProviderOptions = useMemo(() => {
+    const presets = llmProviderOptions.map((opt) => ({
+      key: opt.key, label: opt.label, desc: t(opt.descKey), baseUrl: opt.baseUrl, isCustom: false,
+    }));
+    // Magpie is only a choice when it is installed here, or already answering.
+    // Keep it listed while it is the saved provider so the card can explain
+    // that the gateway is down instead of leaving the picker blank.
+    if (magpieStatus?.available || profile?.llm_provider.active === magpieProviderOption.key) {
+      presets.push({
+        key: magpieProviderOption.key,
+        label: magpieProviderOption.label,
+        desc: t(magpieProviderOption.descKey),
+        baseUrl: magpieProviderOption.baseUrl,
+        isCustom: false,
+      });
+    }
+    return presets.concat((profile?.llm_provider.custom_providers ?? []).map((provider) => ({
+      key: provider.id, label: provider.name, desc: provider.api_format, baseUrl: provider.base_url, isCustom: true,
+    })));
+  }, [profile, t, magpieStatus]);
 
   const selectedRecordingModeOption = useMemo(
     () => findRecordingModeOption(recordingMode),
@@ -664,6 +699,13 @@ export default function SettingsPage({
               </div>
             )}
           </section>
+
+          <AiModelsSettingsSection
+            profile={profile}
+            allProviderOptions={allProviderOptions}
+            onRefreshProfile={refreshProfile}
+            magpieStatus={magpieStatus}
+          />
 
           {/* Hotkey */}
           <section

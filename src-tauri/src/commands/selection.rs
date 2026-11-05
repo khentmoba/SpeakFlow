@@ -487,6 +487,7 @@ async fn run_llm_action(
         &manual_api_key,
         config.openai_auth_mode,
         config.xai_auth_mode,
+        config.claude_auth_mode,
     )
     .await
     .map_err(AppError::Other)?;

@@ -4,6 +4,7 @@ pub mod assistant_service;
 pub mod audio_service;
 pub mod bing_search_service;
 pub mod browser_domain;
+pub mod claude_oauth_service;
 pub mod codex_oauth_service;
 pub mod context_awareness;
 pub mod download_service;
@@ -17,6 +18,7 @@ pub mod jev_service;
 pub mod jev_tasks;
 pub mod llm_client;
 pub mod llm_provider;
+pub mod magpie_service;
 mod oauth_callback;
 pub mod profile_service;
 pub mod qwen_hotword_service;
@@ -28,6 +30,8 @@ pub mod web_search_service;
 
 #[cfg(test)]
 mod ai_polish_transport_retry_tests;
+#[cfg(test)]
+mod claude_oauth_tests;
 #[cfg(test)]
 mod codex_oauth_prewarm_tests;
 #[cfg(test)]

@@ -28,6 +28,12 @@ const tauriMock = vi.hoisted(() => ({
   getOnlineAsrEndpoint: vi.fn(),
   getGrokBuildOauthStatus: vi.fn(),
   getOpenaiCodexOauthStatus: vi.fn(),
+  getClaudeOauthStatus: vi.fn(),
+  getAiPolishConfig: vi.fn(),
+  detectMagpie: vi.fn(),
+  startClaudeOauth: vi.fn(),
+  completeClaudeOauth: vi.fn(),
+  syncClaudeOauth: vi.fn(),
   getUserProfile: vi.fn(),
   getWebSearchApiKey: vi.fn(),
   hideMainWindow: vi.fn(),
@@ -266,6 +272,9 @@ function resetTauriMocks(exportPath: string | null = null) {
   });
   tauriMock.getGrokBuildOauthStatus.mockResolvedValue({ loggedIn: false });
   tauriMock.getOpenaiCodexOauthStatus.mockResolvedValue({ loggedIn: false });
+  tauriMock.getClaudeOauthStatus.mockResolvedValue({ loggedIn: false });
+  tauriMock.getAiPolishConfig.mockResolvedValue({ enabled: false, provider: "cerebras" });
+  tauriMock.detectMagpie.mockResolvedValue({ available: false, running: false, gatewayUrl: "http://127.0.0.1:3425/v1" });
   tauriMock.getUserProfile.mockResolvedValue(profile);
   tauriMock.getWebSearchApiKey.mockResolvedValue("");
   tauriMock.isAutostartEnabled.mockResolvedValue(false);

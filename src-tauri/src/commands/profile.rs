@@ -116,6 +116,7 @@ async fn extract_corrections_via_llm(
         &manual_key,
         config.openai_auth_mode,
         config.xai_auth_mode,
+        config.claude_auth_mode,
     )
     .await
     {
@@ -355,6 +356,7 @@ pub async fn set_llm_provider_config(
     assistant_provider_set: Option<bool>,
     openai_auth_mode: Option<crate::state::user_profile::OpenaiAuthMode>,
     xai_auth_mode: Option<crate::state::user_profile::XaiAuthMode>,
+    claude_auth_mode: Option<crate::state::user_profile::ClaudeAuthMode>,
 ) -> Result<(), AppError> {
     let active_uses_custom_endpoint = active == "custom"
         || state.with_profile(|profile| {
@@ -398,6 +400,9 @@ pub async fn set_llm_provider_config(
         }
         if let Some(mode) = xai_auth_mode {
             profile.llm_provider.xai_auth_mode = Some(mode);
+        }
+        if let Some(mode) = claude_auth_mode {
+            profile.llm_provider.claude_auth_mode = Some(mode);
         }
         // 自定义 provider → 同步到 custom_providers，不污染旧字段
         if let Some(cp) = profile
@@ -921,6 +926,7 @@ pub async fn run_correction_validation(
         &manual_api_key,
         config.openai_auth_mode,
         config.xai_auth_mode,
+        config.claude_auth_mode,
     )
     .await?;
     if api_key.is_empty() {

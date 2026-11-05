@@ -404,6 +404,7 @@ pub async fn polish_text_with_overrides_detailed(
         &manual_api_key,
         config.openai_auth_mode,
         config.xai_auth_mode,
+        config.claude_auth_mode,
     )
     .await
     .inspect_err(|e| {
@@ -607,6 +608,7 @@ pub async fn edit_text(
         &manual_key,
         config.openai_auth_mode,
         config.xai_auth_mode,
+        config.claude_auth_mode,
     )
     .await?;
     if api_key.is_empty() {

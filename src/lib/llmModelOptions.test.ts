@@ -75,6 +75,32 @@ describe("OpenRouter provider preset", () => {
   });
 });
 
+describe("Claude provider preset", () => {
+  it("registers Claude with its Anthropic endpoint and models", () => {
+    const claude = findLlmPreset("claude");
+    expect(isFixedPresetProvider("claude")).toBe(true);
+    expect(claude.baseUrl).toBe("https://api.anthropic.com");
+    expect(claude.defaultModel).toBe("claude-sonnet-4-5");
+    expect(claude.models).toContain("claude-sonnet-4-5");
+  });
+
+  it("resolves Magpie to its local gateway, but keeps it out of the default list", () => {
+    expect(llmProviderOptions.some((option) => option.key === "magpie")).toBe(false);
+    expect(isFixedPresetProvider("magpie")).toBe(true);
+    expect(findLlmPreset("magpie")).toMatchObject({
+      key: "magpie",
+      baseUrl: "http://127.0.0.1:3425/v1",
+    });
+    expect(resolveLlmBaseUrl("magpie", "https://stale.example")).toBe(
+      "http://127.0.0.1:3425/v1",
+    );
+  });
+
+  it("does not offer Antigravity, whose API is not OpenAI-compatible", () => {
+    expect(isFixedPresetProvider("antigravity")).toBe(false);
+  });
+});
+
 describe("current provider model defaults", () => {
   it.each([
     ["cerebras", "qwen-3.8-27b", ["qwen-3.8-27b", "gpt-oss-120b"]],

@@ -104,6 +104,9 @@ beforeEach(() => {
   });
   vi.mocked(tauri.getGrokBuildOauthStatus).mockResolvedValue({ loggedIn: false });
   vi.mocked(tauri.getOpenaiCodexOauthStatus).mockResolvedValue({ loggedIn: false });
+  vi.mocked(tauri.getClaudeOauthStatus).mockResolvedValue({ loggedIn: false });
+  vi.mocked(tauri.getAiPolishConfig).mockResolvedValue({ enabled: false, provider: "cerebras" });
+  vi.mocked(tauri.detectMagpie).mockResolvedValue({ available: false, running: false, gatewayUrl: "http://127.0.0.1:3425/v1" });
   vi.mocked(tauri.isAutostartEnabled).mockResolvedValue(false);
   vi.mocked(tauri.listAiModels).mockResolvedValue({ models: [], sourceUrl: "" });
   vi.mocked(tauri.listAlibabaAsrModels).mockResolvedValue({

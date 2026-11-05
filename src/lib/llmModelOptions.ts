@@ -66,7 +66,28 @@ export const llmProviderOptions: ReadonlyArray<LlmProviderOption> = [
     defaultModel: "~deepseek/deepseek-flash-latest",
     models: ["~deepseek/deepseek-flash-latest"],
   },
+  {
+    key: "claude",
+    label: "Anthropic Claude",
+    descKey: "settings.claudeDesc",
+    baseUrl: "https://api.anthropic.com",
+    defaultModel: "claude-sonnet-4-5",
+    models: ["claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+  },
 ];
+
+/**
+ * Magpie's local gateway. Kept out of `llmProviderOptions` because it is only
+ * offered when Magpie is installed or answering on this machine.
+ */
+export const magpieProviderOption: LlmProviderOption = {
+  key: "magpie",
+  label: "Magpie",
+  descKey: "settings.magpieDesc",
+  baseUrl: "http://127.0.0.1:3425/v1",
+  defaultModel: "",
+  models: [],
+};
 
 export const reasoningModeOptions: ReadonlyArray<{
   key: LlmReasoningMode;
@@ -81,11 +102,13 @@ export const reasoningModeOptions: ReadonlyArray<{
 ];
 
 export function findLlmPreset(key: string): LlmProviderOption {
+  if (key === magpieProviderOption.key) return magpieProviderOption;
   return llmProviderOptions.find((option) => option.key === key) ?? llmProviderOptions[0];
 }
 
 export function isFixedPresetProvider(key: string): boolean {
-  return llmProviderOptions.some((option) => option.key === key);
+  return key === magpieProviderOption.key
+    || llmProviderOptions.some((option) => option.key === key);
 }
 
 export function resolveLlmBaseUrl(key: string, customBaseUrl?: string | null): string {
