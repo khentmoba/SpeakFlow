@@ -6,6 +6,8 @@ use super::TARGET_SAMPLE_RATE;
 
 const MAX_RESAMPLE_CHUNK_FRAMES: usize = 4096;
 
+const INV_32768_F32: f32 = 1.0 / 32768.0;
+
 // ---------- 采样格式转换 ----------
 
 pub(super) fn f32_to_i16(s: f32) -> i16 {
@@ -85,7 +87,7 @@ impl ChunkedResampler {
             self.pending.extend(
                 input[offset..offset + take]
                     .iter()
-                    .map(|&sample| sample as f32 / 32768.0),
+                    .map(|&sample| sample as f32 * INV_32768_F32),
             );
             offset += take;
             self.process_ready_chunks(output)?;
@@ -117,11 +119,12 @@ impl ChunkedResampler {
             .ok_or_else(|| "rubato state missing".to_string())?;
 
         while self.pending.len() >= self.chunk_size {
-            let chunk: Vec<f32> = self.pending.drain(..self.chunk_size).collect();
+            let slice = &self.pending[..self.chunk_size];
             let out = resampler
-                .process(&[&chunk], None)
+                .process(&[slice], None)
                 .map_err(|e| format!("rubato resampling failed: {}", e))?;
             output.extend(out[0].iter().map(|&sample| f32_to_i16(sample)));
+            self.pending.drain(..self.chunk_size);
         }
         Ok(())
     }

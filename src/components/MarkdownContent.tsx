@@ -248,6 +248,7 @@ function restoreProtectedSegments(content: string, segments: string[]): string {
 }
 
 function addFallbackMacroDefinitions(content: string): string {
+  if (!content || !content.includes("$")) return content;
   return mapOutsideCode(content, (segment) => segment.replace(MATH_SEGMENT, (math) => {
     const delimiter = math.startsWith("$$") ? "$$" : "$";
     const body = math.slice(delimiter.length, -delimiter.length);
@@ -277,6 +278,9 @@ function addFallbackMacroDefinitions(content: string): string {
 }
 
 export function normalizeSelectionMath(content: string): string {
+  if (!content || (!content.includes("\\") && !content.includes("$"))) {
+    return content;
+  }
   return mapOutsideCode(content, (segment) => {
     let normalized = segment;
     normalized = normalizeDisplayEnvironments(normalized)

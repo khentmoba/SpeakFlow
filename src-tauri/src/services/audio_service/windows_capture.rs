@@ -42,6 +42,7 @@ pub(super) struct WindowsSpeechCapture {
     capture_client: AudioCaptureClient,
     event: Handle,
     raw_buffer: Vec<u8>,
+    chunk_buffer: Vec<i16>,
     // 必须最后析构，确保所有 COM 音频对象先释放。
     _com: ComGuard,
 }
@@ -78,6 +79,7 @@ impl WindowsSpeechCapture {
                         capture_client,
                         event,
                         raw_buffer,
+                        chunk_buffer: Vec::with_capacity(1024),
                     });
                 }
                 Err(err) => failures.push(format!("{category_name}: {err}")),
@@ -204,11 +206,11 @@ impl WindowsSpeechCapture {
                 continue;
             }
 
-            let mut chunk = Vec::with_capacity(read_frames);
+            self.chunk_buffer.clear();
             if info.flags.silent {
-                chunk.resize(read_frames, 0);
+                self.chunk_buffer.resize(read_frames, 0);
             } else {
-                chunk.extend(
+                self.chunk_buffer.extend(
                     self.raw_buffer[..read_frames * std::mem::size_of::<i16>()]
                         .chunks_exact(2)
                         .map(|bytes| i16::from_le_bytes([bytes[0], bytes[1]])),
@@ -217,7 +219,7 @@ impl WindowsSpeechCapture {
 
             let mut locked = samples.lock();
             warn_if_record_cap_reached(locked.len());
-            mix_to_mono_capped_i16(&chunk, 1, &mut locked, MAX_RECORD_SAMPLES);
+            mix_to_mono_capped_i16(&self.chunk_buffer, 1, &mut locked, MAX_RECORD_SAMPLES);
             total_frames += read_frames;
 
             if info.flags.data_discontinuity {

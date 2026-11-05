@@ -1,5 +1,4 @@
-import { useTranslation } from "react-i18next";
-import { Copy, Check, Clock } from "lucide-react";
+import i18n from "@/i18n";
 import type { HistoryItem } from "@/types";
 
 interface TranscriptionHistoryProps {
@@ -9,37 +8,74 @@ interface TranscriptionHistoryProps {
   onCopy: (text: string, id: string) => void;
 }
 
+const clockSvg = Object.freeze(
+  <span className="history-item-clock lucide lucide-clock" aria-hidden="true" />,
+);
+
+const checkSvg = Object.freeze(
+  <span className="animate-check-draw lucide lucide-check" aria-hidden="true" />,
+);
+
+const copySvg = Object.freeze(
+  <span className="lucide lucide-copy" aria-hidden="true" />,
+);
+
+const dotSpan = Object.freeze(<span className="history-item-dot" aria-hidden="true" />);
+
+const ANIMATION_DELAYS = Array.from({ length: 64 }, (_, i) =>
+  Object.freeze({ animationDelay: `${i * 50}ms` }));
+
+function getAnimationDelay(idx: number): { animationDelay: string } {
+  return idx < ANIMATION_DELAYS.length
+    ? ANIMATION_DELAYS[idx]
+    : { animationDelay: `${idx * 50}ms` };
+}
+
+const COPY_LABEL = i18n.t("common.copy");
+
 export default function TranscriptionHistory({
-  history, currentResult, copiedId, onCopy,
+  history,
+  currentResult,
+  copiedId,
+  onCopy,
 }: TranscriptionHistoryProps) {
-  const { t } = useTranslation();
   if (history.length === 0) return null;
 
-  const filtered = history.filter(
-    (item, idx) => !(idx === 0 && currentResult && item.text === currentResult),
-  );
+  const items = currentResult && history.length > 0 && history[0].text === currentResult
+    ? history.slice(1)
+    : history;
 
-  if (filtered.length === 0) return null;
+  if (items.length === 0) return null;
 
   return (
     <div className="history-list">
-      {filtered.map((item, idx) => (
-        <div key={item.id} className="history-item" data-history-id={item.id} style={{ animationDelay: `${idx * 50}ms` }}>
-          <span className="history-item-dot" aria-hidden="true" />
-          <div className="history-item-body">
-            <p className="history-item-text">{item.text}</p>
-            <span className="history-item-time">
-              <Clock size={10} className="history-item-clock" aria-hidden="true" />
-              <span>{item.timeDisplay}</span>
-            </span>
+      {items.map((item, idx) => {
+        const isCopied = copiedId === item.id;
+        return (
+          <div
+            key={item.id}
+            className="history-item"
+            data-history-id={item.id}
+            style={getAnimationDelay(idx)}
+          >
+            {dotSpan}
+            <div className="history-item-body">
+              <p className="history-item-text">{item.text}</p>
+              <span className="history-item-time">
+                {clockSvg}
+                {item.timeDisplay}
+              </span>
+            </div>
+            <button
+              aria-label={COPY_LABEL}
+              className="icon-btn icon-btn-sm"
+              onClick={() => onCopy(item.text, item.id)}
+            >
+              {isCopied ? checkSvg : copySvg}
+            </button>
           </div>
-          <button aria-label={t("common.copy")} className="icon-btn icon-btn-sm" onClick={() => onCopy(item.text, item.id)}>
-            {copiedId === item.id
-              ? <span className="animate-check-draw"><Check size={11} /></span>
-              : <Copy size={11} strokeWidth={1.5} />}
-          </button>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

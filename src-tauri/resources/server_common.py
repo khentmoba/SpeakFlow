@@ -167,7 +167,7 @@ def decode_inline_audio(
 
         samples = np.frombuffer(audio_bytes, dtype="<i2")
         duration = len(samples) / float(sample_rate)
-        audio = samples.astype(np.float32) / 32768.0
+        audio = np.multiply(samples, 1.0 / 32768.0, dtype=np.float32)
         return audio, duration
 
     if fmt == "wav":

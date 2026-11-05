@@ -223,7 +223,7 @@ fn passage<'a>(text: &'a str, prefix: &str, suffix: &str) -> Option<&'a str> {
 
 fn tokens(text: &str) -> Vec<&str> {
     let mut start = 0;
-    let mut result = Vec::new();
+    let mut result = Vec::with_capacity((text.len() / 4).max(8));
     let mut word = None;
     for (index, ch) in text.char_indices() {
         let next = ch.is_alphanumeric();
@@ -256,17 +256,39 @@ fn word_correction(from: &str, to: &str) -> Option<(String, String)> {
     {
         return None;
     }
-    let a: Vec<char> = from.chars().collect();
-    let b: Vec<char> = to.chars().collect();
-    let max_len = a.len().max(b.len());
-    if a.is_empty() || b.is_empty() || max_len > 24 {
+    let mut a_buf = ['\0'; 25];
+    let mut a_len = 0;
+    for ch in from.chars() {
+        if a_len >= 24 {
+            return None;
+        }
+        a_buf[a_len] = ch;
+        a_len += 1;
+    }
+    let mut b_buf = ['\0'; 25];
+    let mut b_len = 0;
+    for ch in to.chars() {
+        if b_len >= 24 {
+            return None;
+        }
+        b_buf[b_len] = ch;
+        b_len += 1;
+    }
+    if a_len == 0 || b_len == 0 {
         return None;
     }
-    let mut row: Vec<usize> = (0..=b.len()).collect();
-    for (i, left) in a.iter().enumerate() {
+    let a = &a_buf[..a_len];
+    let b = &b_buf[..b_len];
+    let max_len = a_len.max(b_len);
+
+    let mut row = [0usize; 26];
+    for (idx, val) in row[..=b.len()].iter_mut().enumerate() {
+        *val = idx;
+    }
+    for (i, &left) in a.iter().enumerate() {
         let mut diagonal = row[0];
         row[0] = i + 1;
-        for (j, right) in b.iter().enumerate() {
+        for (j, &right) in b.iter().enumerate() {
             let previous = row[j + 1];
             row[j + 1] = (diagonal + usize::from(left != right))
                 .min(row[j] + 1)
@@ -280,7 +302,7 @@ fn word_correction(from: &str, to: &str) -> Option<(String, String)> {
         });
     let distance = if swapped { 1 } else { row[b.len()] };
     let max_distance = if max_len >= 9 { 3 } else { 2 };
-    if distance == 0 || distance > max_distance || distance * 2 > a.len().max(b.len()) {
+    if distance == 0 || distance > max_distance || distance * 2 > max_len {
         return None;
     }
     Some((from.to_string(), to.to_string()))
