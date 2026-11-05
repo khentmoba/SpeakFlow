@@ -65,6 +65,8 @@ For China mainland downloads, set `HF_ENDPOINT=https://hf-mirror.com` before pre
 
 Run from the repository root:
 
+`pnpm verify` runs the local equivalent of CI's formal-contract, Python, frontend and Rust format/lint checks. Run it before pushing. It does not run `cargo test` or `pnpm audit`; CI runs those.
+
 `pnpm check` starts with Git's whitespace check of staged and unstaged changes
 against `HEAD`. Stage new files before running it so Git includes their added
 lines. Editors that support EditorConfig apply the repository's whitespace rules;
