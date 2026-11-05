@@ -1296,8 +1296,8 @@
       "evidence": [
         "src-tauri/src/commands/hotkey.rs",
         "formal/evidence/hotkey.md",
-        "src-tauri/src/commands/hotkey.rs#registration_ids_are_not_reused_for_the_same_hotkey",
-        "src-tauri/src/commands/hotkey.rs#mode_changes_replace_gates_even_without_backend_migration",
+        "src-tauri/src/commands/hotkey/tests.rs#registration_ids_are_not_reused_for_the_same_hotkey",
+        "src-tauri/src/commands/hotkey/tests.rs#mode_changes_replace_gates_even_without_backend_migration",
         "src-tauri/src/commands/hotkey/start_owner.rs#release_before_async_start_rejects_late_bind"
       ],
       "assumptions": "OS key delivery/debounce clock are inputs; all three event kinds get separate configurations; bounded representative registration permutations are explicit."

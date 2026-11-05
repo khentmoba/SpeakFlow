@@ -104,3 +104,7 @@ debug = 1
 lto = true
 codegen-units = 1
 strip = "symbols"
+
+[lints.clippy]
+unwrap_used = "deny"
+undocumented_unsafe_blocks = "deny"

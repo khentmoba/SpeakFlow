@@ -1,0 +1,17 @@
+# RustSec advisories that remain in src-tauri/Cargo.lock after the November 2026 refresh.
+# Each one needs an upstream or major-version upgrade that this change does not make.
+# Remove an entry when its fix lands in the lockfile.
+[advisories]
+ignore = [
+    # quick-xml 0.38 comes from plist via tauri; quick-xml 0.30 is a build dependency of xcb via xcap.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+    # rkyv 0.7 comes from rust_decimal via byte-unit via tauri-plugin-log. SpeakFlow does not read rkyv archives.
+    "RUSTSEC-2026-0235",
+    # zip 2.x is a direct dependency, but engine extraction walks entries and uses enclosed_name instead of ZipArchive::extract.
+    # zip 4.x comes from tauri-plugin-updater.
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
+    "RUSTSEC-2026-0429",
+]

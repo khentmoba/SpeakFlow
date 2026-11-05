@@ -348,6 +348,7 @@ mod tests {
         };
         use windows_sys::Win32::System::Threading::{GetCurrentProcess, SetProcessWorkingSetSize};
 
+        // SAFETY: GetCurrentProcess returns a pseudo-handle for this process and takes no arguments.
         let process = unsafe { GetCurrentProcess() };
 
         let mut simulated_workload: Vec<Vec<u8>> =
@@ -358,7 +359,9 @@ mod tests {
             chunk[last] = 2;
         }
 
+        // SAFETY: PROCESS_MEMORY_COUNTERS is a plain C struct of integers, so the all-zero bit pattern is a valid value.
         let mut pmc_before: PROCESS_MEMORY_COUNTERS = unsafe { std::mem::zeroed() };
+        // SAFETY: process is this process's pseudo-handle, and pmc_before is a valid writable struct whose size is passed.
         unsafe {
             K32GetProcessMemoryInfo(
                 process,
@@ -371,12 +374,15 @@ mod tests {
         drop(simulated_workload);
 
         let start = Instant::now();
+        // SAFETY: process is this process's pseudo-handle, and the size limits are plain integers.
         unsafe {
             SetProcessWorkingSetSize(process, usize::MAX, usize::MAX);
         }
         let trim_duration = start.elapsed();
 
+        // SAFETY: PROCESS_MEMORY_COUNTERS is a plain C struct of integers, so the all-zero bit pattern is a valid value.
         let mut pmc_after: PROCESS_MEMORY_COUNTERS = unsafe { std::mem::zeroed() };
+        // SAFETY: process is this process's pseudo-handle, and pmc_after is a valid writable struct whose size is passed.
         unsafe {
             K32GetProcessMemoryInfo(
                 process,

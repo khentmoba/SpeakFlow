@@ -100,12 +100,14 @@ fn capture_field(sources: &ContextSources) -> Option<(Option<String>, Option<Str
         use windows_sys::Win32::System::Com::{
             CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED,
         };
+        // SAFETY: The reserved argument is null as required. A negative result means this thread was not initialized, so no uninitialize is owed.
         if unsafe { CoInitializeEx(std::ptr::null(), COINIT_MULTITHREADED as u32) } < 0 {
             return None;
         }
         struct ComGuard;
         impl Drop for ComGuard {
             fn drop(&mut self) {
+                // SAFETY: Runs only from the guard created after CoInitializeEx succeeded on this thread, so the call balances that initialization.
                 unsafe { CoUninitialize() };
             }
         }

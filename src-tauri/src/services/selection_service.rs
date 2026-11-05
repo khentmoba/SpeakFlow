@@ -101,6 +101,7 @@ fn selection_context_matches(
 pub(crate) fn foreground_window_id() -> Option<isize> {
     use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 
+    // SAFETY: GetForegroundWindow takes no arguments and returns a window handle value or null.
     let window = unsafe { GetForegroundWindow() };
     (!window.is_null()).then_some(window as isize)
 }
@@ -191,9 +192,11 @@ pub fn hide_selection_window(app_handle: &tauri::AppHandle) -> Result<(), String
         let hwnd = window
             .hwnd()
             .map_err(|error| format!("Failed to get selection assistant HWND: {error}"))?;
+        // SAFETY: hwnd is the live window handle Tauri just returned; ShowWindow takes only that handle and a flag.
         unsafe {
             ShowWindow(hwnd.0, SW_HIDE);
         }
+        // SAFETY: hwnd is the live window handle Tauri just returned; IsWindowVisible takes only that handle.
         if unsafe { IsWindowVisible(hwnd.0) } != 0 {
             let detail = tauri_error
                 .map(|error| format!("Tauri={error}; window remains visible after Win32 SW_HIDE"))
@@ -233,6 +236,7 @@ pub fn start_selection_window_drag(app_handle: &tauri::AppHandle) -> Result<(), 
             .hwnd()
             .map_err(|error| format!("Failed to get selection assistant HWND: {error}"))?;
         let mut cursor = POINT { x: 0, y: 0 };
+        // SAFETY: cursor is a valid writable POINT, and the window handle is the live handle Tauri returned above.
         unsafe {
             if GetCursorPos(&mut cursor) == 0 {
                 return window
@@ -495,6 +499,7 @@ fn monitor_work_area(anchor: Anchor) -> Option<WorkArea> {
         GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
     };
 
+    // SAFETY: MonitorFromPoint takes the POINT by value and a flag, and dereferences no caller pointers.
     unsafe {
         let monitor = MonitorFromPoint(
             POINT {
@@ -741,7 +746,8 @@ mod window_position_tests {
     }
 }
 
-#[cfg(all(test, target_os = "windows"))]
+#[cfg(test)]
+#[cfg(target_os = "windows")]
 mod selection_gesture_tests {
     use super::{
         capture_mouse_hook_event, Anchor, DoubleClickLimits, HookEvent, MouseSample,
@@ -1184,6 +1190,7 @@ fn apply_no_activate_style(window: &tauri::WebviewWindow) {
     };
 
     if let Ok(hwnd) = window.hwnd() {
+        // SAFETY: hwnd is the live window handle Tauri just returned; the style calls take only that handle and integer flags.
         unsafe {
             let style = GetWindowLongPtrW(hwnd.0, GWL_EXSTYLE);
             SetWindowLongPtrW(
@@ -1205,6 +1212,7 @@ fn show_without_activation(window: &tauri::WebviewWindow) {
         SW_SHOWNOACTIVATE,
     };
     if let Ok(hwnd) = window.hwnd() {
+        // SAFETY: hwnd is the live window handle Tauri just returned; the calls take only that handle and integer flags.
         unsafe {
             ShowWindow(hwnd.0, SW_SHOWNOACTIVATE);
             SetWindowPos(
@@ -1390,6 +1398,7 @@ fn windows_double_click_limits() -> DoubleClickLimits {
         GetSystemMetrics, SM_CXDOUBLECLK, SM_CYDOUBLECLK,
     };
 
+    // SAFETY: GetDoubleClickTime takes no arguments and cannot fail.
     unsafe {
         DoubleClickLimits {
             max_delay_ms: GetDoubleClickTime(),
@@ -1571,6 +1580,7 @@ fn run_hook_message_loop() {
         DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx,
         WH_KEYBOARD_LL, WH_MOUSE_LL,
     };
+    // SAFETY: The hook procedures are static extern "system" callbacks with the signatures these hooks require; each handle is unhooked on the failure path and after the loop exits.
     unsafe {
         let mouse = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook), std::ptr::null_mut(), 0);
         let keyboard =
@@ -1731,10 +1741,13 @@ fn point_inside_overlay(app_handle: &tauri::AppHandle, point: Anchor) -> bool {
     let Ok(hwnd) = window.hwnd() else {
         return false;
     };
+    // SAFETY: hwnd is the live window handle Tauri just returned; IsWindowVisible takes only that handle.
     if unsafe { IsWindowVisible(hwnd.0) } == 0 {
         return false;
     }
+    // SAFETY: RECT is a plain C struct of integers, so the all-zero bit pattern is a valid value.
     let mut rect: RECT = unsafe { std::mem::zeroed() };
+    // SAFETY: rect is a valid writable RECT, and hwnd is the live handle Tauri returned.
     let valid = unsafe { GetWindowRect(hwnd.0, &mut rect) != 0 };
     valid
         && point.x >= rect.left
@@ -1757,6 +1770,7 @@ fn foreground_app_source(excluded_apps: &[String]) -> Option<String> {
         WS_CAPTION,
     };
 
+    // SAFETY: The foreground handle is null-checked before use, and the remaining calls take that handle or valid writable locals.
     unsafe {
         let window = GetForegroundWindow();
         if window.is_null() {
