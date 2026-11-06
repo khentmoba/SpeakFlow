@@ -153,7 +153,14 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
                 // Keep a line break and the indentation after it; collapse only
                 // horizontal space at the seam.
                 if token.text.contains('\n') {
-                    out.push_str(&token.text);
+                    let cut = out.trim_end_matches([' ', '\t']).len();
+                    out.truncate(cut);
+                    // A break already ending the output is not repeated.
+                    let mut run = token.text.as_str();
+                    while out.ends_with('\n') && run.starts_with('\n') {
+                        run = &run[1..];
+                    }
+                    out.push_str(run);
                     seam = false;
                     capitalize_next = false;
                 }
@@ -209,6 +216,7 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
                 .is_some_and(|c| is_terminator(c) || c == '\n');
 
         // Punctuation that belonged to the filler.
+        let mut pair_closed = false;
         let mut next = index + 1;
         while next < tokens.len() {
             let candidate = &tokens[next];
@@ -219,7 +227,11 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
                 break;
             };
             let closes_empty_pair = opener.and_then(closing_for) == Some(c);
-            let belongs_to_filler = is_separator(c)
+            // After a pair closed, a separator only collapses a doubled one:
+            // "He said (um), and left" keeps its comma.
+            let separator_belongs =
+                is_separator(c) && (!pair_closed || out.ends_with([',', ';', ':']));
+            let belongs_to_filler = separator_belongs
                 || (opener.is_some() && is_terminator(c))
                 || (at_sentence_start && is_terminator(c))
                 || closes_empty_pair;
@@ -239,11 +251,15 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
                 if c == '"' {
                     straight_quote_open = false;
                 }
+                pair_closed = true;
                 // The space before the opener went with the pair.
                 let cut = out.trim_end_matches([' ', '\t']).len();
                 out.truncate(cut);
-                // The pair is gone; a second closer must not consume more.
-                opener = None;
+                // A nested pair is now the innermost one: "((um))" leaves nothing.
+                opener = out
+                    .chars()
+                    .last()
+                    .filter(|c| is_opening_delimiter(*c) && (*c != '"' || straight_quote_open));
             }
             next += 1;
         }
@@ -253,8 +269,9 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
         let ends_sentence = next_visible
             .is_none_or(|t| t.kind == Kind::Punct && first_char(t).is_some_and(is_terminator));
         if ends_sentence {
-            trim_trailing_separator(&mut out);
+            // The dash first: "Yes, — um." must not keep the comma it exposed.
             trim_trailing_dash(&mut out);
+            trim_trailing_separator(&mut out);
         }
         // "I think — um — yes" keeps one dash; "Um — hello" drops the leading one.
         if let Some(position) = tokens[next..]
@@ -564,6 +581,38 @@ mod tests {
     fn trailing_dash_runs_are_cleaned_completely() {
         assert_eq!(clean("Yes -- um."), "Yes.");
         assert_eq!(clean("Yes \u{2014} um \u{2014}."), "Yes.");
+    }
+
+    #[test]
+    fn a_closed_pair_keeps_the_comma_after_it() {
+        assert_eq!(
+            clean("He said (um), and then left."),
+            "He said, and then left."
+        );
+        assert_eq!(
+            clean("She replied \"um\", and walked off."),
+            "She replied, and walked off."
+        );
+        assert_eq!(clean("Fine (uh); next."), "Fine; next.");
+        // A doubled separator still collapses.
+        assert_eq!(clean("Wait, um, what?"), "Wait, what?");
+    }
+
+    #[test]
+    fn nested_empty_pairs_disappear() {
+        assert_eq!(clean("He said ((um))."), "He said.");
+        assert_eq!(clean("He said (\"um\")."), "He said.");
+        assert_eq!(clean("He said \"(um)\"."), "He said.");
+    }
+
+    #[test]
+    fn a_dash_trim_does_not_leave_an_exposed_comma() {
+        assert_eq!(clean("Yes, \u{2014} um."), "Yes.");
+    }
+
+    #[test]
+    fn no_indentation_is_left_before_a_break() {
+        assert_eq!(clean("Line one\n  um\nLine two"), "Line one\nLine two");
     }
 
     #[test]
