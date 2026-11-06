@@ -115,6 +115,15 @@ pub struct HistoryStats {
     pub success: u64,
     pub failed: u64,
     pub total_characters: u64,
+    /// Space-separated tokens across successful dictations. Scripts without
+    /// spaces count as one token per dictation, so this is an estimate.
+    pub total_words: u64,
+    /// Words typed at 40 wpm minus the time actually spent speaking.
+    pub estimated_seconds_saved: u64,
+    /// Distinct local calendar days with at least one dictation.
+    pub active_days: u64,
+    /// Consecutive days ending today, or yesterday when today is still empty.
+    pub current_streak_days: u64,
     pub asr: LatencyStats,
     pub polish: LatencyStats,
     pub total_latency: LatencyStats,
@@ -707,16 +716,76 @@ fn stats_data_version(connection: &Connection) -> Result<i64, String> {
         .map_err(|error| format!("Failed to read history data version: {error}"))
 }
 
+/// Average typing speed used for the time-saved estimate.
+const TYPING_WORDS_PER_MINUTE: f64 = 40.0;
+
+fn estimated_seconds_saved(words: i64, spoken_seconds: f64) -> u64 {
+    let typing_seconds = words.max(0) as f64 / TYPING_WORDS_PER_MINUTE * 60.0;
+    (typing_seconds - spoken_seconds.max(0.0)).max(0.0).round() as u64
+}
+
+/// Distinct local calendar days that contain at least one dictation, newest
+/// first.
+fn active_days(connection: &Connection) -> Result<Vec<chrono::NaiveDate>, String> {
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT DISTINCT date(created_at / 1000, 'unixepoch', 'localtime')
+            FROM transcription_history
+            ORDER BY 1 DESC
+            "#,
+        )
+        .map_err(|error| format!("Failed to prepare history day query: {error}"))?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, Option<String>>(0))
+        .map_err(|error| format!("Failed to query history days: {error}"))?;
+    let mut days = Vec::new();
+    for row in rows {
+        let value = row.map_err(|error| format!("Failed to read history day: {error}"))?;
+        if let Some(day) = value
+            .as_deref()
+            .and_then(|text| chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d").ok())
+        {
+            days.push(day);
+        }
+    }
+    Ok(days)
+}
+
+/// Counts consecutive days ending today, or yesterday when today is still empty
+/// so a streak is not lost before the user has dictated.
+fn current_streak(days: &[chrono::NaiveDate]) -> u64 {
+    let Some(latest) = days.first() else {
+        return 0;
+    };
+    let today = chrono::Local::now().date_naive();
+    if (today - *latest).num_days() > 1 {
+        return 0;
+    }
+    let mut streak = 1;
+    for pair in days.windows(2) {
+        if (pair[0] - pair[1]).num_days() != 1 {
+            break;
+        }
+        streak += 1;
+    }
+    streak
+}
+
 fn read_stats(connection: &Connection) -> Result<HistoryStats, String> {
     #[cfg(test)]
     tests::record_stats_scan();
-    let (total, success, failed, total_characters) = connection
+    let (total, success, failed, total_characters, total_words, spoken_seconds) = connection
         .query_row(
             r#"
                 SELECT COUNT(*),
                        SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END),
                        SUM(CASE WHEN status != 'success' THEN 1 ELSE 0 END),
-                       SUM(LENGTH(text))
+                       SUM(LENGTH(text)),
+                       SUM(CASE WHEN LENGTH(TRIM(text)) > 0
+                                THEN LENGTH(TRIM(text)) - LENGTH(REPLACE(TRIM(text), ' ', '')) + 1
+                                ELSE 0 END),
+                       SUM(CASE WHEN status = 'success' THEN COALESCE(duration_sec, 0) ELSE 0 END)
                 FROM transcription_history
                 "#,
             [],
@@ -726,10 +795,14 @@ fn read_stats(connection: &Connection) -> Result<HistoryStats, String> {
                     row.get::<_, Option<i64>>(1)?.unwrap_or_default(),
                     row.get::<_, Option<i64>>(2)?.unwrap_or_default(),
                     row.get::<_, Option<i64>>(3)?.unwrap_or_default(),
+                    row.get::<_, Option<i64>>(4)?.unwrap_or_default(),
+                    row.get::<_, Option<f64>>(5)?.unwrap_or_default(),
                 ))
             },
         )
         .map_err(|error| format!("Failed to calculate history overview stats: {error}"))?;
+
+    let days = active_days(connection)?;
 
     let mut asr = Vec::new();
     let mut polish = Vec::new();
@@ -761,6 +834,10 @@ fn read_stats(connection: &Connection) -> Result<HistoryStats, String> {
         success: u64::try_from(success).unwrap_or_default(),
         failed: u64::try_from(failed).unwrap_or_default(),
         total_characters: u64::try_from(total_characters).unwrap_or_default(),
+        total_words: u64::try_from(total_words).unwrap_or_default(),
+        estimated_seconds_saved: estimated_seconds_saved(total_words, spoken_seconds),
+        active_days: days.len() as u64,
+        current_streak_days: current_streak(&days),
         asr: latency_stats(asr),
         polish: latency_stats(polish),
         total_latency: latency_stats(total_latency),

@@ -520,6 +520,15 @@
     ],
     "commands::magpie::detect_magpie": [
       "providers"
+    ],
+    "commands::dictation_tools::get_dictation_tools": [
+      "engine"
+    ],
+    "commands::dictation_tools::set_dictation_tools": [
+      "engine"
+    ],
+    "commands::file_transcription::transcribe_audio_file": [
+      "engine"
     ]
   },
   "events": {
@@ -2310,6 +2319,9 @@
     "commands::ai_polish::get_ai_polish_config": "src-tauri/src/commands/ai_polish.rs#fn get_ai_polish_config(",
     "commands::claude_oauth::start_claude_oauth": "src-tauri/src/commands/claude_oauth.rs#fn start_claude_oauth(",
     "commands::claude_oauth::complete_claude_oauth": "src-tauri/src/commands/claude_oauth.rs#fn complete_claude_oauth(",
-    "commands::magpie::detect_magpie": "src-tauri/src/commands/magpie.rs#fn detect_magpie("
+    "commands::magpie::detect_magpie": "src-tauri/src/commands/magpie.rs#fn detect_magpie(",
+    "commands::dictation_tools::get_dictation_tools": "src-tauri/src/commands/dictation_tools.rs#fn get_dictation_tools(",
+    "commands::dictation_tools::set_dictation_tools": "src-tauri/src/commands/dictation_tools.rs#fn set_dictation_tools(",
+    "commands::file_transcription::transcribe_audio_file": "src-tauri/src/commands/file_transcription.rs#fn transcribe_audio_file("
   }
 }

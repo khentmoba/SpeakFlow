@@ -307,6 +307,15 @@ pub(super) fn build_system_prompt_with_base(
         prompt.push_str("\n</app_preferences>");
     }
 
+    if let Some(tone) = crate::utils::paths::read_tone_mode().instruction() {
+        prompt.push_str("\n\n<tone_preference priority=\"high\">\n");
+        prompt.push_str(&crate::utils::foreground::wrap_xml_cdata(
+            "preference",
+            tone,
+        ));
+        prompt.push_str("\n</tone_preference>");
+    }
+
     if include_output_contract {
         prompt.push_str("\n\n<final_instruction>\nCorrect and organize the following <asr_text> according to <structure_policy>; leave uncertain words unchanged and output only the specified JSON object.\n</final_instruction>");
     }

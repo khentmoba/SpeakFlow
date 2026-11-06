@@ -22,9 +22,11 @@ import {
   getTranscriptionHistoryStats,
   listTranscriptionHistory,
   reprocessTranscriptionHistory,
+  transcribeAudioFile,
 } from "@/api/tauri";
 import { prefersReducedMotion } from "@/lib/motion";
 import type {
+  FileTranscriptionResult,
   PersistentHistoryRecord,
   PersistentHistoryStats,
   RecordingMode,
@@ -83,7 +85,9 @@ export default function HistoryPage({
   const [workingId, setWorkingId] = useState<number | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
   const deletionInProgress = useRef(false);
-  const [exportFormat, setExportFormat] = useState<"json" | "markdown">("markdown");
+  const [exportFormat, setExportFormat] = useState<"json" | "markdown" | "csv" | "srt" | "vtt">("markdown");
+  const [fileResult, setFileResult] = useState<FileTranscriptionResult | null>(null);
+  const [fileBusy, setFileBusy] = useState(false);
   const requestId = useRef(0);
   const itemCount = useRef(0);
   const pageSize = 50;
@@ -166,6 +170,15 @@ export default function HistoryPage({
     { label: t("historyPage.totalLatency"), value: stats.totalLatency },
   ] : [], [stats, t]);
 
+  // Saved time is an estimate, so it is rounded to the unit a person would say
+  // out loud rather than shown to the second.
+  const savedTime = useMemo(() => {
+    const seconds = stats?.estimatedSecondsSaved ?? 0;
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
+    return `${(seconds / 3600).toFixed(1)} h`;
+  }, [stats?.estimatedSecondsSaved]);
+
   const copyRecord = async (record: PersistentHistoryRecord) => {
     const text = record.text || record.originalText;
     if (!text) return;
@@ -228,6 +241,22 @@ export default function HistoryPage({
     }
   };
 
+  const transcribeFile = async () => {
+    setFileBusy(true);
+    try {
+      const result = await transcribeAudioFile();
+      if (result) {
+        setFileResult(result);
+        toast.success(t("historyPage.fileDone", { name: result.fileName }));
+        void load(true);
+      }
+    } catch (error) {
+      toast.error(t("historyPage.fileFailed", { error: errorMessage(error) }));
+    } finally {
+      setFileBusy(false);
+    }
+  };
+
   return (
     <div className="page-root">
       <main className={`page-content history-page ${animClass}`.trim()}>
@@ -242,15 +271,63 @@ export default function HistoryPage({
             />
           </label>
           <div className="history-export-control">
-            <select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as "json" | "markdown")}>
+            <select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as "json" | "markdown" | "csv" | "srt" | "vtt")}>
               <option value="markdown">{t("historyPage.exportMarkdown")}</option>
               <option value="json">{t("historyPage.exportJson")}</option>
+              <option value="csv">{t("historyPage.exportCsv")}</option>
+              <option value="srt">{t("historyPage.exportSrt")}</option>
+              <option value="vtt">{t("historyPage.exportVtt")}</option>
             </select>
             <button className="icon-btn" aria-label={t("historyPage.export")} onClick={() => void exportHistory()}>
               <Download size={14} />
             </button>
           </div>
+          <button
+            className="btn-ghost"
+            disabled={fileBusy}
+            onClick={() => void transcribeFile()}
+            aria-label={t("historyPage.transcribeFile")}
+          >
+            <FileAudio size={14} />
+            {fileBusy ? t("historyPage.fileBusy") : t("historyPage.transcribeFile")}
+          </button>
         </section>
+
+        {fileResult && (
+          <section className="history-metrics" aria-label={t("historyPage.fileResultTitle")}>
+            <div className="history-metric history-metric-primary">
+              <strong>{fileResult.fileName}</strong>
+              <span>{t("historyPage.fileResultTitle")}</span>
+              <small>
+                {t("historyPage.fileDuration", {
+                  seconds: Math.round(fileResult.durationSec),
+                })}
+                {fileResult.language ? ` · ${fileResult.language}` : ""}
+              </small>
+            </div>
+            <div className="settings-column" style={{ flex: 1, minWidth: 0 }}>
+              <p className="settings-hint settings-hint-flush" style={{ whiteSpace: "pre-wrap" }}>
+                {fileResult.text}
+              </p>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  className="btn-ghost"
+                  onClick={() => {
+                    void copyToClipboard(fileResult.text)
+                      .then(() => toast.success(t("common.copied")))
+                      .catch(() => toast.error(t("common.copyFailed")));
+                  }}
+                >
+                  <Copy size={13} />
+                  {t("historyPage.copy")}
+                </button>
+                <button className="btn-ghost" onClick={() => setFileResult(null)}>
+                  {t("historyPage.fileDismiss")}
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="history-filter-row">
           <div className="history-filter-group" role="group" aria-label={t("historyPage.allModes")}>
@@ -270,8 +347,19 @@ export default function HistoryPage({
         {stats && stats.total > 0 && (
           <section className="history-metrics" aria-label={t("historyPage.total", { count: stats.total })}>
             <div className="history-metric history-metric-primary">
-              <strong>{stats.total.toLocaleString()}</strong>
-              <span>{t("historyPage.characters", { count: stats.totalCharacters.toLocaleString() })}</span>
+              <strong>{stats.totalWords.toLocaleString()}</strong>
+              <span>{t("historyPage.words", { count: stats.totalWords.toLocaleString() })}</span>
+              <small>{t("historyPage.characters", { count: stats.totalCharacters.toLocaleString() })}</small>
+            </div>
+            <div className="history-metric">
+              <strong>{savedTime}</strong>
+              <span>{t("historyPage.timeSaved")}</span>
+              <small>{t("historyPage.total", { count: stats.total.toLocaleString() })}</small>
+            </div>
+            <div className="history-metric">
+              <strong>{stats.activeDays.toLocaleString()}</strong>
+              <span>{t("historyPage.activeDays")}</span>
+              <small>{t("historyPage.streak", { count: stats.currentStreakDays })}</small>
             </div>
             {latencyCards.map(({ label, value }) => (
               <div className="history-metric" key={label}>

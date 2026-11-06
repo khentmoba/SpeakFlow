@@ -34,6 +34,7 @@ import AiModelsSettingsSection from "@/components/settings/AiModelsSettingsSecti
 import SystemSettingsSections from "@/components/settings/SystemSettingsSections";
 import AppProfileRulesSettingsSection from "@/components/settings/AppProfileRulesSettingsSection";
 import HistorySettingsSection from "@/components/settings/HistorySettingsSection";
+import DictationToolsSettingsSection from "@/components/settings/DictationToolsSettingsSection";
 import GpuIdleUnloadControl from "@/components/settings/GpuIdleUnloadControl";
 import { SettingsReveal } from "@/components/settings/SettingsReveal";
 import R2T2SettingsSection from "@/components/settings/R2T2SettingsSection";
@@ -87,6 +88,7 @@ export default function SettingsPage({
     { id: "hotkey", labelKey: "settings.hotkeySection" },
     { id: "microphone", labelKey: "settings.microphone" },
     { id: "input", labelKey: "settings.inputMethod" },
+    { id: "dictation-tools", labelKey: "settings.dictationTools" },
     { id: "app-profiles", labelKey: "settings.appProfiles" },
     { id: "history-settings", labelKey: "settings.historySettings" },
     { id: "vocabulary", labelKey: "settings.vocabulary" },
@@ -1139,11 +1141,12 @@ export default function SettingsPage({
             </div>
           </section>
 
+          <DictationToolsSettingsSection />
+
           <AppProfileRulesSettingsSection
             profile={profile}
             onSaved={() => { void refreshProfile(); }}
           />
-
           <HistorySettingsSection
             profile={profile}
             onSaved={() => { void refreshProfile(); }}

@@ -92,6 +92,7 @@ pub async fn run_download(
     app_handle: &tauri::AppHandle,
     state: &AppState,
 ) -> Result<String, AppError> {
+    crate::services::local_only::ensure("Download a model").map_err(AppError::Other)?;
     // 获取下载脚本路径，清理 Windows \\?\ 前缀
     let download_script = paths::get_download_script_path(app_handle);
     let download_script_str = paths::strip_win_prefix(&download_script);

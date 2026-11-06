@@ -474,6 +474,86 @@ fn read_bool_setting(key: &str, default: bool) -> bool {
         .unwrap_or(default)
 }
 
+/// Spoken shortcuts and the text they insert. Malformed entries are dropped
+/// rather than failing the whole load.
+pub fn read_snippets() -> Vec<crate::services::snippets::Snippet> {
+    let config = read_engine_json();
+    let Some(entries) = config.get("snippets").and_then(|value| value.as_array()) else {
+        return Vec::new();
+    };
+    let parsed = entries.iter().filter_map(|entry| {
+        serde_json::from_value::<crate::services::snippets::Snippet>(entry.clone()).ok()
+    });
+    crate::services::snippets::normalize(parsed)
+}
+
+pub fn write_snippets(
+    snippets: &[crate::services::snippets::Snippet],
+) -> Result<(), std::io::Error> {
+    let normalized = crate::services::snippets::normalize(snippets.iter().cloned());
+    update_engine_json(|obj| {
+        if normalized.is_empty() {
+            if let Some(map) = obj.as_object_mut() {
+                map.remove("snippets");
+            }
+        } else {
+            obj["snippets"] = serde_json::json!(normalized);
+        }
+    })
+}
+
+/// The writing style applied by AI polish. Unknown values read as `Off`.
+pub fn read_tone_mode() -> crate::services::tone_modes::ToneMode {
+    crate::services::tone_modes::ToneMode::parse(
+        read_engine_json()
+            .get("tone_mode")
+            .and_then(|value| value.as_str())
+            .unwrap_or("off"),
+    )
+}
+
+pub fn write_tone_mode(mode: crate::services::tone_modes::ToneMode) -> Result<(), std::io::Error> {
+    update_engine_json_field("tone_mode", mode.as_str())
+}
+
+/// Collapse repeated words and phrases in the local transcript. On by default:
+/// it only removes text that speech recognition duplicated.
+pub fn read_tidy_transcript() -> bool {
+    read_bool_setting("tidy_transcript", true)
+}
+
+pub fn write_tidy_transcript(enabled: bool) -> Result<(), std::io::Error> {
+    update_engine_json(|obj| obj["tidy_transcript"] = serde_json::Value::Bool(enabled))
+}
+
+/// Trailing spoken commands such as "press enter". Off by default because the
+/// phrases are only unambiguous at the end of a dictation.
+pub fn read_voice_commands() -> bool {
+    read_bool_setting("voice_commands", false)
+}
+
+pub fn write_voice_commands(enabled: bool) -> Result<(), std::io::Error> {
+    update_engine_json(|obj| obj["voice_commands"] = serde_json::Value::Bool(enabled))
+}
+
+/// Extra input gain for quiet speech. Off by default.
+pub fn read_whisper_mode() -> bool {
+    read_bool_setting("whisper_mode", false)
+}
+
+pub fn write_whisper_mode(enabled: bool) -> Result<(), std::io::Error> {
+    update_engine_json(|obj| obj["whisper_mode"] = serde_json::Value::Bool(enabled))
+}
+
+/// Refuse every outbound network request. Off by default.
+pub fn read_local_only() -> bool {
+    read_bool_setting("local_only", false)
+}
+
+pub fn write_local_only(enabled: bool) -> Result<(), std::io::Error> {
+    update_engine_json(|obj| obj["local_only"] = serde_json::Value::Bool(enabled))
+}
+
 /// Extra read-only folders searched for catalog model files, in order.
 ///
 /// Entries are trimmed, and empty, relative or duplicate paths are dropped.

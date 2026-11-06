@@ -167,6 +167,8 @@ async fn stats_cache_reuses_exact_empty_and_nullable_statistics() {
         serde_json::to_value(stats).unwrap(),
         serde_json::json!({
             "total": 7, "success": 5, "failed": 2, "totalCharacters": 22,
+            "totalWords": 6, "estimatedSecondsSaved": 9,
+            "activeDays": 1, "currentStreakDays": 1,
             "asr": {"p50Ms": 30, "p95Ms": 90},
             "polish": {"p50Ms": 20, "p95Ms": 40},
             "totalLatency": {"p50Ms": 300, "p95Ms": 900}

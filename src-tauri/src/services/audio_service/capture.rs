@@ -360,6 +360,31 @@ pub fn list_input_devices_sync(
 
 // ---------- 多声道混音到单声道 i16（带硬上限） ----------
 
+/// Whisper mode doubles the input gain so quiet speech clears the VAD and the
+/// recognizer's level assumptions. It is a capture-wide flag because the capture
+/// callback cannot read settings from disk on every buffer.
+static WHISPER_GAIN: AtomicBool = AtomicBool::new(false);
+
+/// +6 dB. Loud speech clips at the i16 ceiling, which the saturating multiply
+/// below handles without wrapping into noise.
+pub(crate) const WHISPER_GAIN_MULTIPLIER: i32 = 2;
+
+pub(crate) fn set_whisper_gain(enabled: bool) {
+    WHISPER_GAIN.store(enabled, Ordering::Relaxed);
+}
+
+fn apply_whisper_gain(sample: i16) -> i16 {
+    apply_gain(sample, WHISPER_GAIN.load(Ordering::Relaxed))
+}
+
+/// The gain itself, without the process-wide flag, so it can be tested.
+fn apply_gain(sample: i16, enabled: bool) -> i16 {
+    if !enabled {
+        return sample;
+    }
+    (sample as i32 * WHISPER_GAIN_MULTIPLIER).clamp(i16::MIN as i32, i16::MAX as i32) as i16
+}
+
 pub(crate) fn mix_to_mono_capped_i16(
     data: &[i16],
     channels: usize,
@@ -380,11 +405,11 @@ pub(crate) fn mix_to_mono_capped_i16(
     }
     let limited = &data[..take_frames * chans];
     if chans <= 1 {
-        out.extend_from_slice(limited);
+        out.extend(limited.iter().map(|&sample| apply_whisper_gain(sample)));
     } else {
         out.extend(limited.chunks_exact(chans).map(|frame| {
             let sum: i32 = frame.iter().map(|&s| s as i32).sum();
-            (sum / chans as i32) as i16
+            apply_whisper_gain((sum / chans as i32) as i16)
         }));
     }
 }
@@ -407,12 +432,12 @@ pub(crate) fn mix_to_mono_capped_f32(
     }
     let limited = &data[..take_frames * chans];
     if chans <= 1 {
-        out.extend(limited.iter().map(|&s| f32_to_i16(s)));
+        out.extend(limited.iter().map(|&s| apply_whisper_gain(f32_to_i16(s))));
     } else {
         out.extend(
-            limited
-                .chunks_exact(chans)
-                .map(|frame| f32_to_i16(frame.iter().sum::<f32>() / chans as f32)),
+            limited.chunks_exact(chans).map(|frame| {
+                apply_whisper_gain(f32_to_i16(frame.iter().sum::<f32>() / chans as f32))
+            }),
         );
     }
 }
@@ -511,6 +536,9 @@ pub fn spawn_audio_capture_thread(
     // 每个新录音会话重置警告 latch；否则进程级一次警告之后，后续会话即便
     // 再次撞上限也不会写日志，丢失诊断信息。
     RECORD_CAP_WARNED.store(false, Ordering::Relaxed);
+    // Quiet-speech gain is read once per session so the capture callback never
+    // touches the settings file.
+    set_whisper_gain(crate::utils::paths::read_whisper_mode());
 
     let (rate_tx, rate_rx) = std::sync::mpsc::sync_channel::<Result<u32, String>>(1);
     let stop = stop_flag.clone();
@@ -673,13 +701,14 @@ mod cap_tests {
     //!
     //!   - `MAX_RECORD_SAMPLES` is 30 minutes of 48 kHz mono and must be
     //!     large enough to cover at least an hour of 16 kHz mono.
+    use super::{
+        apply_gain, mix_to_mono_capped_f32, mix_to_mono_capped_i16, mix_to_mono_capped_u16,
+        MAX_RECORD_SAMPLES,
+    };
     #[cfg(target_os = "windows")]
     use super::{
         handoff_native_capture_samples, spawn_audio_capture_thread,
         wait_for_windows_native_capture, WindowsNativeCaptureStartup,
-    };
-    use super::{
-        mix_to_mono_capped_f32, mix_to_mono_capped_i16, mix_to_mono_capped_u16, MAX_RECORD_SAMPLES,
     };
 
     const MIN_ONE_HOUR_16K_SAMPLES: usize = 60 * 60 * 16_000;
@@ -860,6 +889,16 @@ mod cap_tests {
     }
 
     // ----- mix_to_mono_capped_i16 ----------------------------------------
+
+    #[test]
+    fn whisper_gain_doubles_and_saturates() {
+        assert_eq!(apply_gain(1000, false), 1000);
+        assert_eq!(apply_gain(1000, true), 2000);
+        assert_eq!(apply_gain(-1000, true), -2000);
+        // Loud speech clips at the ceiling instead of wrapping around.
+        assert_eq!(apply_gain(20_000, true), i16::MAX);
+        assert_eq!(apply_gain(-20_000, true), i16::MIN);
+    }
 
     #[test]
     fn mix_to_mono_capped_i16_under_cap_appends_all() {

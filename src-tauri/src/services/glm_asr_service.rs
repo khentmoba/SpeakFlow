@@ -74,6 +74,7 @@ pub async fn transcribe(
     state: &AppState,
     audio_data: Vec<u8>,
 ) -> Result<TranscriptionResult, AppError> {
+    crate::services::local_only::ensure("Use cloud recognition").map_err(AppError::Asr)?;
     validate_audio_payload(&audio_data)?;
 
     let _asr_guard = state.engine.native_asr_owner.lock().await;
