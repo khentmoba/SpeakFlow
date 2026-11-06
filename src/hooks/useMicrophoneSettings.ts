@@ -13,6 +13,15 @@ import { INPUT_DEVICE_STORAGE_KEY, MIC_LEVEL_MONITOR_ENABLED_KEY } from "@/lib/c
 import { readLocalStorage, writeLocalStorage } from "@/lib/storage";
 import { useTranslation } from "react-i18next";
 
+/** Same rise/fall smoothing as dictation meters, so the preview does not jitter. */
+const LEVEL_RISE = 0.55;
+const LEVEL_FALL = 0.18;
+
+export function smoothMicLevel(previous: number, next: number): number {
+  const factor = next > previous ? LEVEL_RISE : LEVEL_FALL;
+  return previous + (next - previous) * factor;
+}
+
 interface MicrophoneLevelPayload {
   deviceName?: string;
   level?: number;
@@ -125,7 +134,8 @@ export function useMicrophoneSettings({
             || !intent.active || !intent.enabled
             || intent.isRecording || pendingTestRef.current !== null) return;
           const level = typeof event.payload?.level === "number" ? event.payload.level : 0;
-          setMicLevel(Math.max(0, Math.min(1, level)));
+          const clamped = Math.max(0, Math.min(1, level));
+          setMicLevel((previous) => smoothMicLevel(previous, clamped));
         });
       } catch {
         // Ignore event subscription failures and keep the controls usable.

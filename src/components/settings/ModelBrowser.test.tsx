@@ -35,6 +35,7 @@ describe("ModelBrowser", () => {
 
   it("marks the current engine and offers the others", () => {
     setup();
+    fireEvent.click(screen.getByRole("button", { name: /Show all/ }));
     const current = within(listbox()).getByRole("option", { name: /^Qwen3-ASR 0\.6B(?! 1\.7B)/ });
     expect(current).toHaveAttribute("aria-selected", "true");
     expect(current).toHaveTextContent("Selected");
@@ -44,6 +45,7 @@ describe("ModelBrowser", () => {
 
   it("selects a model by clicking its row", () => {
     const { onSelect } = setup();
+    fireEvent.click(screen.getByRole("button", { name: /Show all/ }));
     fireEvent.click(within(listbox()).getByRole("option", { name: /^Moonshine Tiny/ }));
     expect(onSelect).toHaveBeenCalledWith("moonshine-tiny");
   });
@@ -51,6 +53,7 @@ describe("ModelBrowser", () => {
   it("filters by language and shows that language's grade", () => {
     setup();
     fireEvent.click(screen.getByRole("button", { name: /French/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Show all/ }));
     const options = within(listbox()).getAllByRole("option");
     expect(options.length).toBeGreaterThan(5);
     expect(options.some((option) => option.textContent?.includes("Parakeet Unified"))).toBe(false);
@@ -80,7 +83,36 @@ describe("ModelBrowser", () => {
 
   it("shows an installed model as usable instead of downloadable", () => {
     setup({ installed: new Set(["moonshine-tiny"]) });
+    fireEvent.click(screen.getByRole("button", { name: /Show all/ }));
     expect(within(listbox()).getByRole("option", { name: /^Moonshine Tiny/ })).toHaveTextContent("Use");
+  });
+
+  it("starts short and reveals the rest on request", () => {
+    setup({ installed: new Set(["qwen3-asr-0.6b"]) });
+    const catalogRows = () =>
+      within(screen.getByRole("group", { name: "Models" })).getAllByRole("option");
+    // Installed plus a few recommendations, not the whole catalog.
+    const foldedCount = catalogRows().length;
+    expect(foldedCount).toBeGreaterThanOrEqual(5);
+    expect(foldedCount).toBeLessThan(10);
+    expect(within(listbox()).getByRole("option", { name: /^Qwen3-ASR 0\.6B/ })).toBeInTheDocument();
+    expect(within(listbox()).queryByRole("option", { name: /^Moonshine Tiny/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show all 46 models" }));
+    expect(catalogRows().length).toBeGreaterThan(40);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
+    expect(catalogRows().length).toBe(foldedCount);
+  });
+
+  it("searches the whole catalog while folded", () => {
+    setup();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search models" }), {
+      target: { value: "moonshine" },
+    });
+    // Search bypasses the fold and hides the "Show all" button.
+    expect(within(listbox()).getAllByRole("option").length).toBeGreaterThan(3);
+    expect(screen.queryByRole("button", { name: /Show all/ })).toBeNull();
   });
 
   it("disables every row while an engine switch is pending", () => {

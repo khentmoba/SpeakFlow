@@ -41,6 +41,12 @@ const tauriMock = vi.hoisted(() => ({
   listAiModels: vi.fn(),
   listAlibabaAsrModels: vi.fn(),
   listInstalledModels: vi.fn(),
+  getVoiceProcessing: vi.fn(),
+  setSilenceFilter: vi.fn(),
+  setRemoveFillers: vi.fn(),
+  getModelDirs: vi.fn(),
+  setModelDirs: vi.fn(),
+  testTranscription: vi.fn(),
   listInputDevices: vi.fn(),
   loginGrokBuildOauth: vi.fn(),
   loginOpenaiCodexOauth: vi.fn(),
@@ -98,6 +104,8 @@ const eventDisposers = vi.hoisted(() => [] as Array<ReturnType<typeof vi.fn>>);
 const recordingContextMock = vi.hoisted(() => ({
   retryModel: vi.fn(),
   setHotkey: vi.fn(),
+  stage: "ready" as string,
+  modelError: null as string | null,
 }));
 
 const storageMock = vi.hoisted(() => ({
@@ -125,6 +133,8 @@ vi.mock("@/contexts/RecordingContext", () => ({
     isRecording: false,
     retryModel: recordingContextMock.retryModel,
     setHotkey: recordingContextMock.setHotkey,
+    stage: recordingContextMock.stage,
+    modelError: recordingContextMock.modelError,
   }),
 }));
 vi.mock("@/hooks/useTheme", () => ({
@@ -160,6 +170,25 @@ const labels: Record<string, string> = {
   "settings.followSystemMic": "Use system default microphone",
   "settings.glmApiKeyPlaceholder": "GLM API Key",
   "settings.glmAsrDesc": "GLM cloud speech recognition",
+  "settings.speechProcessing": "Speech processing",
+  "settings.silenceFilter": "Skip silence before recognition",
+  "settings.silenceFilterDesc": "Trims silence with the voice detector before the model runs.",
+  "settings.removeFillers": "Remove filler words",
+  "settings.removeFillersDesc": "Drops um, uh and similar sounds from the finished transcript.",
+  "settings.modelFolders": "Model folders",
+  "settings.modelFoldersDesc": "Extra read-only folders searched for models.",
+  "settings.modelFoldersEmpty": "No extra folders.",
+  "settings.addModelFolder": "Add folder",
+  "settings.removeModelFolder": "Remove {{path}}",
+  "settings.testModel": "Test model",
+  "settings.testModelRecording": "Recording…",
+  "settings.testModelHint": "Records 5 seconds and shows what the model hears.",
+  "settings.testModelSilence": "No speech detected in that clip.",
+  "settings.engineNeedsDownload": "{{engine}} is not downloaded yet. Downloading starts on the Dictation tab.",
+  "settings.engineNeedsRepair": "The {{engine}} model file is damaged. Repair it on the Dictation tab.",
+  "settings.engineUnavailable": "{{engine}} cannot run: {{error}}",
+  "settings.engineNeedsKey": "Add an API key below to use {{engine}}.",
+  "toast.settingSaveFailed": "Could not save that setting.",
   "settings.browseModels": "Browse models",
   "settings.allLanguages": "All languages",
   "settings.filterByLanguage": "Filter by language",
@@ -300,6 +329,8 @@ function resetMocks(profile: UserProfile = baseProfile) {
     source: "fallback",
   });
   tauriMock.listInstalledModels.mockResolvedValue([]);
+  tauriMock.getVoiceProcessing.mockResolvedValue({ silenceFilter: true, removeFillers: true });
+  tauriMock.getModelDirs.mockResolvedValue([]);
   tauriMock.listInputDevices.mockResolvedValue({ devices: [], selectedDeviceName: null });
   tauriMock.pickFolder.mockResolvedValue(null);
   tauriMock.setOnlineAsrEndpoint.mockResolvedValue({
@@ -319,6 +350,8 @@ function resetMocks(profile: UserProfile = baseProfile) {
     return Promise.resolve(disposer);
   });
   recordingContextMock.retryModel.mockReset();
+  recordingContextMock.stage = "ready";
+  recordingContextMock.modelError = null;
   recordingContextMock.setHotkey.mockReset();
   recordingContextMock.setHotkey.mockResolvedValue(undefined);
   storageMock.readLocalStorage.mockReset();
@@ -570,5 +603,68 @@ describe("SettingsPage ASR and device settings", () => {
         expect(disposer).toHaveBeenCalled();
       }
     });
+  });
+});
+
+describe("SettingsPage speech processing", () => {
+  it("loads and saves both processing toggles", async () => {
+    tauriMock.getVoiceProcessing.mockResolvedValue({ silenceFilter: true, removeFillers: false });
+    tauriMock.setSilenceFilter.mockResolvedValue(false);
+    tauriMock.setRemoveFillers.mockResolvedValue(true);
+
+    await renderSettings();
+
+    const silence = await screen.findByRole("switch", { name: "Skip silence before recognition" });
+    const fillers = screen.getByRole("switch", { name: "Remove filler words" });
+    await waitFor(() => expect(fillers).toHaveAttribute("aria-checked", "false"));
+
+    fireEvent.click(silence);
+    await waitFor(() => expect(tauriMock.setSilenceFilter).toHaveBeenCalledWith(false));
+    expect(silence).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.click(fillers);
+    await waitFor(() => expect(tauriMock.setRemoveFillers).toHaveBeenCalledWith(true));
+    expect(fillers).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("restores a toggle and reports when saving fails", async () => {
+    tauriMock.setSilenceFilter.mockRejectedValueOnce(new Error("disk full"));
+
+    await renderSettings();
+
+    const silence = await screen.findByRole("switch", { name: "Skip silence before recognition" });
+    fireEvent.click(silence);
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("Could not save that setting."));
+    expect(silence).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("adds and removes a read-only model folder", async () => {
+    const folder = String.raw`D:\hex\models`;
+    tauriMock.getModelDirs.mockResolvedValue([]);
+    tauriMock.pickFolder.mockResolvedValue(folder);
+    tauriMock.setModelDirs.mockResolvedValue([folder]);
+
+    await renderSettings();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add folder" }));
+    await waitFor(() => expect(tauriMock.setModelDirs).toHaveBeenCalledWith([folder]));
+    expect(await screen.findByText(folder)).toBeInTheDocument();
+
+    tauriMock.setModelDirs.mockResolvedValue([]);
+    fireEvent.click(screen.getByRole("button", { name: `Remove ${folder}` }));
+    await waitFor(() => expect(tauriMock.setModelDirs).toHaveBeenLastCalledWith([]));
+    expect(screen.getByText("No extra folders.")).toBeInTheDocument();
+  });
+
+  it("shows the transcript from a model test and explains a missing model", async () => {
+    tauriMock.testTranscription.mockResolvedValue({ text: "hello there", language: "en", duration: 5 });
+    recordingContextMock.stage = "need_download";
+
+    await renderSettings();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Test model" }));
+    await waitFor(() => expect(tauriMock.testTranscription).toHaveBeenCalledWith(5));
+    expect(await screen.findByText("hello there")).toBeInTheDocument();
+    expect(screen.getByText(/is not downloaded yet/)).toBeInTheDocument();
   });
 });
