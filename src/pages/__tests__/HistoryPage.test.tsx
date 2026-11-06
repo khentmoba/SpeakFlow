@@ -20,13 +20,6 @@ vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({ minimize: vi.fn() }),
 }));
 vi.mock("sonner", () => ({ toast }));
-vi.mock("@/components/TitleBar", () => ({
-  default: ({ title, leftAction, rightActions }: {
-    title: string;
-    leftAction: React.ReactNode;
-    rightActions: React.ReactNode;
-  }) => <header><h1>{title}</h1>{leftAction}{rightActions}</header>,
-}));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     i18n: { language: "zh-CN" },

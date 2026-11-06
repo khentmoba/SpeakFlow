@@ -100,7 +100,7 @@ describe("App profile-save notifications", () => {
 });
 
 describe("App page motion", () => {
-  it("opens updates from the sidebar", async () => {
+  it("opens updates from the title bar navigation", async () => {
     setReducedMotion(true);
     render(<App />);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Updates" })); });

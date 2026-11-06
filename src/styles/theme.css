@@ -1,7 +1,5 @@
 /* ============================================================
-   SpeakFlow Design System
-   Black-first Workspace — neutral charcoal surfaces and restrained blue, native type, and clear state,
-   comfortable reading, and restrained motion.
+   SIGNAL — pure black ground, hairline structure, one amber signal, native type.
    ============================================================ */
 
 /* ---------- Light theme (default) ---------- */
@@ -18,7 +16,7 @@
   /* Text — ink on paper */
   --color-text-primary: #0A0A0A;
   --color-text-secondary: #565656;
-  --color-text-tertiary: #6E6E6E;
+  --color-text-tertiary: #6A6A6A;
   --color-text-inverse: #FFFFFF;
   --color-text-brand: var(--color-accent);
 
@@ -62,84 +60,155 @@
   --glow-acoustic: 0 0 20px rgba(168, 98, 0, 0.22);
   --shadow-record-ring: 0 0 0 4px rgba(var(--color-accent-rgb), 0.20);
 
-  /* Radii */
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
+  /* Radii */
+
+  --radius-xs: 4px;
+
+  --radius-sm: 8px;
+
+  --radius-md: 12px;
+
   --radius-lg: 14px;
   --radius-xl: 18px;
-  --radius-2xl: 28px;
-  --radius-full: 9999px;
-
-  /* Spacing */
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-  --space-2xl: 48px;
-
-  /* Transitions — perceptually tuned curves */
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
-  --ease-micro: cubic-bezier(0.2, 0, 0.2, 1);   /* tap feedback */
-  --ease-standard: var(--ease-out-expo);        /* canonical enter/exit */
-
-  /* Duration scale — use these instead of hand-picked ms */
-  --dur-1: 100ms;
-  --dur-2: 140ms;
-  --dur-3: 200ms;
-  --dur-exit: 160ms;
-  --dur-4: 280ms;
-  --dur-5: 380ms;
-  --dur-6: 520ms;
-
-  --transition-fast: var(--dur-2) var(--ease-out-expo);
-  --transition-normal: var(--dur-3) var(--ease-out-expo);
-  --transition-slow: var(--dur-5) var(--ease-out-quart);
-
-  /* Typography — Windows native fonts; no runtime font download. */
+  --radius-2xl: 28px;
+
+  --radius-full: 9999px;
+
+
+
+  /* Spacing */
+
+  --space-xs: 4px;
+
+  --space-sm: 8px;
+
+  --space-md: 16px;
+
+  --space-lg: 24px;
+
+  --space-xl: 32px;
+
+  --space-2xl: 48px;
+
+
+
+  /* Transitions — perceptually tuned curves */
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+
+  --ease-micro: cubic-bezier(0.2, 0, 0.2, 1);   /* tap feedback */
+
+  --ease-standard: var(--ease-out-expo);        /* canonical enter/exit */
+
+
+
+  /* Duration scale — use these instead of hand-picked ms */
+
+  --dur-1: 100ms;
+
+  --dur-2: 140ms;
+
+  --dur-3: 200ms;
+
+  --dur-exit: 160ms;
+
+  --dur-4: 280ms;
+
+  --dur-5: 380ms;
+
+  --dur-6: 520ms;
+
+
+
+  --transition-fast: var(--dur-2) var(--ease-out-expo);
+
+  --transition-normal: var(--dur-3) var(--ease-out-expo);
+
+  --transition-slow: var(--dur-5) var(--ease-out-quart);
+
+
+
+  /* Typography — Windows native fonts; no runtime font download. */
+
   --font-ui: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
-  --font-serif: var(--font-ui);
-  --font-sans: var(--font-ui);
-  --font-mono: "Cascadia Mono", Consolas, monospace;
+  --font-serif: var(--font-ui);
+
+  --font-sans: var(--font-ui);
+
+  --font-mono: "Cascadia Mono", Consolas, monospace;
+
   /* Display voice — Bahnschrift ships with Windows 10/11 and gives the tracked
   micro-labels their DIN character without a runtime font download. */
   --font-display: "Bahnschrift", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
-
-  /* Text sizes */
+
+
+  /* Text sizes */
+
   --text-2xs: 0.75rem;  /* 12px minimum for compact labels */
-  --text-xs: 0.75rem;     /* 12px */
-  --text-sm: 0.8125rem;   /* 13px */
-  --text-base: 0.875rem;  /* 14px */
-  --text-body-lg: 0.9375rem; /* 15px */
-  --text-md: 1rem;        /* 16px */
-  --text-lg: 1.125rem;    /* 18px */
-  --text-xl: 1.25rem;     /* 20px */
-  --text-2xl: 1.5rem;     /* 24px */
-  --text-3xl: 2rem;       /* 32px */
-
-  --leading-tight: 1.3;
-  --leading-normal: 1.6;
-  --leading-relaxed: 1.8;
-
-  /* Restrained tracking keeps the native font stack visually compact. */
-  --tracking-body: -0.008em;
-  --tracking-label: -0.004em;
-  --tracking-heading: -0.014em;
-  --tracking-display: -0.02em;
-
-  /* Z-index */
-  --z-base: 0;
-  --z-dropdown: 100;
-  --z-sticky: 200;
-  --z-modal: 300;
-  --z-toast: 400;
-  --z-tooltip: 500;
-
-  --bg-gradient: var(--color-bg-primary);
-}
-
+  --text-xs: 0.75rem;     /* 12px */
+
+  --text-sm: 0.8125rem;   /* 13px */
+
+  --text-base: 0.875rem;  /* 14px */
+
+  --text-body-lg: 0.9375rem; /* 15px */
+
+  --text-md: 1rem;        /* 16px */
+
+  --text-lg: 1.125rem;    /* 18px */
+
+  --text-xl: 1.25rem;     /* 20px */
+
+  --text-2xl: 1.5rem;     /* 24px */
+
+  --text-3xl: 2rem;       /* 32px */
+
+
+
+  --leading-tight: 1.3;
+
+  --leading-normal: 1.6;
+
+  --leading-relaxed: 1.8;
+
+
+
+  /* Restrained tracking keeps the native font stack visually compact. */
+
+  --tracking-body: -0.008em;
+
+  --tracking-label: -0.004em;
+
+  --tracking-heading: -0.014em;
+
+  --tracking-display: -0.02em;
+
+
+
+  /* Z-index */
+
+  --z-base: 0;
+
+  --z-dropdown: 100;
+
+  --z-sticky: 200;
+
+  --z-modal: 300;
+
+  --z-toast: 400;
+
+  --z-tooltip: 500;
+
+
+
+  --bg-gradient: var(--color-bg-primary);
+
+}
+
+
+
 /* ---------- Dark theme — pure black with one amber signal ---------- */
 [data-theme="dark"],
 .dark {
@@ -153,7 +222,7 @@
 
   --color-text-primary: #FFFFFF;
   --color-text-secondary: #8A8A8A;
-  --color-text-tertiary: #585858;
+  --color-text-tertiary: #7C7C7C;
   --color-text-inverse: #000000;
   --color-text-brand: var(--color-accent);
 
@@ -195,869 +264,1652 @@
   --bg-gradient: var(--color-bg-primary);
 }
 
-/* ============================================================
-   Base reset & globals
-   ============================================================ */
-
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  -webkit-tap-highlight-color: transparent;
-}
-
-button, input, select, textarea {
-  font-family: inherit;
-  font-size: inherit;
-  line-height: inherit;
-  color: inherit;
-}
-
-button {
-  background: none;
-  border: none;
-  cursor: pointer;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-/* Suppress transitions during initial theme application (prevents light→dark flash) */
-.no-transition,
-.no-transition *,
-.no-transition *::before,
-.no-transition *::after {
-  transition-duration: 0s !important;
-}
-
-html {
-  font-size: 16px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-}
-
-body {
-  font-family: var(--font-sans);
-  font-size: var(--text-base);
-  line-height: var(--leading-normal);
-  letter-spacing: var(--tracking-body);
-  color: var(--color-text-primary);
-  background: var(--bg-gradient);
-  overflow: hidden;
-  font-synthesis: none;
-  /* kern + contextual alternates, stable ligatures; digits align without jumping */
-  font-feature-settings: "kern", "liga", "calt";
-  font-variant-ligatures: common-ligatures contextual;
-  transition: background-color var(--transition-normal),
-    color var(--transition-normal);
-}
-
-h1 {
-  letter-spacing: var(--tracking-display);
-}
-
-h2,
-h3 {
-  letter-spacing: var(--tracking-heading);
-}
-
-h4,
-h5,
-h6 {
-  letter-spacing: var(--tracking-label);
-}
-
-/* Digits that should not reflow (stats, timers, counters, kbd) */
-.tabular-nums,
-.kbd,
-.result-card-stats,
-.subtitle-stream-badge,
-.history-item-time {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum", "kern";
-}
-
-/* Selection follows the single signal color. */
-::selection {
-  background: rgba(var(--color-accent-rgb), 0.22);
-  color: var(--color-text-primary);
-  text-shadow: none;
-}
-
-[data-theme="dark"] ::selection,
-.dark ::selection {
-  background: rgba(var(--color-accent-rgb), 0.30);
-}
-
-/* Caret color everywhere text can be typed */
-input,
-textarea,
-[contenteditable="true"] {
-  caret-color: var(--color-accent);
-}
-
-/* ============================================================
-   Tauri drag regions
-   ============================================================ */
-
-[data-tauri-drag-region] {
-  -webkit-app-region: drag;
-  app-region: drag;
-  cursor: default;
-}
-
-[data-tauri-drag-region] button,
-[data-tauri-drag-region] input,
-[data-tauri-drag-region] select,
-[data-tauri-drag-region] textarea,
-[data-tauri-drag-region] a,
-[data-tauri-drag-region] [data-no-drag] {
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
-
-/* ============================================================
-   Custom scrollbar — thin, warm-toned
-   ============================================================ */
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--color-border) 68%, transparent);
-  border-radius: var(--radius-full);
-  transition: background var(--dur-4) var(--ease-out-expo);
-}
-
-::-webkit-scrollbar-thumb:hover,
-::-webkit-scrollbar-thumb:active {
-  background: var(--color-text-tertiary);
-}
-
-/* ============================================================
-   Animations — compact entrances and gentle success feedback
-   ============================================================ */
-
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(6px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.animate-fade-in { animation: fade-in var(--dur-3) var(--ease-out-expo) forwards; }
-
-/* Slide-up — result card entrance */
-@keyframes slide-up {
-  from { opacity: 0; transform: translateY(12px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.animate-slide-up { animation: slide-up var(--dur-4) var(--ease-out-expo) forwards; }
-
-/* Success pop — model ready chip entrance */
-@keyframes success-pop {
-  0%   { opacity: 0; transform: scale(0.92); }
-  65%  { opacity: 1; transform: scale(1.025); }
-  100% { opacity: 1; transform: scale(1); }
-}
-
-.animate-success { animation: success-pop var(--dur-4) var(--ease-out-expo) forwards; }
-
-/* Gentle shake — error prompt with fade entrance */
-@keyframes gentle-shake {
-  0%       { transform: translateX(0); opacity: 0; }
-  10%      { opacity: 1; }
-  12%      { transform: translateX(-5px); }
-  28%      { transform: translateX(4px); }
-  42%      { transform: translateX(-3px); }
-  56%      { transform: translateX(2px); }
-  70%      { transform: translateX(-1px); }
-  100%     { transform: translateX(0); }
-}
-
-.animate-shake { animation: gentle-shake var(--dur-4) var(--ease-out-expo) both; }
-
-/* Text swap — subtle opacity fade for inline text changes */
-@keyframes text-swap {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-.animate-text-swap { animation: text-swap var(--dur-3) var(--ease-out-expo); }
-
-/* Recording pulse — dual-ring expanding with stagger */
-@keyframes recording-pulse {
-  0%   { transform: scale(1);    opacity: 0.50; }
-  55%  {                          opacity: 0.14; }
-  100% { transform: scale(1.42); opacity: 0; }
-}
-
-/* Streaming caret — blinking cursor for live text reveal */
-@keyframes stream-caret-blink {
-  0%, 45%  { opacity: 1; }
-  55%, 100% { opacity: 0; }
-}
-
-/* Shine sweep — one-shot shimmer across a surface */
-@keyframes shine-sweep {
-  0%   { transform: translateX(-120%); }
-  100% { transform: translateX(180%); }
-}
-
-/* Checkmark draw — satisfying stroke reveal on copy success */
-@keyframes check-draw {
-  from { stroke-dashoffset: 24; }
-  to   { stroke-dashoffset: 0; }
-}
-
-@keyframes check-pop {
-  0%   { transform: scale(0.9); opacity: 0; }
-  65%  { transform: scale(1.04); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-.animate-check-draw {
-  animation: check-pop var(--dur-4) var(--ease-out-expo) forwards;
-}
-
-.animate-check-draw svg {
-  /* Lucide Check is 22.63 units long. Cover the entire path. */
-  stroke-dasharray: 24;
-  stroke-dashoffset: 24;
-  animation: check-draw var(--dur-3) var(--ease-out-expo) forwards;
-}
-
-/* Page transitions — desktop shared-axis: short slide + opacity, no scaling */
-@keyframes page-enter-from-right {
-  from { opacity: 0; transform: translate3d(28px, 0, 0); }
-  to   { opacity: 1; transform: translate3d(0, 0, 0); }
-}
-
-@keyframes page-enter-from-left {
-  from { opacity: 0; transform: translate3d(-28px, 0, 0); }
-  to   { opacity: 1; transform: translate3d(0, 0, 0); }
-}
-
-@keyframes page-exit-to-left {
-  from { opacity: 1; transform: translate3d(0, 0, 0); }
-  to   { opacity: 0.12; transform: translate3d(-18px, 0, 0); }
-}
-
-@keyframes page-exit-to-right {
-  from { opacity: 1; transform: translate3d(0, 0, 0); }
-  to   { opacity: 0.12; transform: translate3d(18px, 0, 0); }
-}
-
-.page-enter-right,
-.page-enter-left,
-.page-exit-left,
-.page-exit-right {
-  will-change: opacity, transform;
-}
-
-.page-enter-right { animation: page-enter-from-right 0.18s cubic-bezier(0, 0, 0.2, 1) forwards; }
-.page-enter-left  { animation: page-enter-from-left 0.18s cubic-bezier(0, 0, 0.2, 1) forwards; }
-.page-exit-left   { animation: page-exit-to-left 0.14s cubic-bezier(0.4, 0, 1, 1) forwards; }
-.page-exit-right  { animation: page-exit-to-right 0.14s cubic-bezier(0.4, 0, 1, 1) forwards; }
-
-/* Skeleton shimmer — processing state */
-@keyframes skeleton-shimmer {
-  from { transform: translateX(-100%); }
-  to   { transform: translateX(100%); }
-}
-
-.skeleton-shimmer {
-  position: relative;
-  overflow: hidden;
-}
-
-.skeleton-shimmer::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.06) 35%,
-    rgba(255, 255, 255, 0.10) 50%,
-    rgba(255, 255, 255, 0.06) 65%,
-    transparent 100%
-  );
-  animation: skeleton-shimmer 2s var(--ease-out-quart) infinite;
-}
-
-[data-theme="dark"] .skeleton-shimmer::after,
-.dark .skeleton-shimmer::after {
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.04) 50%,
-    transparent 100%
-  );
-}
-
-/* Settings card — elevated section container */
-.settings-card {
-  background: var(--color-bg-elevated);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border-subtle);
-  box-shadow: var(--shadow-card);
-  padding: 14px;
-  transition: background-color var(--dur-3) var(--ease-out-expo),
-              box-shadow var(--dur-3) var(--ease-out-expo),
-              border-color var(--dur-3) var(--ease-out-expo);
-}
-
-/* Spin — replaces Tailwind animate-spin */
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
-.animate-spin { animation: spin 1s linear infinite; }
-
-/* Equalizer bars — recording waveform (uses scaleY for GPU perf) */
-
-/* Download progress indeterminate pulse */
-@keyframes download-pulse {
-  0%   { transform: translateX(-80%); opacity: 0.4; }
-  50%  { opacity: 1; }
-  100% { transform: translateX(140%); opacity: 0.4; }
-}
-
-.download-pulse-bar {
-  height: 100%;
-  width: 45%;
-  background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
-  border-radius: 4px;
-  animation: download-pulse 1.5s var(--ease-out-quart) infinite;
-}
-
-/* Progress bar completion — brief glow pulse at 100% */
-@keyframes progress-complete {
-  0%   { box-shadow: 0 0 0 0 rgba(46, 139, 87, 0); }
-  40%  { box-shadow: 0 0 8px 2px rgba(46, 139, 87, 0.35); }
-  100% { box-shadow: 0 0 0 0 rgba(46, 139, 87, 0); }
-}
-
-.progress-complete {
-  animation: progress-complete 0.8s var(--ease-out-expo);
-  border-radius: 4px;
-}
-
-/* ============================================================
-   Responsive text
-   ============================================================ */
-
-@media (max-width: 640px) {
-  :root {
-    --text-base: 0.8125rem;
-    --text-md: 0.9375rem;
-    --text-lg: 1.0625rem;
-    --text-xl: 1.1875rem;
-    --text-2xl: 1.375rem;
-    --text-3xl: 1.75rem;
-  }
-}
-
-/* ============================================================
-   Accessibility
-   ============================================================ */
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
-@media (prefers-contrast: high) {
-  :root {
+/* ============================================================
+
+   Base reset & globals
+
+   ============================================================ */
+
+
+
+*,
+
+*::before,
+
+*::after {
+
+  box-sizing: border-box;
+
+  margin: 0;
+
+  padding: 0;
+
+  -webkit-tap-highlight-color: transparent;
+
+}
+
+
+
+button, input, select, textarea {
+
+  font-family: inherit;
+
+  font-size: inherit;
+
+  line-height: inherit;
+
+  color: inherit;
+
+}
+
+
+
+button {
+
+  background: none;
+
+  border: none;
+
+  cursor: pointer;
+
+  -webkit-appearance: none;
+
+  appearance: none;
+
+}
+
+
+
+/* Suppress transitions during initial theme application (prevents light→dark flash) */
+
+.no-transition,
+
+.no-transition *,
+
+.no-transition *::before,
+
+.no-transition *::after {
+
+  transition-duration: 0s !important;
+
+}
+
+
+
+html {
+
+  font-size: 16px;
+
+  -webkit-font-smoothing: antialiased;
+
+  -moz-osx-font-smoothing: grayscale;
+
+  text-rendering: optimizeLegibility;
+
+}
+
+
+
+body {
+
+  font-family: var(--font-sans);
+
+  font-size: var(--text-base);
+
+  line-height: var(--leading-normal);
+
+  letter-spacing: var(--tracking-body);
+
+  color: var(--color-text-primary);
+
+  background: var(--bg-gradient);
+
+  overflow: hidden;
+
+  font-synthesis: none;
+
+  /* kern + contextual alternates, stable ligatures; digits align without jumping */
+
+  font-feature-settings: "kern", "liga", "calt";
+
+  font-variant-ligatures: common-ligatures contextual;
+
+  transition: background-color var(--transition-normal),
+
+    color var(--transition-normal);
+
+}
+
+
+
+h1 {
+
+  letter-spacing: var(--tracking-display);
+
+}
+
+
+
+h2,
+
+h3 {
+
+  letter-spacing: var(--tracking-heading);
+
+}
+
+
+
+h4,
+
+h5,
+
+h6 {
+
+  letter-spacing: var(--tracking-label);
+
+}
+
+
+
+/* Digits that should not reflow (stats, timers, counters, kbd) */
+
+.tabular-nums,
+
+.kbd,
+
+.result-card-stats,
+
+.subtitle-stream-badge,
+
+.history-item-time {
+
+  font-variant-numeric: tabular-nums;
+
+  font-feature-settings: "tnum", "kern";
+
+}
+
+
+
+/* Selection follows the single signal color. */
+
+::selection {
+
+  background: rgba(var(--color-accent-rgb), 0.22);
+
+  color: var(--color-text-primary);
+
+  text-shadow: none;
+
+}
+
+
+
+[data-theme="dark"] ::selection,
+
+.dark ::selection {
+
+  background: rgba(var(--color-accent-rgb), 0.30);
+
+}
+
+
+
+/* Caret color everywhere text can be typed */
+
+input,
+
+textarea,
+
+[contenteditable="true"] {
+
+  caret-color: var(--color-accent);
+
+}
+
+
+
+/* ============================================================
+
+   Tauri drag regions
+
+   ============================================================ */
+
+
+
+[data-tauri-drag-region] {
+
+  -webkit-app-region: drag;
+
+  app-region: drag;
+
+  cursor: default;
+
+}
+
+
+
+[data-tauri-drag-region] button,
+
+[data-tauri-drag-region] input,
+
+[data-tauri-drag-region] select,
+
+[data-tauri-drag-region] textarea,
+
+[data-tauri-drag-region] a,
+
+[data-tauri-drag-region] [data-no-drag] {
+
+  -webkit-app-region: no-drag;
+
+  app-region: no-drag;
+
+}
+
+
+
+/* ============================================================
+
+   Custom scrollbar — thin, warm-toned
+
+   ============================================================ */
+
+
+
+::-webkit-scrollbar {
+
+  width: 6px;
+
+  height: 6px;
+
+}
+
+
+
+::-webkit-scrollbar-track {
+
+  background: transparent;
+
+}
+
+
+
+::-webkit-scrollbar-thumb {
+
+  background: color-mix(in srgb, var(--color-border) 68%, transparent);
+
+  border-radius: var(--radius-full);
+
+  transition: background var(--dur-4) var(--ease-out-expo);
+
+}
+
+
+
+::-webkit-scrollbar-thumb:hover,
+
+::-webkit-scrollbar-thumb:active {
+
+  background: var(--color-text-tertiary);
+
+}
+
+
+
+/* ============================================================
+
+   Animations — compact entrances and gentle success feedback
+
+   ============================================================ */
+
+
+
+@keyframes fade-in {
+
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+
+}
+
+
+
+.animate-fade-in { animation: fade-in var(--dur-3) var(--ease-out-expo) forwards; }
+
+
+
+/* Slide-up — result card entrance */
+
+@keyframes slide-up {
+
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+
+}
+
+
+
+.animate-slide-up { animation: slide-up var(--dur-4) var(--ease-out-expo) forwards; }
+
+
+
+/* Success pop — model ready chip entrance */
+
+@keyframes success-pop {
+
+  0%   { opacity: 0; transform: scale(0.92); }
+
+  65%  { opacity: 1; transform: scale(1.025); }
+
+  100% { opacity: 1; transform: scale(1); }
+
+}
+
+
+
+.animate-success { animation: success-pop var(--dur-4) var(--ease-out-expo) forwards; }
+
+
+
+/* Gentle shake — error prompt with fade entrance */
+
+/* Text swap — subtle opacity fade for inline text changes */
+
+@keyframes text-swap {
+
+  from { opacity: 0; }
+
+  to   { opacity: 1; }
+
+}
+
+
+
+.animate-text-swap { animation: text-swap var(--dur-3) var(--ease-out-expo); }
+
+
+
+/* Recording pulse — dual-ring expanding with stagger */
+
+@keyframes recording-pulse {
+
+  0%   { transform: scale(1);    opacity: 0.50; }
+
+  55%  {                          opacity: 0.14; }
+
+  100% { transform: scale(1.42); opacity: 0; }
+
+}
+
+
+
+/* Streaming caret — blinking cursor for live text reveal */
+
+@keyframes stream-caret-blink {
+
+  0%, 45%  { opacity: 1; }
+
+  55%, 100% { opacity: 0; }
+
+}
+
+
+
+/* Shine sweep — one-shot shimmer across a surface */
+
+@keyframes shine-sweep {
+
+  0%   { transform: translateX(-120%); }
+
+  100% { transform: translateX(180%); }
+
+}
+
+
+
+/* Checkmark draw — satisfying stroke reveal on copy success */
+
+@keyframes check-draw {
+
+  from { stroke-dashoffset: 24; }
+
+  to   { stroke-dashoffset: 0; }
+
+}
+
+
+
+@keyframes check-pop {
+
+  0%   { transform: scale(0.9); opacity: 0; }
+
+  65%  { transform: scale(1.04); opacity: 1; }
+
+  100% { transform: scale(1); opacity: 1; }
+
+}
+
+
+
+.animate-check-draw {
+
+  animation: check-pop var(--dur-4) var(--ease-out-expo) forwards;
+
+}
+
+
+
+.animate-check-draw svg {
+
+  /* Lucide Check is 22.63 units long. Cover the entire path. */
+
+  stroke-dasharray: 24;
+
+  stroke-dashoffset: 24;
+
+  animation: check-draw var(--dur-3) var(--ease-out-expo) forwards;
+
+}
+
+
+
+/* Page transitions — desktop shared-axis: short slide + opacity, no scaling */
+
+@keyframes page-enter-from-right {
+
+  from { opacity: 0; transform: translate3d(28px, 0, 0); }
+
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+
+}
+
+
+
+@keyframes page-enter-from-left {
+
+  from { opacity: 0; transform: translate3d(-28px, 0, 0); }
+
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+
+}
+
+
+
+@keyframes page-exit-to-left {
+
+  from { opacity: 1; transform: translate3d(0, 0, 0); }
+
+  to   { opacity: 0.12; transform: translate3d(-18px, 0, 0); }
+
+}
+
+
+
+@keyframes page-exit-to-right {
+
+  from { opacity: 1; transform: translate3d(0, 0, 0); }
+
+  to   { opacity: 0.12; transform: translate3d(18px, 0, 0); }
+
+}
+
+
+
+.page-enter-right,
+
+.page-enter-left,
+
+.page-exit-left,
+
+.page-exit-right {
+
+  will-change: opacity, transform;
+
+}
+
+
+
+.page-enter-right { animation: page-enter-from-right 0.18s cubic-bezier(0, 0, 0.2, 1) forwards; }
+
+.page-enter-left  { animation: page-enter-from-left 0.18s cubic-bezier(0, 0, 0.2, 1) forwards; }
+
+.page-exit-left   { animation: page-exit-to-left 0.14s cubic-bezier(0.4, 0, 1, 1) forwards; }
+
+.page-exit-right  { animation: page-exit-to-right 0.14s cubic-bezier(0.4, 0, 1, 1) forwards; }
+
+
+
+/* Skeleton shimmer — processing state */
+
+@keyframes skeleton-shimmer {
+
+  from { transform: translateX(-100%); }
+
+  to   { transform: translateX(100%); }
+
+}
+
+
+
+.skeleton-shimmer {
+
+  position: relative;
+
+  overflow: hidden;
+
+}
+
+
+
+.skeleton-shimmer::after {
+
+  content: "";
+
+  position: absolute;
+
+  top: 0;
+
+  left: 0;
+
+  width: 100%;
+
+  height: 100%;
+
+  background: linear-gradient(
+
+    90deg,
+
+    transparent 0%,
+
+    rgba(255, 255, 255, 0.06) 35%,
+
+    rgba(255, 255, 255, 0.10) 50%,
+
+    rgba(255, 255, 255, 0.06) 65%,
+
+    transparent 100%
+
+  );
+
+  animation: skeleton-shimmer 2s var(--ease-out-quart) infinite;
+
+}
+
+
+
+[data-theme="dark"] .skeleton-shimmer::after,
+
+.dark .skeleton-shimmer::after {
+
+  background: linear-gradient(
+
+    90deg,
+
+    transparent 0%,
+
+    rgba(255, 255, 255, 0.04) 50%,
+
+    transparent 100%
+
+  );
+
+}
+
+
+
+/* Settings card — elevated section container */
+
+.settings-card {
+
+  background: var(--color-bg-elevated);
+
+  border-radius: var(--radius-lg);
+
+  border: 1px solid var(--color-border-subtle);
+
+  box-shadow: var(--shadow-card);
+
+  padding: 14px;
+
+  transition: background-color var(--dur-3) var(--ease-out-expo),
+
+              box-shadow var(--dur-3) var(--ease-out-expo),
+
+              border-color var(--dur-3) var(--ease-out-expo);
+
+}
+
+
+
+/* Spin — replaces Tailwind animate-spin */
+
+@keyframes spin {
+
+  from { transform: rotate(0deg); }
+
+  to   { transform: rotate(360deg); }
+
+}
+
+
+
+.animate-spin { animation: spin 1s linear infinite; }
+
+
+
+/* Equalizer bars — recording waveform (uses scaleY for GPU perf) */
+
+
+
+/* Download progress indeterminate pulse */
+
+@keyframes download-pulse {
+
+  0%   { transform: translateX(-80%); opacity: 0.4; }
+
+  50%  { opacity: 1; }
+
+  100% { transform: translateX(140%); opacity: 0.4; }
+
+}
+
+
+
+.download-pulse-bar {
+
+  height: 100%;
+
+  width: 45%;
+
+  background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
+
+  border-radius: 4px;
+
+  animation: download-pulse 1.5s var(--ease-out-quart) infinite;
+
+}
+
+
+
+/* Progress bar completion — brief glow pulse at 100% */
+
+@keyframes progress-complete {
+
+  0%   { box-shadow: 0 0 0 0 rgba(46, 139, 87, 0); }
+
+  40%  { box-shadow: 0 0 8px 2px rgba(46, 139, 87, 0.35); }
+
+  100% { box-shadow: 0 0 0 0 rgba(46, 139, 87, 0); }
+
+}
+
+
+
+.progress-complete {
+
+  animation: progress-complete 0.8s var(--ease-out-expo);
+
+  border-radius: 4px;
+
+}
+
+
+
+/* ============================================================
+
+   Responsive text
+
+   ============================================================ */
+
+
+
+@media (max-width: 640px) {
+
+  :root {
+
+    --text-base: 0.8125rem;
+
+    --text-md: 0.9375rem;
+
+    --text-lg: 1.0625rem;
+
+    --text-xl: 1.1875rem;
+
+    --text-2xl: 1.375rem;
+
+    --text-3xl: 1.75rem;
+
+  }
+
+}
+
+
+
+/* ============================================================
+
+   Accessibility
+
+   ============================================================ */
+
+
+
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+
+  *::before,
+
+  *::after {
+
+    animation-duration: 0.01ms !important;
+
+    animation-iteration-count: 1 !important;
+
+    transition-duration: 0.01ms !important;
+
+  }
+
+}
+
+
+
+@media (prefers-contrast: high) {
+
+  :root {
+
     --color-border: #69778B;
     --color-text-secondary: #343E4D;
     --color-text-tertiary: #505E72;
-  }
-
-  [data-theme="dark"],
-  .dark {
+  }
+
+
+
+  [data-theme="dark"],
+
+  .dark {
+
     --color-border: #A6B4C8;
     --color-text-secondary: #E7EDF7;
     --color-text-tertiary: #ACB6C5;
-  }
-}
-
-:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
-}
-
-/* Mouse click should NOT show focus ring, only keyboard Tab */
-:focus:not(:focus-visible) {
-  outline: none;
-}
-
-/* ============================================================
-   Layout primitives — Quiet Instrument surfaces
-   ============================================================ */
-
-/* Chip / tag */
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: var(--radius-full);
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border-subtle);
-  color: var(--color-text-tertiary);
-  font-family: var(--font-sans);
-  font-size: var(--text-2xs);
-  font-weight: 500;
-  letter-spacing: 0.025em;
-  text-transform: uppercase;
-}
-
-/* Subtle button */
-.btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: var(--radius-md);
-  border: none;
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-  font-family: var(--font-sans);
-  cursor: pointer;
-  transition: background var(--dur-3) var(--ease-out-expo),
-              color var(--dur-3) var(--ease-out-expo),
-              transform var(--dur-3) var(--ease-out-expo);
-}
-
-.btn-ghost:hover {
-  background: var(--color-accent-muted);
-  color: var(--color-accent);
-}
-
-.btn-ghost:active {
-  transform: scale(0.97);
-  transition: transform var(--dur-1) var(--ease-micro);
-}
-
-/* Primary button */
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 18px;
-  border-radius: var(--radius-lg);
-  border: none;
-  background: var(--color-accent);
-  color: var(--color-text-inverse);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  font-family: var(--font-sans);
-  cursor: pointer;
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,0.12);
-  transition: background var(--dur-3) var(--ease-out-expo),
-              box-shadow var(--dur-3) var(--ease-out-expo),
-              transform var(--dur-3) var(--ease-out-expo);
-}
-
-.btn-primary:hover {
-  background: var(--color-accent-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md), 0 0 12px rgba(var(--color-accent-rgb), 0.16);
-}
-
-.btn-primary:active {
-  background: var(--color-accent-active);
-  transform: translateY(0) scale(0.97);
-  box-shadow: var(--shadow-xs);
-  transition: transform var(--dur-1) var(--ease-micro), background var(--dur-1) var(--ease-micro);
-}
-
-/* Compact primary button — settings download, etc. */
-.btn-primary-sm {
-  padding: 6px 14px;
-  font-size: var(--text-xs);
-  border-radius: var(--radius-sm);
-}
-
-/* Ghost button size variants */
-.btn-ghost-sm {
-  padding: 6px 10px;
-  font-size: var(--text-sm);
-  border-radius: var(--radius-sm);
-}
-
-.btn-ghost-xs {
-  padding: 4px 8px;
-  font-size: var(--text-xs);
-  border-radius: var(--radius-xs);
-}
-
-/* Divider */
-.divider {
-  height: 1px;
-  background: var(--color-border-subtle);
-  border: none;
-  margin: 0;
-}
-
-/* ============================================================
-   Shared UI Components
-   ============================================================ */
-
-/* Notifications share one surface; only the icon carries status color. */
-[data-sonner-toaster].app-toaster {
-  font-family: var(--font-sans);
-  z-index: var(--z-toast);
-  transition-duration: var(--dur-3);
-  transition-timing-function: var(--ease-out-expo);
-}
-
-[data-sonner-toast].app-toast {
-  padding: 12px var(--space-md);
-  gap: var(--space-sm);
-  align-items: flex-start;
-  background: var(--color-bg-elevated);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  letter-spacing: var(--tracking-body);
-  transition-duration: var(--dur-3);
-  transition-timing-function: var(--ease-out-expo);
-}
-
-.app-toast [data-title] {
-  font-weight: 500;
-  line-height: var(--leading-normal);
-}
-
-.app-toast [data-description] {
-  color: var(--color-text-secondary);
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-}
-
-.app-toast [data-content] { min-width: 0; }
-
-.app-toast [data-icon] {
-  width: 20px;
-  height: 20px;
-  margin: 0;
-  justify-content: center;
-  color: var(--color-accent);
-}
-
-.app-toast [data-icon] svg { margin: 0; }
-.app-toast[data-type="success"] [data-icon] { color: var(--color-success); }
-.app-toast[data-type="error"] [data-icon] { color: var(--color-error); }
-.app-toast[data-type="info"] [data-icon] { color: var(--color-info); }
-.app-toast[data-type="warning"] [data-icon] { color: var(--color-warning); }
-
-/* Icon button — transparent, used in title bar and toolbars */
-.icon-btn {
-  padding: var(--space-sm);
-  border-radius: var(--radius-sm);
-  border: none;
-  background: transparent;
-  color: var(--color-text-tertiary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color var(--dur-3) var(--ease-out-expo),
-              background var(--dur-3) var(--ease-out-expo),
-              transform var(--dur-3) var(--ease-out-expo);
-}
-
-.icon-btn:hover {
-  color: var(--color-text-secondary);
-  background: var(--color-accent-muted);
-}
-
-.icon-btn.plain:hover {
-  background: transparent;
-}
-
-.icon-btn:active {
-  transform: scale(0.92);
-  transition: transform var(--dur-1) var(--ease-micro);
-}
-
-.icon-btn-sm {
-  padding: 4px;
-}
-
-/* Gear spin — settings icon rotates on hover */
-.icon-btn-gear svg {
-  transition: transform var(--dur-4) var(--ease-out-expo);
-}
-
-.icon-btn-gear:hover svg {
-  transform: rotate(60deg);
-}
-
-/* Test button — settings page permission tests */
-.test-btn {
-  padding: 8px 16px;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  background: var(--color-bg-secondary);
-  color: var(--color-text-secondary);
-  border: 1px solid var(--color-border-subtle);
-  cursor: pointer;
-  transition: background var(--dur-3) var(--ease-out-expo),
-              color var(--dur-3) var(--ease-out-expo),
-              border-color var(--dur-3) var(--ease-out-expo),
-              transform var(--dur-3) var(--ease-out-expo);
-}
-
-.test-btn:hover {
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-primary);
-  border-color: var(--color-border);
-}
-
-.test-btn:active {
-  transform: scale(0.97);
-  transition: transform var(--dur-1) var(--ease-micro);
-}
-
-/* Title bar — shared between pages */
+  }
+
+}
 
 
-
-/* Recording button — circular mic button with microinteractions */
-
-
-
-/* Toggle switch — autostart etc. */
-.toggle-switch {
-  flex: 0 0 44px;
-  width: 44px;
-  height: 24px;
-  border-radius: 12px;
-  border: none;
-  padding: 2px;
-  transition: background var(--dur-4) var(--ease-out-expo),
-              opacity var(--dur-3) var(--ease-out-expo),
-              box-shadow var(--dur-4) var(--ease-out-expo);
-}
-
-
-
-
-.toggle-switch[aria-checked="false"] {
-  background: var(--color-bg-tertiary);
-  box-shadow: inset 0 0 0 1px var(--color-border);
-}
-
-.toggle-switch[aria-checked="true"] {
-  background: var(--color-accent);
-}
-
-.toggle-switch[aria-checked="false"] .toggle-knob {
-  transform: translateX(0);
-}
-
-.toggle-switch[aria-checked="true"] .toggle-knob {
-  transform: translateX(20px);
-}
-
-.toggle-switch:disabled {
-  cursor: wait;
-  opacity: 0.62;
-}
-
-.toggle-switch[aria-checked="true"] {
-  box-shadow: none;
-}
-
-.toggle-switch:active .toggle-knob {
-  width: 24px;  /* stretch knob on press for tactile feel */
-}
-
-.toggle-switch[aria-checked="true"]:active .toggle-knob {
-  transform: translateX(16px);
-}
-
-.toggle-knob {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
-  transition: transform var(--dur-4) cubic-bezier(0.2, 0.8, 0.2, 1),
-              width var(--dur-3) var(--ease-out-expo);
-}
-
-/* Theme option button — settings page theme selector */
-.theme-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-subtle);
-  background: var(--color-bg-secondary);
-  color: var(--color-text-tertiary);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  font-family: var(--font-sans);
-  cursor: pointer;
-  transition: border-color var(--dur-3) var(--ease-out-expo),
-              background-color var(--dur-3) var(--ease-out-expo),
-              color var(--dur-3) var(--ease-out-expo),
-              transform var(--dur-3) var(--ease-out-expo),
-              box-shadow var(--dur-3) var(--ease-out-expo);
-}
-
-.theme-btn:hover {
-  border-color: var(--color-border);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
-}
-
-.theme-btn:active {
-  transform: translateY(0) scale(0.97);
-  transition: transform var(--dur-1) var(--ease-micro);
-}
-
-.theme-btn.active {
-  border: 1px solid var(--color-border-accent);
-  background: var(--color-accent-subtle);
-  color: var(--color-accent);
-}
-
-/* Compact theme button — inline actions */
-.theme-btn-xs {
-  font-size: var(--text-xs);
-  padding: 2px 8px;
-  gap: 4px;
-}
-
-/* Range input — warm-toned slider matching design system */
-input[type="range"] {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  min-height: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  outline: none;
-  cursor: pointer;
-}
-
-input[type="range"]::-webkit-slider-runnable-track {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border-subtle);
-  transition: background var(--transition-fast);
-}
-
-input[type="range"]::-moz-range-track {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border-subtle);
-}
-
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--color-accent);
-  border: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
-  margin-top: -6px;
-  cursor: pointer;
-  transition: transform var(--dur-3) var(--ease-out-expo),
-              box-shadow var(--dur-3) var(--ease-out-expo);
-}
-
-input[type="range"]::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22), var(--shadow-glow);
-}
-
-input[type="range"]::-webkit-slider-thumb:active {
-  transform: scale(0.97);
-}
-
-input[type="range"]:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 0 0 3px rgba(var(--color-accent-rgb), 0.2);
-}
-
-/* Font utility */
-.font-sans {
-  font-family: var(--font-sans);
-}
-
-/* Title bar text */
-.title-text {
-  font-size: var(--text-sm);
-  font-weight: 700;
-  letter-spacing: var(--tracking-display);
-  font-family: var(--font-display);
-}
-
-.title-text-indented {
-  margin-left: 8px;
-}
-
-/* Onboarding card body */
-.onboarding-body {
-  padding: 10px 12px;
-  font-size: var(--text-sm);
-  line-height: 1.8;
-  color: var(--color-text-secondary);
-}
-
-.onboarding-body p {
-  margin: 0 0 6px;
-}
-
-.onboarding-body p:last-child {
-  margin: 0;
-  font-size: var(--text-xs);
-  color: var(--color-text-tertiary);
-}
-
-.onboarding-accent {
-  color: var(--color-accent);
-  font-weight: 600;
-}
-
-/* Consistent Lucide strokes across state changes and window controls. */
-svg.lucide { stroke-width: 1.5; }
-
-::view-transition-old(root),
+
+:focus-visible {
+
+  outline: 2px solid var(--color-accent);
+
+  outline-offset: 2px;
+
+  border-radius: var(--radius-sm);
+
+}
+
+
+
+/* Mouse click should NOT show focus ring, only keyboard Tab */
+
+:focus:not(:focus-visible) {
+
+  outline: none;
+
+}
+
+
+
+/* ============================================================
+
+   Layout primitives — Quiet Instrument surfaces
+
+   ============================================================ */
+
+
+
+/* Chip / tag */
+
+.chip {
+
+  display: inline-flex;
+
+  align-items: center;
+
+  gap: 5px;
+
+  padding: 3px 10px;
+
+  border-radius: var(--radius-full);
+
+  background: var(--color-bg-tertiary);
+
+  border: 1px solid var(--color-border-subtle);
+
+  color: var(--color-text-tertiary);
+
+  font-family: var(--font-sans);
+
+  font-size: var(--text-2xs);
+
+  font-weight: 500;
+
+  letter-spacing: 0.025em;
+
+  text-transform: uppercase;
+
+}
+
+
+
+/* Subtle button */
+
+.btn-ghost {
+
+  display: inline-flex;
+
+  align-items: center;
+
+  gap: 6px;
+
+  padding: 6px 12px;
+
+  border-radius: var(--radius-md);
+
+  border: none;
+
+  background: transparent;
+
+  color: var(--color-text-secondary);
+
+  font-size: var(--text-sm);
+
+  font-family: var(--font-sans);
+
+  cursor: pointer;
+
+  transition: background var(--dur-3) var(--ease-out-expo),
+
+              color var(--dur-3) var(--ease-out-expo),
+
+              transform var(--dur-3) var(--ease-out-expo);
+
+}
+
+
+
+.btn-ghost:hover {
+
+  background: var(--color-accent-muted);
+
+  color: var(--color-accent);
+
+}
+
+
+
+.btn-ghost:active {
+
+  transform: scale(0.97);
+
+  transition: transform var(--dur-1) var(--ease-micro);
+
+}
+
+
+
+/* Primary button */
+
+.btn-primary {
+
+  display: inline-flex;
+
+  align-items: center;
+
+  gap: 6px;
+
+  padding: 8px 18px;
+
+  border-radius: var(--radius-lg);
+
+  border: none;
+
+  background: var(--color-accent);
+
+  color: var(--color-text-inverse);
+
+  font-size: var(--text-sm);
+
+  font-weight: 500;
+
+  font-family: var(--font-sans);
+
+  cursor: pointer;
+
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,0.12);
+
+  transition: background var(--dur-3) var(--ease-out-expo),
+
+              box-shadow var(--dur-3) var(--ease-out-expo),
+
+              transform var(--dur-3) var(--ease-out-expo);
+
+}
+
+
+
+.btn-primary:hover {
+
+  background: var(--color-accent-hover);
+
+  transform: translateY(-1px);
+
+  box-shadow: var(--shadow-md), 0 0 12px rgba(var(--color-accent-rgb), 0.16);
+
+}
+
+
+
+.btn-primary:active {
+
+  background: var(--color-accent-active);
+
+  transform: translateY(0) scale(0.97);
+
+  box-shadow: var(--shadow-xs);
+
+  transition: transform var(--dur-1) var(--ease-micro), background var(--dur-1) var(--ease-micro);
+
+}
+
+
+
+/* Compact primary button — settings download, etc. */
+
+.btn-primary-sm {
+
+  padding: 6px 14px;
+
+  font-size: var(--text-xs);
+
+  border-radius: var(--radius-sm);
+
+}
+
+
+
+/* Ghost button size variants */
+
+.btn-ghost-sm {
+
+  padding: 6px 10px;
+
+  font-size: var(--text-sm);
+
+  border-radius: var(--radius-sm);
+
+}
+
+
+
+.btn-ghost-xs {
+
+  padding: 4px 8px;
+
+  font-size: var(--text-xs);
+
+  border-radius: var(--radius-xs);
+
+}
+
+
+
+/* Divider */
+
+.divider {
+
+  height: 1px;
+
+  background: var(--color-border-subtle);
+
+  border: none;
+
+  margin: 0;
+
+}
+
+
+
+/* ============================================================
+
+   Shared UI Components
+
+   ============================================================ */
+
+
+
+/* Notifications share one surface; only the icon carries status color. */
+
+[data-sonner-toaster].app-toaster {
+
+  font-family: var(--font-sans);
+
+  z-index: var(--z-toast);
+
+  transition-duration: var(--dur-3);
+
+  transition-timing-function: var(--ease-out-expo);
+
+}
+
+
+
+[data-sonner-toast].app-toast {
+
+  padding: 12px var(--space-md);
+
+  gap: var(--space-sm);
+
+  align-items: flex-start;
+
+  background: var(--color-bg-elevated);
+
+  color: var(--color-text-primary);
+
+  border: 1px solid var(--color-border-subtle);
+
+  border-radius: var(--radius-md);
+
+  box-shadow: var(--shadow-md);
+
+  font-family: var(--font-sans);
+
+  font-size: var(--text-sm);
+
+  letter-spacing: var(--tracking-body);
+
+  transition-duration: var(--dur-3);
+
+  transition-timing-function: var(--ease-out-expo);
+
+}
+
+
+
+.app-toast [data-title] {
+
+  font-weight: 500;
+
+  line-height: var(--leading-normal);
+
+}
+
+
+
+.app-toast [data-description] {
+
+  color: var(--color-text-secondary);
+
+  font-size: var(--text-xs);
+
+  line-height: var(--leading-normal);
+
+}
+
+
+
+.app-toast [data-content] { min-width: 0; }
+
+
+
+.app-toast [data-icon] {
+
+  width: 20px;
+
+  height: 20px;
+
+  margin: 0;
+
+  justify-content: center;
+
+  color: var(--color-accent);
+
+}
+
+
+
+.app-toast [data-icon] svg { margin: 0; }
+
+.app-toast[data-type="success"] [data-icon] { color: var(--color-success); }
+
+.app-toast[data-type="error"] [data-icon] { color: var(--color-error); }
+
+.app-toast[data-type="info"] [data-icon] { color: var(--color-info); }
+
+.app-toast[data-type="warning"] [data-icon] { color: var(--color-warning); }
+
+
+
+/* Icon button — transparent, used in title bar and toolbars */
+
+.icon-btn {
+
+  padding: var(--space-sm);
+
+  border-radius: var(--radius-sm);
+
+  border: none;
+
+  background: transparent;
+
+  color: var(--color-text-tertiary);
+
+  cursor: pointer;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  transition: color var(--dur-3) var(--ease-out-expo),
+
+              background var(--dur-3) var(--ease-out-expo),
+
+              transform var(--dur-3) var(--ease-out-expo);
+
+}
+
+
+
+.icon-btn:hover {
+
+  color: var(--color-text-secondary);
+
+  background: var(--color-accent-muted);
+
+}
+
+
+
+.icon-btn.plain:hover {
+
+  background: transparent;
+
+}
+
+
+
+.icon-btn:active {
+
+  transform: scale(0.92);
+
+  transition: transform var(--dur-1) var(--ease-micro);
+
+}
+
+
+
+.icon-btn-sm {
+
+  padding: 4px;
+
+}
+
+
+
+/* Gear spin — settings icon rotates on hover */
+
+.icon-btn-gear svg {
+
+  transition: transform var(--dur-4) var(--ease-out-expo);
+
+}
+
+
+
+.icon-btn-gear:hover svg {
+
+  transform: rotate(60deg);
+
+}
+
+
+
+/* Test button — settings page permission tests */
+
+.test-btn {
+
+  padding: 8px 16px;
+
+  border-radius: var(--radius-sm);
+
+  font-size: var(--text-xs);
+
+  font-weight: 500;
+
+  background: var(--color-bg-secondary);
+
+  color: var(--color-text-secondary);
+
+  border: 1px solid var(--color-border-subtle);
+
+  cursor: pointer;
+
+  transition: background var(--dur-3) var(--ease-out-expo),
+
+              color var(--dur-3) var(--ease-out-expo),
+
+              border-color var(--dur-3) var(--ease-out-expo),
+
+              transform var(--dur-3) var(--ease-out-expo);
+
+}
+
+
+
+.test-btn:hover {
+
+  background: var(--color-bg-tertiary);
+
+  color: var(--color-text-primary);
+
+  border-color: var(--color-border);
+
+}
+
+
+
+.test-btn:active {
+
+  transform: scale(0.97);
+
+  transition: transform var(--dur-1) var(--ease-micro);
+
+}
+
+
+
+/* Title bar — shared between pages */
+
+
+
+
+
+/* Recording button — circular mic button with microinteractions */
+
+
+
+
+
+
+
+/* Toggle switch — autostart etc. */
+
+.toggle-switch {
+
+  flex: 0 0 44px;
+
+  width: 44px;
+
+  height: 24px;
+
+  border-radius: 12px;
+
+  border: none;
+
+  padding: 2px;
+
+  transition: background var(--dur-4) var(--ease-out-expo),
+
+              opacity var(--dur-3) var(--ease-out-expo),
+
+              box-shadow var(--dur-4) var(--ease-out-expo);
+
+}
+
+
+
+
+
+
+
+
+
+.toggle-switch[aria-checked="false"] {
+
+  background: var(--color-bg-tertiary);
+
+  box-shadow: inset 0 0 0 1px var(--color-border);
+
+}
+
+
+
+.toggle-switch[aria-checked="true"] {
+
+  background: var(--color-accent);
+
+}
+
+
+
+.toggle-switch[aria-checked="false"] .toggle-knob {
+
+  transform: translateX(0);
+
+}
+
+
+
+.toggle-switch[aria-checked="true"] .toggle-knob {
+
+  transform: translateX(20px);
+
+}
+
+
+
+.toggle-switch:disabled {
+
+  cursor: wait;
+
+  opacity: 0.62;
+
+}
+
+
+
+.toggle-switch[aria-checked="true"] {
+
+  box-shadow: none;
+
+}
+
+
+
+.toggle-switch:active .toggle-knob {
+
+  width: 24px;  /* stretch knob on press for tactile feel */
+
+}
+
+
+
+.toggle-switch[aria-checked="true"]:active .toggle-knob {
+
+  transform: translateX(16px);
+
+}
+
+
+
+.toggle-knob {
+
+  width: 20px;
+
+  height: 20px;
+
+  border-radius: 50%;
+
+  background: white;
+
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+
+  transition: transform var(--dur-4) cubic-bezier(0.2, 0.8, 0.2, 1),
+
+              width var(--dur-3) var(--ease-out-expo);
+
+}
+
+
+
+/* Theme option button — settings page theme selector */
+
+.theme-btn {
+
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  gap: 4px;
+
+  padding: 2px 8px;
+
+  border-radius: var(--radius-sm);
+
+  border: 1px solid var(--color-border-subtle);
+
+  background: var(--color-bg-secondary);
+
+  color: var(--color-text-tertiary);
+
+  font-size: var(--text-xs);
+
+  font-weight: 500;
+
+  font-family: var(--font-sans);
+
+  cursor: pointer;
+
+  transition: border-color var(--dur-3) var(--ease-out-expo),
+
+              background-color var(--dur-3) var(--ease-out-expo),
+
+              color var(--dur-3) var(--ease-out-expo),
+
+              transform var(--dur-3) var(--ease-out-expo),
+
+              box-shadow var(--dur-3) var(--ease-out-expo);
+
+}
+
+
+
+.theme-btn:hover {
+
+  border-color: var(--color-border);
+
+  transform: translateY(-1px);
+
+  box-shadow: var(--shadow-sm);
+
+}
+
+
+
+.theme-btn:active {
+
+  transform: translateY(0) scale(0.97);
+
+  transition: transform var(--dur-1) var(--ease-micro);
+
+}
+
+
+
+.theme-btn.active {
+
+  border: 1px solid var(--color-border-accent);
+
+  background: var(--color-accent-subtle);
+
+  color: var(--color-accent);
+
+}
+
+
+
+/* Compact theme button — inline actions */
+
+.theme-btn-xs {
+
+  font-size: var(--text-xs);
+
+  padding: 2px 8px;
+
+  gap: 4px;
+
+}
+
+
+
+/* Range input — warm-toned slider matching design system */
+
+input[type="range"] {
+
+  -webkit-appearance: none;
+
+  appearance: none;
+
+  width: 100%;
+
+  min-height: 24px;
+
+  height: 24px;
+
+  padding: 0;
+
+  border: 0;
+
+  background: transparent;
+
+  outline: none;
+
+  cursor: pointer;
+
+}
+
+
+
+input[type="range"]::-webkit-slider-runnable-track {
+
+  height: 4px;
+
+  border-radius: 2px;
+
+  background: var(--color-bg-tertiary);
+
+  border: 1px solid var(--color-border-subtle);
+
+  transition: background var(--transition-fast);
+
+}
+
+
+
+input[type="range"]::-moz-range-track {
+
+  height: 4px;
+
+  border-radius: 2px;
+
+  background: var(--color-bg-tertiary);
+
+  border: 1px solid var(--color-border-subtle);
+
+}
+
+
+
+input[type="range"]::-webkit-slider-thumb {
+
+  -webkit-appearance: none;
+
+  appearance: none;
+
+  width: 16px;
+
+  height: 16px;
+
+  border-radius: 50%;
+
+  background: var(--color-accent);
+
+  border: none;
+
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+
+  margin-top: -6px;
+
+  cursor: pointer;
+
+  transition: transform var(--dur-3) var(--ease-out-expo),
+
+              box-shadow var(--dur-3) var(--ease-out-expo);
+
+}
+
+
+
+input[type="range"]::-webkit-slider-thumb:hover {
+
+  transform: scale(1.15);
+
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22), var(--shadow-glow);
+
+}
+
+
+
+input[type="range"]::-webkit-slider-thumb:active {
+
+  transform: scale(0.97);
+
+}
+
+
+
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 0 0 3px rgba(var(--color-accent-rgb), 0.2);
+
+}
+
+
+
+/* Font utility */
+
+.font-sans {
+
+  font-family: var(--font-sans);
+
+}
+
+
+
+/* Title bar text */
+
+.title-text {
+
+  font-size: var(--text-sm);
+
+  font-weight: 700;
+
+  letter-spacing: var(--tracking-display);
+
+  font-family: var(--font-display);
+
+}
+
+
+
+
+
+/* Onboarding card body */
+
+
+
+/* Consistent Lucide strokes across state changes and window controls. */
+
+svg.lucide { stroke-width: 1.5; }
+
+
+
+::view-transition-old(root),
+
 ::view-transition-new(root) { animation-duration: var(--dur-3); }

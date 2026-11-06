@@ -42,11 +42,10 @@ interface TitleBarProps {
   onNavigate: (view: AppView) => void;
   updateAvailable?: boolean;
   updateInstalling?: boolean;
-  rightActions?: React.ReactNode;
 }
 
 export default function TitleBar({
-  title, view, onNavigate, updateAvailable = false, updateInstalling = false, rightActions,
+  title, view, onNavigate, updateAvailable = false, updateInstalling = false,
 }: TitleBarProps) {
   const { t } = useTranslation();
 
@@ -89,7 +88,6 @@ export default function TitleBar({
       />
 
       <div className="title-bar-actions">
-        {rightActions}
         <div className="window-controls">
           <button
             type="button"
@@ -101,7 +99,7 @@ export default function TitleBar({
           <button
             type="button"
             aria-label={t("common.maximize")}
-            onClick={() => void getCurrentWindow().toggleMaximize?.()}
+            onClick={() => { void getCurrentWindow().toggleMaximize?.().catch(() => undefined); }}
           >
             <Square size={9} strokeWidth={1.1} />
           </button>

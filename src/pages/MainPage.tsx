@@ -15,12 +15,7 @@ import { useTranslation } from "react-i18next";
 import { ONBOARDING_DISMISSED_KEY, RECORDING_MODE_KEY } from "@/lib/constants";
 import { readLocalStorage, writeLocalStorage } from "@/lib/storage";
 import { prefersReducedMotion } from "@/lib/motion";
-
-function formatDuration(seconds: number | null): string {
-  if (seconds === null || !Number.isFinite(seconds) || seconds <= 0) return "0:00";
-  const total = Math.floor(seconds);
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
+import { formatDuration } from "@/lib/formatDuration";
 
 export default function MainPage({ onNavigate, animClass = "" }: {
   onNavigate: (v: "main" | "settings" | "history") => void;
@@ -44,15 +39,6 @@ export default function MainPage({ onNavigate, animClass = "" }: {
     engine, engineLoading, handleEngineSwitch,
     alibabaAsrModel, alibabaAsrModelSaving, alibabaAsrModels, alibabaAsrModelsLoading, handleAlibabaAsrModelSelect,
   } = useAsrEngineSettings({ engineLabel, retryModel });
-  // Groups the model list so the current download is easy to find.
-  useEffect(() => {
-    let disposed = false;
-    listInstalledModels()
-      .then((keys) => { if (!disposed) setInstalledEngines(new Set(keys)); })
-      .catch(() => { if (!disposed) setInstalledEngines(new Set()); });
-    return () => { disposed = true; };
-  }, [engine, modelReady]);
-
   const isReady = modelReady && !engineLoading && !alibabaAsrModelSaving;
   const stage = engineLoading || alibabaAsrModelSaving ? "checking" : modelStage;
   const modelSelectionDisabled = engineLoading || alibabaAsrModelSaving || isStarting || isRecording || isProcessing || isDownloading;
@@ -64,6 +50,7 @@ export default function MainPage({ onNavigate, animClass = "" }: {
   const isToggleMode = readLocalStorage(RECORDING_MODE_KEY) === "toggle";
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const rundownRef = useRef<HTMLElement>(null);
   const waveRef = useRef<HTMLDivElement>(null);
   const previousResult = useRef<{ id: string; top: number } | null>(null);
 
@@ -80,12 +67,13 @@ export default function MainPage({ onNavigate, animClass = "" }: {
 
   useLayoutEffect(() => {
     const root = resultsRef.current;
+    const rundown = rundownRef.current;
     const current = history[0];
     const card = root?.querySelector<HTMLElement>(".result-card");
     if (!root || !card || !current || current.text !== transcriptionResult) return;
     const previous = previousResult.current;
     if (previous && previous.id !== current.id && !prefersReducedMotion()) {
-      const oldItem = Array.from(root.querySelectorAll<HTMLElement>(".history-item"))
+      const oldItem = Array.from(rundown?.querySelectorAll<HTMLElement>(".history-item") ?? [])
         .find((item) => item.dataset.historyId === previous.id);
       if (oldItem?.animate) {
         oldItem.animate([
@@ -154,8 +142,8 @@ export default function MainPage({ onNavigate, animClass = "" }: {
 
   const handleToggleRecording = useCallback(() => {
     if (isRecording || isStarting) void stopRecording();
-    else void startRecording();
-  }, [isRecording, isStarting, startRecording, stopRecording]);
+    else if (isReady) void startRecording();
+  }, [isReady, isRecording, isStarting, startRecording, stopRecording]);
 
   const stateLabel = isRecording
     ? t("main.statusListening")
@@ -165,13 +153,16 @@ export default function MainPage({ onNavigate, animClass = "" }: {
         ? t("main.statusProcessing")
         : isReady
           ? t("main.statusReady")
-          : t("main.statusPreparing");
+          : stage === "error"
+            ? t("main.statusError")
+            : t("main.statusPreparing");
 
   const hasError = Boolean(recordingError || modelError) && !errorDismissed;
   const showEmpty = !transcriptionResult && !isProcessing && history.length === 0;
 
   return (
     <div className="page-root signal-page">
+      <h1 className="signal-visually-hidden">{t("viewTitle.main")}</h1>
       <div className={`signal-body ${animClass}`.trim()}>
 
         <div className="signal-main">
@@ -226,6 +217,7 @@ export default function MainPage({ onNavigate, animClass = "" }: {
           {/* ── transcript ── */}
           <section className="transcript-panel" ref={resultsRef} aria-label={t("main.workspaceLabel")}>
             <div className="transcript-head">
+              <h2 className="signal-visually-hidden">{t("result.title")}</h2>
               <span className="signal-tag" data-live={isRecording || isStarting ? "" : undefined}>
                 {isRecording || isStarting ? t("main.statusListening") : t("result.title")}
               </span>
@@ -359,9 +351,9 @@ export default function MainPage({ onNavigate, animClass = "" }: {
           <div className="signal-hsplit" aria-hidden="true" />
 
           {/* ── rundown ── */}
-          <section className="rundown-panel" aria-label={t("main.recentDictations")}>
+          <section className="rundown-panel" ref={rundownRef} aria-label={t("main.recentDictations")}>
             <div className="rundown-head">
-              <span className="signal-label">{t("main.recentDictations")}</span>
+              <h2 className="signal-label">{t("main.recentDictations")}</h2>
               <span className="rundown-count">{history.length}</span>
               <button className="signal-link" onClick={() => flushPendingEditAndNavigate("history")}>
                 {t("main.viewHistory")} <ArrowUpRight size={11} aria-hidden="true" />
@@ -389,7 +381,7 @@ export default function MainPage({ onNavigate, animClass = "" }: {
         {/* ── sources rail ── */}
         <aside className="signal-rail" aria-label={t("main.yourSetup")}>
           <div className="rail-head">
-            <span className="signal-label">{t("main.yourSetup")}</span>
+            <h2 className="signal-label">{t("main.yourSetup")}</h2>
             <button className="icon-btn icon-btn-sm" aria-label={t("main.configure")} onClick={() => flushPendingEditAndNavigate("settings")}>
               <Settings size={12} />
             </button>

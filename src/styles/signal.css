@@ -21,6 +21,20 @@
 
 /* ── shared micro type ─────────────────────────────────────── */
 
+.signal-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+h2.signal-label { margin: 0; }
+
 .signal-label {
   font-family: var(--font-display);
   font-size: 8px;
@@ -101,12 +115,7 @@
 .signal-hsplit,
 .signal-vsplit {
   background: var(--color-border);
-  cursor: col-resize;
-  transition: background-color var(--transition-fast);
 }
-.signal-hsplit { cursor: row-resize; }
-.signal-hsplit:hover,
-.signal-vsplit:hover { background: rgba(var(--color-accent-rgb), 0.5); }
 
 /* ── signal panel (waveform) ───────────────────────────────── */
 
@@ -644,6 +653,8 @@
   gap: 8px;
   height: 20px;
   margin-bottom: 4px;
+  padding: 0;
+  border-bottom: 0;
 }
 .result-card-title {
   display: inline-flex;
@@ -706,6 +717,8 @@
   background: rgba(var(--color-accent-rgb), 0.28);
 }
 .result-card-stats {
+  padding: 0;
+  text-align: left;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -824,15 +837,12 @@
   text-overflow: ellipsis;
 }
 .history-item .icon-btn { opacity: 0; }
-.history-item:hover .icon-btn { opacity: 1; }
+.history-item:hover .icon-btn,
+.history-item:focus-within .icon-btn { opacity: 1; }
 
 /* ============================================================
    Other workspaces inherit the same square, hairline language
    ============================================================ */
-
-.page-content {
-  padding: 0;
-}
 
 .workspace-heading {
   display: flex;
@@ -855,29 +865,7 @@
   line-height: 1.5;
   color: var(--color-text-tertiary);
   margin-top: 5px;
-}
-
-.workspace-settings-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--color-border);
-  font-family: var(--font-display);
-  font-size: 7.5px;
-  font-weight: 600;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--color-text-secondary);
-  transition: border-color var(--transition-fast), color var(--transition-fast);
-}
-.workspace-settings-link:hover {
-  border-color: var(--color-border-accent);
-  color: var(--color-accent);
-}
-
-/* Settings / History / Updates surfaces */
+}/* Settings / History / Updates surfaces */
 .settings-content,
 .history-content,
 .updates-content {
@@ -904,6 +892,13 @@
   .signal-rail { display: none; }
   .signal-vsplit { display: none; }
   .signal-main { grid-template-rows: 148px minmax(0, 1fr) 4px 156px; }
+}
+
+@media (max-height: 620px) {
+  .signal-main { grid-template-rows: 116px minmax(0, 1fr) 4px 132px; }
+  .wave-bars { padding: 0 10px; }
+  .transcript-body { padding: 10px 12px 12px; }
+  .result-card-body { font-size: 16px; }
 }
 
 @media (max-width: 640px) {
@@ -959,7 +954,7 @@
   border-bottom: 0;
   background: var(--color-bg-secondary);
 }
-.settings-nav::-webkit-scrollbar { width: 8px; }
+.settings-nav::-webkit-scrollbar { display: block; width: 8px; }
 .settings-nav::-webkit-scrollbar-thumb {
   background: var(--color-bg-tertiary);
   border: 2px solid var(--color-bg-secondary);
@@ -997,7 +992,7 @@
   padding: 0 12px;
   border: 0;
   border-left: 2px solid transparent;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--color-border);
   background: none;
   text-align: left;
   color: var(--color-text-tertiary);
@@ -1198,7 +1193,33 @@
 }
 .picker-trigger:hover { border-color: var(--color-text-tertiary); }
 .picker-trigger[aria-expanded="true"] { border-color: var(--color-border-accent); }
-.picker-trigger-copy { flex: 1; min-width: 0; font-size: 11.5px; }
+.picker-trigger { min-width: 0; }
+.picker-trigger-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+}
+.picker-trigger-copy strong {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.picker-trigger-copy > span {
+  display: block;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .picker-trigger-copy small {
   display: block;
   font-size: 10px;
@@ -1255,6 +1276,10 @@
   flex: 0 0 6px;
   background: currentColor;
   margin-left: auto;
+  mask: none;
+  -webkit-mask: none;
+  opacity: 1;
+  transform: none;
 }
 .picker-option-copy { flex: 1; min-width: 0; font-size: 11px; }
 .picker-option-badge {

@@ -45,6 +45,24 @@ describe("Tauri window capability boundaries", () => {
     );
   });
 
+  it("grants every window operation the title bar calls", () => {
+    const main = readJson<Capability>("src-tauri/capabilities/main.json");
+    const titleBar = readFileSync(resolve("src/components/TitleBar.tsx"), "utf8");
+    const called = [...titleBar.matchAll(/getCurrentWindow\(\)\.(\w+)/g)].map((match) => match[1]);
+    const permissionFor: Record<string, string> = {
+      minimize: "core:window:allow-minimize",
+      toggleMaximize: "core:window:allow-toggle-maximize",
+      startDragging: "core:window:allow-start-dragging",
+    };
+
+    expect(called.length).toBeGreaterThan(0);
+    for (const method of new Set(called)) {
+      const permission = permissionFor[method];
+      expect(permission, `No capability mapped for getCurrentWindow().${method}`).toBeDefined();
+      expect(main.permissions).toContain(permission);
+    }
+  });
+
   it("keeps the selection toolbar isolated while allowing its explicit window-hide fallback", () => {
     const selection = readJson<Capability>(
       "src-tauri/capabilities/selection.json",

@@ -1,10 +1,18 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { prefersReducedMotion } from "@/lib/motion";
 
 /** Bars drawn across the signal panel. */
 export const WAVEFORM_BAR_COUNT = 78;
 /** Rightmost bars that carry the live (amber) treatment. */
 export const WAVEFORM_LIVE_TAIL = 18;
+
+/**
+ * Fraction of each native window that is genuinely new. The emitter samples a
+ * 120 ms window every 55 ms, so consecutive payloads overlap by about 54%.
+ * Appending the whole payload would draw every syllable twice.
+ */
+const NEW_SAMPLE_RATIO = 55 / 120;
 
 /**
  * Rolls live microphone levels into a scrolling waveform.
@@ -24,30 +32,30 @@ export function useWaveformBars(
   const latestSession = useRef(0);
 
   useEffect(() => {
-    const paint = () => {
+    const paint = (levels: number[]) => {
       const container = containerRef.current;
       if (!container) return;
       const bars = container.children;
       for (let index = 0; index < bars.length && index < barCount; index += 1) {
         const element = bars[index] as HTMLElement;
-        const value = bufferRef.current[index] ?? 0;
+        const value = levels[index] ?? 0;
         // A resting bar stays visible as a hairline so the panel never looks broken.
         element.style.transform = `scaleY(${Math.max(0.03, value).toFixed(3)})`;
         element.style.opacity = value > 0.04 ? "1" : "0.5";
       }
     };
 
-    const schedulePaint = () => {
+    const schedulePaint = (levels: number[]) => {
       if (frameRef.current !== null) return;
       frameRef.current = requestAnimationFrame(() => {
         frameRef.current = null;
-        paint();
+        paint(levels);
       });
     };
 
     if (!isRecording) {
       bufferRef.current = Array.from({ length: barCount }, () => 0);
-      paint();
+      paint(bufferRef.current);
       return;
     }
 
@@ -63,19 +71,23 @@ export function useWaveformBars(
       const incoming = payload.bars;
       if (!Array.isArray(incoming) || incoming.length === 0) return;
 
-      const buffer = bufferRef.current;
-      const shift = Math.min(incoming.length, barCount);
-      buffer.copyWithin(0, shift);
-      for (let index = 0; index < shift; index += 1) {
-        const sourceIndex = shift === 1
-          ? incoming.length - 1
-          : Math.round((index / (shift - 1)) * (incoming.length - 1));
-        const value = incoming[sourceIndex];
-        buffer[barCount - shift + index] = Number.isFinite(value)
-          ? Math.max(0, Math.min(1, value))
-          : 0;
+      const levels = incoming.map((value) => (
+        Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
+      ));
+
+      // Reduced motion: show the current level without scrolling the history.
+      if (prefersReducedMotion()) {
+        const peak = Math.max(...levels);
+        bufferRef.current = Array.from({ length: barCount }, () => peak);
+        schedulePaint(bufferRef.current);
+        return;
       }
-      schedulePaint();
+
+      const fresh = Math.max(1, Math.round(levels.length * NEW_SAMPLE_RATIO));
+      const buffer = bufferRef.current;
+      buffer.copyWithin(0, fresh);
+      buffer.splice(barCount - fresh, fresh, ...levels.slice(levels.length - fresh));
+      schedulePaint(buffer);
     }).then((dispose) => {
       if (disposed) dispose();
       else unlisten = dispose;
