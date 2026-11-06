@@ -5,6 +5,9 @@ text caret. Amber is the voice being captured; white is the text it becomes.
 It is drawn from the same rules as the interface in `DESIGN.md`: black ground,
 one chromatic colour, square caps, no shadows, no gradients.
 
+This folder replaces `assets/branding/` (copper) and `assets/branding-v2`
+(navy), both removed once v3 shipped. Git history keeps them.
+
 ## Files
 
 | File | Size | Use |
@@ -13,6 +16,7 @@ one chromatic colour, square caps, no shadows, no gradients.
 | `speakflow-mark.svg` | 394 × 228 | Bare mark on dark surfaces. |
 | `speakflow-mark-mono.svg` | 394 × 228 | Single colour via `currentColor`. Title bar, one-colour print. |
 | `speakflow-tray.svg` | 512 × 512 | Transparent source for the notification-area icons. |
+| `speakflow-tray-light.svg` | 512 × 512 | Same, in the light-taskbar palette. |
 | `speakflow-logo-horizontal.svg` | 600 × 160 | Lockup for dark surfaces. |
 | `speakflow-logo-horizontal-light.svg` | 600 × 160 | Lockup for white and light neutral surfaces. |
 | `speakflow-logo-vertical.svg` | 480 × 480 | Centred lockup for dark surfaces, splash and about screens. |
@@ -55,11 +59,21 @@ The tray uses the mark on transparency rather than the opaque app tile, so the
 notification area shows the waveform and not a black square. The recording dot
 sits at the bottom right, clear of the caret, with a black ring.
 
-Known limit: Windows picks the taskbar theme, not the app. On a light taskbar
-the white caret has no contrast and the amber waveform drops to about 1.6:1.
-The mark still reads as an amber waveform, but the caret is lost. Fixing it
-needs a light icon set and a theme listener in `setup_system_tray`; until then
-this is the tradeoff.
+Windows draws the notification area in the theme the user picked for Windows,
+which can differ from the app theme. The tray therefore ships two palettes:
+`tray_icon::system_uses_light_taskbar` reads
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize\SystemUsesLightTheme`
+and picks the set. The dark set keeps the white caret; the light set swaps it
+for ink `#0A0A0A` and darkens the waveform to `#A86200`, which holds both above
+3:1 on a light taskbar. `setup_system_tray` re-reads the setting whenever the
+recording state changes and every 60 seconds, because Windows does not report a
+taskbar theme change through Tauri's window theme.
+
+Known limit: an accent-coloured taskbar is not detected. Personalization → "Show
+accent color on Start and taskbar" paints the notification area in the accent
+colour, which can be dark while Windows itself is in light mode; the light set is
+then the wrong choice and the ink caret drops to about 1.3:1. Reading
+`ColorPrevalence` and the accent luminance would fix it.
 
 ## Regenerating rasters
 
@@ -69,10 +83,11 @@ The SVGs are the masters.
    `src-tauri/icons/` — PNG sizes, `icon.ico`, `icon.icns`, Store and mobile
    assets.
 2. `pnpm tauri icon assets/branding-v3/speakflow-tray.svg --png 512 --output <dir>`
-   renders the transparent tray source. Copy the result to
-   `src-tauri/icons/tray-source.png`.
-3. `uv run --with pillow python scripts/generate_tray_icons.py` derives the four
-   tray scales, their recording variants, and `icon.ico`.
+   and the same command with `speakflow-tray-light.svg` render the two
+   transparent tray sources. Copy the results to
+   `src-tauri/icons/tray-source.png` and `src-tauri/icons/tray-source-light.png`.
+3. `uv run --with pillow python scripts/generate_tray_icons.py` derives both tray
+   sets, their recording variants, and `icon.ico`.
 4. Copy the master to the favicon paths: `speakflow-icon.svg` to
    `assets/icon.svg` and `src-tauri/icons/icon.svg`, and `src-tauri/icons/icon.png`
    to `assets/icon.png`. `tauri icon` does not write SVG.
