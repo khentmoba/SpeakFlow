@@ -341,6 +341,31 @@ pub async fn paste_text_impl(
     paste_text_to_target(app_handle, text, method, None).await
 }
 
+/// Presses Enter in the target window.
+///
+/// Used by the spoken "press enter" command after the dictation has been
+/// delivered. The target check runs first so a command can never be sent to a
+/// window the user did not start dictating into.
+pub(crate) async fn press_enter(target: Option<isize>) -> Result<(), AppError> {
+    #[cfg(target_os = "windows")]
+    {
+        const VK_RETURN: u16 = 0x0D;
+        ensure_paste_target(target)?;
+        let inputs = [
+            make_key_input(VK_RETURN, 0, 0),
+            make_key_input(VK_RETURN, 0, KEYEVENTF_KEYUP),
+        ];
+        send_inputs_to_target(&inputs, target)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = target;
+        Err(AppError::Other(
+            "Spoken commands are only supported on Windows".to_string(),
+        ))
+    }
+}
+
 pub(crate) async fn paste_text_to_target(
     app_handle: &tauri::AppHandle,
     text: &str,

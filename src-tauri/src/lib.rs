@@ -57,6 +57,10 @@ pub fn run() {
                 utils::paths::get_data_dir()
             );
 
+            // The local-only switch gates every outbound request, so it must be
+            // in memory before any service can start one.
+            services::local_only::load();
+
             // 启动时加载用户画像
             {
                 let state = app_handle.state::<AppState>();
@@ -271,6 +275,9 @@ pub fn run() {
             commands::funasr::get_voice_processing,
             commands::funasr::set_silence_filter,
             commands::funasr::set_remove_fillers,
+            commands::dictation_tools::get_dictation_tools,
+            commands::dictation_tools::set_dictation_tools,
+            commands::file_transcription::transcribe_audio_file,
             commands::funasr::get_model_dirs,
             commands::funasr::set_model_dirs,
             commands::funasr::download_models,

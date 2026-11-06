@@ -106,3 +106,10 @@ pub use monitor::{
 pub(crate) use native_recording::spawn_native_recording;
 pub use native_recording::NativeRecording;
 pub use wav::encode_wav;
+
+/// Resamples arbitrary-rate mono PCM to the engine rate.
+///
+/// Exposed for file transcription, which decodes at the file's own rate.
+pub(crate) fn resample_for_file(samples: &[i16], input_rate: u32) -> Result<Vec<i16>, String> {
+    resample::resample_to_16k(samples, input_rate).map(|value| value.into_owned())
+}

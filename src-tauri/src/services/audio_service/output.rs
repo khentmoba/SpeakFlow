@@ -4,6 +4,8 @@ pub(crate) struct PendingPaste {
     pub session_id: u64,
     pub target_window: Option<isize>,
     pub text: String,
+    /// Press Enter in the target window after the text is delivered.
+    pub press_enter: bool,
 }
 
 impl PendingPaste {

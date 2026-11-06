@@ -15,11 +15,16 @@ SpeakFlow's original integration and post-processing changes are licensed
 under GPL-3.0-only.
 
 ## transcribe.cpp and downloaded models
-
 [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) is distributed
 under the MIT License. Qwen3-ASR, Parakeet and Canary-Qwen model files are
 downloaded separately and remain subject to the terms published by their
 respective upstream providers.
+
+## Audio file decoding
+
+[Symphonia](https://github.com/pdeljanov/Symphonia) decodes MP3, AAC/M4A, FLAC,
+Ogg Vorbis and WAV files for file transcription. It is distributed under the
+Mozilla Public License 2.0. SpeakFlow calls it as an unmodified library.
 
 Package-manager dependencies may carry additional licenses. Their inclusion in
 the source tree, Python engine, or application bundle does not change those

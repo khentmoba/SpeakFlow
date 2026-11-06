@@ -93,6 +93,7 @@ pub async fn exa_search(
     query: &str,
     max_results: u8,
 ) -> Result<Vec<SearchResult>, String> {
+    crate::services::local_only::ensure("Search the web")?;
     let body = serde_json::json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -283,6 +284,7 @@ pub async fn tavily_search(
     query: &str,
     max_results: u8,
 ) -> Result<Vec<SearchResult>, String> {
+    crate::services::local_only::ensure("Search the web")?;
     let body = serde_json::json!({
         "query": query,
         "max_results": max_results,
@@ -704,6 +706,7 @@ pub async fn google_grounded_search(
     query: &str,
     max_results: u8,
 ) -> Result<GoogleGroundedSearch, String> {
+    crate::services::local_only::ensure("Search the web")?;
     let endpoint = "https://generativelanguage.googleapis.com/v1beta/interactions";
     let started = Instant::now();
     log::info!(

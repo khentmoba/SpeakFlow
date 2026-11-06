@@ -42,6 +42,8 @@ const tauriMock = vi.hoisted(() => ({
   listAiModels: vi.fn(),
   listAlibabaAsrModels: vi.fn(),
   listInstalledModels: vi.fn(),
+  getDictationTools: vi.fn(),
+  setDictationTools: vi.fn(),
   getVoiceProcessing: vi.fn(),
   setSilenceFilter: vi.fn(),
   setRemoveFillers: vi.fn(),
@@ -287,6 +289,14 @@ function resetTauriMocks(exportPath: string | null = null) {
   tauriMock.isAutostartEnabled.mockResolvedValue(false);
   tauriMock.listAiModels.mockResolvedValue({ models: [], sourceUrl: "" });
   tauriMock.listInstalledModels.mockResolvedValue([]);
+  tauriMock.getDictationTools.mockResolvedValue({
+    snippets: [],
+    toneMode: "off",
+    tidyTranscript: true,
+    voiceCommands: false,
+    whisperMode: false,
+    localOnly: false,
+  });
   tauriMock.getVoiceProcessing.mockResolvedValue({ silenceFilter: true, removeFillers: true });
   tauriMock.getModelDirs.mockResolvedValue([]);
   tauriMock.listAlibabaAsrModels.mockResolvedValue({

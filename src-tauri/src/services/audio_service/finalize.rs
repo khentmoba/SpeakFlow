@@ -551,7 +551,7 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
                 if !result.is_empty() {
                     let app = app_handle.clone();
                     tokio::spawn(async move {
-                        do_paste(&app, &result, session_id, paste_target).await;
+                        do_paste(&app, &result, session_id, paste_target, false).await;
                     });
                 } else {
                     flush_pending_paste(&app_handle);
@@ -842,6 +842,42 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
             }
         };
         let polished = text != original;
+        // Local tools run after polish so a saved snippet is never rewritten by
+        // the model, and a spoken command is read from the final wording.
+        let tools = crate::services::dictation_tools::OutputTools::load();
+        let applied = crate::services::dictation_tools::apply(&text, lang_ref, &tools);
+        if applied.command == Some(crate::services::voice_commands::VoiceCommand::Discard) {
+            log::info!("Dictation discarded by spoken command (session {session_id})");
+            emit_done_with_timing(
+                &app_handle,
+                session_id,
+                subtitle_show_gen,
+                mode,
+                "",
+                &original,
+                duration_sec,
+                false,
+                lang_ref,
+                edit_grab_status,
+                None,
+            );
+            flush_pending_paste(&app_handle);
+            return;
+        }
+        let press_enter =
+            applied.command == Some(crate::services::voice_commands::VoiceCommand::Enter);
+        if let Some(command) = applied.command {
+            log::info!(
+                "Spoken command '{}' applied (session {session_id})",
+                command.as_str()
+            );
+        }
+        // Newline and Paragraph are delivered as text so they work in both the
+        // clipboard and direct-input paths.
+        let text = match applied.command {
+            Some(command) => format!("{}{}", applied.text, command.insertion()),
+            None => applied.text,
+        };
         if polished {
             if let Some(policy) = audit_policy {
                 crate::services::jev_review::schedule_polish_audit(
@@ -891,8 +927,18 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
         if !text.is_empty() {
             let app = app_handle.clone();
             tokio::spawn(async move {
-                do_paste(&app, &text, session_id, paste_target).await;
+                do_paste(&app, &text, session_id, paste_target, press_enter).await;
             });
+        } else if press_enter {
+            // "press enter" on its own has no text to deliver, so the key press
+            // is the whole output. Pasting an empty string would clear the
+            // clipboard in clipboard mode.
+            tokio::spawn(async move {
+                if let Err(error) = crate::commands::clipboard::press_enter(paste_target).await {
+                    log::warn!("Spoken enter command failed: {error}");
+                }
+            });
+            flush_pending_paste(&app_handle);
         } else {
             flush_pending_paste(&app_handle);
         }
@@ -1235,6 +1281,11 @@ pub(crate) fn flush_pending_paste(app: &tauri::AppHandle) {
                     )
                     .await
                     .map_err(|error| error.to_string())?;
+                    if output.press_enter {
+                        crate::commands::clipboard::press_enter(output.target_window)
+                            .await
+                            .map_err(|error| error.to_string())?;
+                    }
                     if state.with_profile(|p| p.external_correction_learning) {
                         crate::services::external_correction_service::watch(
                             app,
@@ -1316,6 +1367,7 @@ async fn do_paste(
     text: &str,
     session_id: u64,
     target_window: Option<isize>,
+    press_enter: bool,
 ) {
     crate::commands::clipboard::set_last_pasted_text(text);
     let state = app.state::<AppState>();
@@ -1329,6 +1381,7 @@ async fn do_paste(
                 session_id,
                 target_window,
                 text: text.to_string(),
+                press_enter,
             });
     }
     flush_pending_paste(app);

@@ -5,6 +5,7 @@ fn output(session_id: u64, target_window: Option<isize>, text: &str) -> PendingP
         session_id,
         target_window,
         text: text.into(),
+        press_enter: false,
     }
 }
 

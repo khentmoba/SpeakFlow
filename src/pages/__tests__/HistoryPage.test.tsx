@@ -88,7 +88,13 @@ beforeEach(() => {
   api.listTranscriptionHistory.mockResolvedValue({ items: [record], total: 1, hasMore: false });
   api.getTranscriptionHistoryStats.mockResolvedValue({
     total: 1,
+    success: 1,
+    failed: 0,
     totalCharacters: 8,
+    totalWords: 2,
+    estimatedSecondsSaved: 3,
+    activeDays: 1,
+    currentStreakDays: 1,
     asr: { p50Ms: 240, p95Ms: 240 },
     polish: { p50Ms: 580, p95Ms: 580 },
     totalLatency: { p50Ms: 860, p95Ms: 860 },

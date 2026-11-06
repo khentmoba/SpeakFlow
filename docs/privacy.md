@@ -91,6 +91,14 @@ Previously downloaded local models can be used without downloading them again.
 Disabling a feature does not erase information already sent to a provider; use
 that provider's account controls for deletion requests.
 
+**Local-only mode** enforces the same choice in one switch. While it is on,
+SpeakFlow refuses every request in the table above: cloud recognition, AI polish
+and assistants, automatic decisions, web search, model downloads and update
+checks. Local recognition, snippets, local cleanup, history and file
+transcription keep working. A blocked feature reports that it needs a network
+connection instead of failing silently. Turning the switch off restores the
+previous settings; nothing is re-enabled on its own.
+
 ## Third-party privacy policies
 
 Use the policy for your selected service, account and region:

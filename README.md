@@ -31,7 +31,12 @@ Basic local dictation works without an LLM account. For rewriting, translation o
 | **AI polish** | Rewrite with your own instructions; Auto can keep the original when polishing is unnecessary. |
 | **Voice & selection assistants** | Ask questions, rewrite, translate, explain or search; optionally include app, selected-text or screenshot context. |
 | **Personalization** | Add hotwords, learn corrections and set instructions, translation and processing rules per app. |
-| **Local history** | Opt in to search, export, delete or re-polish past text; enable audio saving to re-transcribe it. |
+| **Snippets** | Say a saved shortcut and SpeakFlow inserts the text; a multi-word shortcut also works inside a sentence. |
+| **Spoken commands** | End a dictation with "press enter", "new line", "new paragraph" or "scratch that". |
+| **Tidy spoken text** | Repeated words and phrases are collapsed locally, without a model. |
+| **File transcription** | Pick an audio file and get a transcript in History; MP3, M4A, FLAC, Ogg and WAV are supported. |
+| **Local-only mode** | Blocks every network request: cloud recognition, AI, search, downloads and update checks. Local recognition keeps working. |
+| **Local history** | Opt in to search, export (JSON, Markdown, CSV, SRT, VTT), delete or re-polish past text; enable audio saving to re-transcribe it. |
 
 ## Recognition engines
 

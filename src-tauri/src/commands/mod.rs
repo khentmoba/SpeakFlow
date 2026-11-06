@@ -4,6 +4,8 @@ pub mod audio;
 pub mod claude_oauth;
 pub mod clipboard;
 pub mod codex_oauth;
+pub mod dictation_tools;
+pub mod file_transcription;
 pub mod funasr;
 pub mod grok_build_oauth;
 pub mod history;

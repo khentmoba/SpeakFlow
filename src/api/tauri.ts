@@ -28,6 +28,8 @@ import type {
   OpenaiCodexOauthDeviceCodeChallenge,
   OpenaiCodexOauthStatus,
   XaiAuthMode,
+  DictationToolsSettings,
+  FileTranscriptionResult,
   PersistentHistoryFilter,
   PersistentHistoryPage,
   PersistentHistoryRecord,
@@ -394,8 +396,25 @@ export function deleteTranscriptionHistory(id: number): Promise<boolean> {
   return invokeCommand<boolean>("delete_transcription_history", { id });
 }
 
-export function exportTranscriptionHistory(format: "json" | "markdown"): Promise<string | null> {
+export function exportTranscriptionHistory(
+  format: "json" | "markdown" | "csv" | "srt" | "vtt",
+): Promise<string | null> {
   return invokeCommand<string | null>("export_transcription_history", { format });
+}
+
+export function transcribeAudioFile(): Promise<FileTranscriptionResult | null> {
+  return invokeCommand<FileTranscriptionResult | null>("transcribe_audio_file");
+}
+
+export function getDictationTools(): Promise<DictationToolsSettings> {
+  return invokeCommand<DictationToolsSettings>("get_dictation_tools");
+}
+
+/** Saves the whole set; the backend returns the normalized result. */
+export function setDictationTools(
+  settings: DictationToolsSettings,
+): Promise<DictationToolsSettings> {
+  return invokeCommand<DictationToolsSettings>("set_dictation_tools", { settings });
 }
 
 export function reprocessTranscriptionHistory(

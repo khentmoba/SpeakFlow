@@ -217,6 +217,7 @@ pub async fn send_llm_request(
     app_handle: Option<&tauri::AppHandle>,
     options: LlmRequestOptions<'_>,
 ) -> Result<String, String> {
+    crate::services::local_only::ensure("Use an AI model")?;
     let deepseek_responses_endpoint = uses_deepseek_v4_responses(endpoint).then(|| LlmEndpoint {
         provider: endpoint.provider.clone(),
         api_url: responses_api_url(&endpoint.api_url),

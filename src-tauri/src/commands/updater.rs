@@ -37,6 +37,7 @@ pub async fn install_app_update(
     on_progress: tauri::ipc::Channel<UpdateProgress>,
 ) -> Result<(), AppError> {
     use tauri_plugin_updater::UpdaterExt;
+    crate::services::local_only::ensure("Install an app update").map_err(AppError::Other)?;
     let _operation = UPDATE_LOCK
         .try_lock()
         .map_err(|_| AppError::Other("An update is already in progress.".into()))?;
@@ -126,6 +127,12 @@ struct GitHubRelease {
 
 #[tauri::command]
 pub async fn check_app_update() -> Result<AppUpdateInfo, AppError> {
+    // Local-only mode must not reach GitHub. Reporting "no update" keeps the
+    // periodic check quiet instead of raising an error the user did not cause.
+    if crate::services::local_only::is_enabled() {
+        log::debug!("Update check skipped: Local-only mode is on");
+        return Ok(app_update_info(env!("CARGO_PKG_VERSION"), None));
+    }
     Ok(app_update_info(
         env!("CARGO_PKG_VERSION"),
         fetch_latest_release().await?,

@@ -106,9 +106,24 @@ pub async fn export_transcription_history(
             serde_json::to_vec_pretty(&records)
                 .map_err(|error| format!("Failed to serialize history: {error}"))?,
         ),
+        "csv" => (
+            "csv",
+            "CSV",
+            crate::services::history_export::csv(&records).into_bytes(),
+        ),
+        "srt" => (
+            "srt",
+            "SubRip subtitles",
+            crate::services::history_export::srt(&records).into_bytes(),
+        ),
+        "vtt" => (
+            "vtt",
+            "WebVTT subtitles",
+            crate::services::history_export::vtt(&records).into_bytes(),
+        ),
         _ => {
             return Err(AppError::Other(
-                "History export format must be JSON or Markdown".into(),
+                "History export format must be JSON, Markdown, CSV, SRT or VTT".into(),
             ))
         }
     };

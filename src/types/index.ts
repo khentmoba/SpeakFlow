@@ -359,9 +359,39 @@ export interface PersistentHistoryStats {
   success: number;
   failed: number;
   totalCharacters: number;
+  totalWords: number;
+  estimatedSecondsSaved: number;
+  activeDays: number;
+  currentStreakDays: number;
   asr: LatencyStats;
   polish: LatencyStats;
   totalLatency: LatencyStats;
+}
+
+/** The transcript of an audio file the user picked. */
+export interface FileTranscriptionResult {
+  fileName: string;
+  text: string;
+  language: string | null;
+  durationSec: number;
+}
+
+/** A spoken shortcut and the text it inserts. */
+export interface DictationSnippet {
+  trigger: string;
+  expansion: string;
+}
+
+export type ToneMode = "off" | "formal" | "casual" | "concise" | "bullets" | "email";
+
+/** Local dictation tools, stored in the app's speech settings. */
+export interface DictationToolsSettings {
+  snippets: DictationSnippet[];
+  toneMode: ToneMode;
+  tidyTranscript: boolean;
+  voiceCommands: boolean;
+  whisperMode: boolean;
+  localOnly: boolean;
 }
 
 export interface SelectionAssistantConfig {
