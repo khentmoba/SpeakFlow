@@ -30,13 +30,17 @@
   flex-direction: column;
   align-items: center;
   gap: 10px;
-}/* Status hint text below the record button */
+}
+
+/* Status hint text below the record button */
 .status-text {
   font-size: var(--text-xs);
   line-height: 1.6;
   color: var(--color-text-tertiary);
   text-align: center;
-}/* Result card — elevated container for transcription output */
+}
+
+/* Result card — elevated container for transcription output */
 .result-card {
   border-radius: var(--radius-md);
   background: var(--color-bg-elevated);
@@ -51,7 +55,9 @@
 .result-card:hover {
   border-color: var(--color-border);
   box-shadow: var(--shadow-md);
-}/* Result card header — title row with copy button */
+}
+
+/* Result card header — title row with copy button */
 .result-card-header {
   display: flex;
   align-items: center;
@@ -133,7 +139,9 @@
   display: inline-block;
   margin-left: 6px;
   color: var(--color-text-secondary);
-}/* Error banner inner layout */
+}
+
+/* Error banner inner layout */
 .error-banner-inner {
   display: flex;
   align-items: flex-start;
@@ -230,7 +238,9 @@
   display: flex;
   align-items: center;
   gap: 2.5px;
-}/* Result card accent dot */
+}
+
+/* Result card accent dot */
 .result-dot {
   width: 5px;
   height: 5px;
@@ -1005,7 +1015,9 @@
 @keyframes led-pulse {
   0%, 100% { opacity: 0.85; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.2); }
-}/* ---------- SettingsPage ---------- */
+}
+
+/* ---------- SettingsPage ---------- */
 
 /* Settings navigation bar */
 .settings-nav {
@@ -1026,7 +1038,9 @@
 
 .settings-nav::-webkit-scrollbar {
   display: none;
-}.settings-nav-tab {
+}
+
+.settings-nav-tab {
   flex-shrink: 0;
   padding: 8px 10px;
   font-size: var(--text-2xs);
@@ -1612,7 +1626,9 @@
   .decision-model-fields {
     grid-template-columns: minmax(0, 1fr);
   }
-}/* Inline sub-config panel shown below a selected engine in a collapsible picker */
+}
+
+/* Inline sub-config panel shown below a selected engine in a collapsible picker */
 .settings-inline-panel {
   padding: 10px 12px;
   border-radius: var(--radius-sm);

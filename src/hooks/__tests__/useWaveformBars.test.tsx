@@ -52,9 +52,11 @@ it("appends only the new part of each overlapping window", async () => {
   act(() => events.emit("waveform", { sessionId: 1, bars: [1, 1, 1, 1, 1, 1, 1, 1, 1] }));
   await flushFrame();
 
-  const painted = levels(host).filter((value) => value === "scaleY(1.000)").length;
-  expect(painted).toBeGreaterThan(0);
-  expect(painted).toBeLessThan(9);
+  // 9 bars x 55/120 ms of new audio = 4 fresh bars, and they land at the tail.
+  const painted = levels(host);
+  expect(painted.filter((value) => value === "scaleY(1.000)")).toHaveLength(4);
+  expect(painted.slice(-4)).toEqual(["scaleY(1.000)", "scaleY(1.000)", "scaleY(1.000)", "scaleY(1.000)"]);
+  expect(painted.slice(0, -4).every((value) => value === "scaleY(0.030)")).toBe(true);
 });
 
 it("ignores a stale session and stops painting after unmount", async () => {

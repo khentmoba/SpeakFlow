@@ -865,9 +865,10 @@ h2.signal-label { margin: 0; }
   line-height: 1.5;
   color: var(--color-text-tertiary);
   margin-top: 5px;
-}/* Settings / History / Updates surfaces */
+}
+
+/* Settings / History / Updates surfaces */
 .settings-content,
-.history-content,
 .updates-content {
   padding: 0;
   overflow: auto;
@@ -892,13 +893,6 @@ h2.signal-label { margin: 0; }
   .signal-rail { display: none; }
   .signal-vsplit { display: none; }
   .signal-main { grid-template-rows: 148px minmax(0, 1fr) 4px 156px; }
-}
-
-@media (max-height: 620px) {
-  .signal-main { grid-template-rows: 116px minmax(0, 1fr) 4px 132px; }
-  .wave-bars { padding: 0 10px; }
-  .transcript-body { padding: 10px 12px 12px; }
-  .result-card-body { font-size: 16px; }
 }
 
 @media (max-width: 640px) {
@@ -1583,4 +1577,16 @@ h2.signal-label { margin: 0; }
   .settings-grid-2,
   .settings-grid-3,
   .app-rule-editor-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Short windows win over narrow windows: the transcript must keep its room. */
+@media (max-height: 620px) {
+  .signal-main { grid-template-rows: 116px minmax(0, 1fr) 4px 132px; }
+  .wave-bars { padding: 0 10px; }
+  .transcript-body { padding: 10px 12px 12px; }
+  .result-card-body { font-size: 16px; }
+}
+
+@media (max-width: 640px) and (max-height: 620px) {
+  .signal-main { grid-template-rows: 104px minmax(0, 1fr) 4px 112px; }
 }
