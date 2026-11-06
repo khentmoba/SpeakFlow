@@ -442,7 +442,12 @@ class R2T2ASRServer(BaseASRServer):
         audio_base64=None,
         audio_format=None,
         sample_rate=None,
+        filter_silence=True,
     ):
+        # R2T2 segments speech with its own detector to keep the native stream
+        # bounded, so the silence switch does not apply to this engine. The
+        # argument is accepted because the shared dispatcher always sends it.
+        del filter_silence
         if not getattr(self, "initialized", False):
             init_result = self.initialize()
             if not init_result.get("success"):

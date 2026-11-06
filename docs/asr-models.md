@@ -81,6 +81,8 @@ Two preferences in the same section change how a recording is transcribed:
 
 - **Skip silence before recognition** (on by default). When off, the whole
   recording is sent to the model instead of the speech regions FireRedVAD keeps.
+  Confucius4-R2T2 is the exception: it always segments with its own detector to
+  keep the native stream bounded, so the switch does not change it.
 - **Remove filler words** (on by default). Removes `um`, `uh`, `er`, `hmm` and
   similar sounds from the finished transcript. The list is deliberately short:
   words that can carry meaning (`like`, `so`, `you know`) are never touched, and

@@ -862,6 +862,9 @@ export default function SettingsPage({
                   <div className="toggle-knob" />
                 </button>
               </div>
+              {engine === "confucius4-r2t2" && (
+                <p className="settings-hint">{t("settings.silenceFilterR2T2")}</p>
+              )}
               <div className="settings-row" style={{ gap: 8, alignItems: "center" }}>
                 <div className="settings-column" style={{ flex: 1, gap: 2 }}>
                   <span className="settings-option-label">{t("settings.removeFillers")}</span>

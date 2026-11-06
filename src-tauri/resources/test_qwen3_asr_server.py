@@ -602,6 +602,31 @@ class LongClipTests(unittest.TestCase):
         self.assertEqual(server.session.calls, 1)
 
 
+class TranscribeDispatchContractTests(unittest.TestCase):
+    def test_every_server_accepts_the_kwargs_the_dispatcher_sends(self):
+        import inspect
+
+        import r2t2_asr_server
+
+        expected = (
+            "audio_path",
+            "options",
+            "hot_words",
+            "audio_base64",
+            "audio_format",
+            "sample_rate",
+            "filter_silence",
+        )
+        for server_class in (qwen3_asr_server.Qwen3ASRServer, r2t2_asr_server.R2T2ASRServer):
+            parameters = inspect.signature(server_class.transcribe_audio).parameters
+            for name in expected:
+                self.assertIn(
+                    name,
+                    parameters,
+                    f"{server_class.__name__}.transcribe_audio is missing {name}",
+                )
+
+
 class SpeechProcessingTests(unittest.TestCase):
     """Silence filtering, shared model folders and CPU recovery."""
 

@@ -361,6 +361,7 @@ const en = {
     speechProcessing: "Speech processing",
     silenceFilter: "Skip silence before recognition",
     silenceFilterDesc: "Trims silence with the voice detector before the model runs. Off sends the whole recording.",
+    silenceFilterR2T2: "Confucius4-R2T2 always segments speech with its own detector, so this switch does not change it.",
     removeFillers: "Remove filler words",
     removeFillersDesc: "Drops um, uh and similar sounds from the finished transcript. Words in your dictionary are never removed.",
     testModel: "Test model",
