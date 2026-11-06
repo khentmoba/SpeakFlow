@@ -1,0 +1,7 @@
+<svg width="394" height="228" viewBox="60 152 394 228" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SpeakFlow mark">
+  <title>SpeakFlow mark</title>
+  <!-- Voice: three-extrema waveform, square caps -->
+  <path d="M 84 256 H 132 C 156 256 156 176 180 176 C 204 176 220 356 244 356 C 268 356 284 196 308 196 C 324 196 324 256 340 256" stroke="currentColor" stroke-width="48" stroke-linecap="square" fill="none"/>
+  <!-- Text: the caret the voice resolves into -->
+  <rect x="410" y="156" width="44" height="200" fill="currentColor"/>
+</svg>

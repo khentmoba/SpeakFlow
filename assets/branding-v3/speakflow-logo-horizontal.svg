@@ -1,0 +1,8 @@
+<svg width="600" height="160" viewBox="0 0 600 160" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SpeakFlow">
+  <title>SpeakFlow</title>
+  <g transform="translate(6.80 -31.72) scale(0.42)"><path d="M 84 256 H 132 C 156 256 156 176 180 176 C 204 176 220 356 244 356 C 268 356 284 196 308 196 C 324 196 324 256 340 256" stroke="#FFB020" stroke-width="48" stroke-linecap="square" fill="none"/>
+  <rect x="410" y="156" width="44" height="200" fill="#FFFFFF"/></g>
+  <line x1="228" y1="44" x2="228" y2="116" stroke="#8A8A8A" stroke-opacity="0.35"/>
+  <text x="260" y="92" font-family="Bahnschrift, 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif" font-size="44" font-weight="600" letter-spacing="7" fill="#FFFFFF">SPEAKFLOW</text>
+  <text x="262" y="118" font-family="Bahnschrift, 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif" font-size="9" font-weight="600" letter-spacing="3.4" fill="#8A8A8A">VOICE TO TEXT <tspan fill="#FFB020">&#9632;</tspan> WINDOWS</text>
+</svg>

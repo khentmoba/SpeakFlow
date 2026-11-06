@@ -4,34 +4,26 @@ import { Minus, Square, X } from "lucide-react";
 import { hideMainWindow } from "@/api/tauri";
 import AppNavigation, { type AppView } from "./AppNavigation";
 
-export function SpeakFlowBrandIcon({ size = 15, className }: { size?: number; className?: string }) {
+export function SpeakFlowBrandIcon({ height = 14, className }: { height?: number; className?: string }) {
+  const width = Math.round(((height * 394) / 228) * 100) / 100;
   return (
     <svg
-      width={size}
-      height={size}
-      viewBox="0 0 512 512"
+      width={width}
+      height={height}
+      viewBox="60 152 394 228"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-hidden="true"
     >
-      <g transform="translate(-10 -20)">
-        <path
-          transform="translate(512 0) scale(-1 1)"
-          d="M 166 220 C 156 176, 194 144, 256 144 C 324 144, 360 178, 352 220 C 344 252, 310 266, 256 276 C 202 286, 168 300, 160 332 C 152 374, 188 408, 256 408 C 310 408, 344 382, 350 344"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="56"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          transform="translate(512 0) scale(-1 1)"
-          d="M 164 216 Q 140 236 116 244 Q 142 246 170 230 Z"
-          fill="currentColor"
-        />
-        <rect x="414" y="296" width="22" height="64" rx="11" fill="currentColor" />
-      </g>
+      <path
+        d="M 84 256 H 132 C 156 256 156 176 180 176 C 204 176 220 356 244 356 C 268 356 284 196 308 196 C 324 196 324 256 340 256"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="48"
+        strokeLinecap="square"
+      />
+      <rect x="410" y="156" width="44" height="200" fill="currentColor" />
     </svg>
   );
 }
@@ -74,7 +66,7 @@ export default function TitleBar({
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <header onMouseDown={startDrag} className="title-bar">
       <div className="title-bar-brand">
-        <SpeakFlowBrandIcon size={14} className="title-bar-logo" />
+        <SpeakFlowBrandIcon height={14} className="title-bar-logo" />
         <span className="title-bar-name">SpeakFlow</span>
         <span className="title-bar-div" aria-hidden="true" />
         <span className="title-bar-doc">{title}</span>
