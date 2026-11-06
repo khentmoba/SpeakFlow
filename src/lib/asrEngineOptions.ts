@@ -1,4 +1,4 @@
-import { AudioWaveform, Cloud, FileAudio, Globe, Languages, Layers, Mic, Sparkles, Waves, Zap } from "lucide-react";
+import { AudioWaveform, Cloud, Globe, Languages, Layers, Mic, Sparkles, Waves, Zap } from "lucide-react";
 import { CATALOG_MODELS, findCatalogModel } from "@/lib/asrCatalog";
 
 type EngineIcon = typeof Mic;
@@ -27,7 +27,6 @@ const ICONS: Record<string, EngineIcon> = {
 
 function catalogIcon(key: string): EngineIcon {
   if (ICONS[key]) return ICONS[key];
-  if (key.startsWith("whisper")) return FileAudio;
   if (key.startsWith("qwen")) return Layers;
   if (key.startsWith("parakeet") || key.startsWith("nemotron") || key.startsWith("multitalker")) return Mic;
   if (key.startsWith("moonshine") || key.startsWith("gigaam")) return Zap;

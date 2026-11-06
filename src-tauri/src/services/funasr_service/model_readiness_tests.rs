@@ -84,7 +84,7 @@ fn installed_listing_reports_only_models_present_at_the_catalog_size() {
         ) {
             return;
         }
-    let model = super::local_model_file("whisper-tiny");
+    let model = super::local_model_file("moonshine-tiny");
     let snapshot = super::get_hf_cache_root()
         .join(format!("models--{}", model.repo_id.replace('/', "--")))
         .join("snapshots/test-revision");
@@ -94,16 +94,16 @@ fn installed_listing_reports_only_models_present_at_the_catalog_size() {
     // The catalog size is the real one, so a 2 KB stand-in is not "installed".
     assert!(!super::installed_catalog_engines().contains(&model.engine.to_string()));
 
-    let expected = crate::utils::asr_catalog::find("whisper-tiny")
+    let expected = crate::utils::asr_catalog::find("moonshine-tiny")
         .unwrap()
         .size;
     std::fs::write(snapshot.join(model.filename), vec![0_u8; expected as usize]).unwrap();
     let installed = super::installed_catalog_engines();
     assert!(
-        installed.contains(&"whisper-tiny".to_string()),
+        installed.contains(&"moonshine-tiny".to_string()),
         "{installed:?}"
     );
-    assert!(!installed.contains(&"whisper-small".to_string()));
+    assert!(!installed.contains(&"moonshine-base".to_string()));
 }
 
 #[test]

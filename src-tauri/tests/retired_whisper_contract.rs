@@ -22,12 +22,13 @@ fn whisper_engine_is_retired_from_runtime_and_ui() {
     let rust_commands = read("src-tauri/src/commands/funasr.rs");
     let rust_runtime = read("src-tauri/src/services/funasr_service.rs");
     let tauri_config = read("src-tauri/tauri.conf.json");
+    let catalog = read("src-tauri/resources/asr_catalog.json");
 
     assert!(!settings.contains("key: \"whisper\""));
     assert!(!engine_options.contains("key: \"whisper\""));
     assert!(!engine_cli.contains("choices=[\"whisper\""));
-    // Whisper GGUFs are offered through transcribe.cpp; the retired
-    // faster-whisper server, its model ids and its dependencies stay out.
+    // No Whisper model is offered, through any runtime.
+    assert!(!catalog.to_ascii_lowercase().contains("whisper"));
     assert!(!rust_paths.contains("\"whisper\""));
     assert!(!rust_paths.contains("get_whisper_server_path"));
     assert!(!rust_commands.contains("\"whisper\","));

@@ -38,14 +38,14 @@ describe("ModelBrowser", () => {
     const current = within(listbox()).getByRole("option", { name: /^Qwen3-ASR 0\.6B(?! 1\.7B)/ });
     expect(current).toHaveAttribute("aria-selected", "true");
     expect(current).toHaveTextContent("Selected");
-    expect(within(listbox()).getByRole("option", { name: /^Whisper Tiny(?! English)/ }))
+    expect(within(listbox()).getByRole("option", { name: /^Moonshine Tiny/ }))
       .toHaveTextContent("Download");
   });
 
   it("selects a model by clicking its row", () => {
     const { onSelect } = setup();
-    fireEvent.click(within(listbox()).getByRole("option", { name: /^Whisper Tiny(?! English)/ }));
-    expect(onSelect).toHaveBeenCalledWith("whisper-tiny");
+    fireEvent.click(within(listbox()).getByRole("option", { name: /^Moonshine Tiny/ }));
+    expect(onSelect).toHaveBeenCalledWith("moonshine-tiny");
   });
 
   it("filters by language and shows that language's grade", () => {
@@ -79,8 +79,8 @@ describe("ModelBrowser", () => {
   });
 
   it("shows an installed model as usable instead of downloadable", () => {
-    setup({ installed: new Set(["whisper-tiny"]) });
-    expect(within(listbox()).getByRole("option", { name: /^Whisper Tiny(?! English)/ })).toHaveTextContent("Use");
+    setup({ installed: new Set(["moonshine-tiny"]) });
+    expect(within(listbox()).getByRole("option", { name: /^Moonshine Tiny/ })).toHaveTextContent("Use");
   });
 
   it("disables every row while an engine switch is pending", () => {

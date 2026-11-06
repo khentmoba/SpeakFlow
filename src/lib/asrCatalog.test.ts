@@ -19,7 +19,9 @@ import {
 describe("ASR catalog", () => {
   it("carries the generated Handy catalog with unique keys", () => {
     expect(ASR_CATALOG.engine_version).toBe("0.4.1");
-    expect(CATALOG_MODELS.length).toBeGreaterThan(50);
+    expect(CATALOG_MODELS.length).toBeGreaterThan(40);
+    // Retired families stay out; see src-tauri/tests/retired_*_contract.rs.
+    expect(CATALOG_MODELS.some((model) => /whisper|sensevoice/i.test(model.key))).toBe(false);
     const keys = CATALOG_MODELS.map((model) => model.key);
     expect(new Set(keys).size).toBe(keys.length);
     for (const model of CATALOG_MODELS) {
@@ -55,7 +57,7 @@ describe("ASR catalog", () => {
   it("formats speed and leaves a missing benchmark empty", () => {
     expect(formatModelSpeed(1.19)).toBe("1.19 s");
     expect(formatModelSpeed(null)).toBeNull();
-    expect(benchmarkFor("whisper-tiny")?.accuracy.en[0]).toMatch(/^[A-F][+-]?$/);
+    expect(benchmarkFor("moonshine-tiny")?.accuracy.en[0]).toMatch(/^[A-F][+-]?$/);
   });
 
   it("ranks grades from A+ down to F", () => {
@@ -110,8 +112,8 @@ describe("ASR catalog", () => {
   it("matches the search query against name, description and key", () => {
     expect(filterCatalogModels({ language: "all", query: "moonshine" }, CATALOG_MODELS).length)
       .toBeGreaterThan(3);
-    expect(filterCatalogModels({ language: "all", query: "whisper-large" }, CATALOG_MODELS)
-      .map((model) => model.key)).toEqual(expect.arrayContaining(["whisper-large-v3"]));
+    expect(filterCatalogModels({ language: "all", query: "parakeet-ultra" }, CATALOG_MODELS)
+      .map((model) => model.key)).toEqual(["parakeet-ultra"]);
     expect(filterCatalogModels({ language: "all", query: "zzzz" }, CATALOG_MODELS)).toEqual([]);
   });
 });

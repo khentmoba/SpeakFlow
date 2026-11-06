@@ -38,6 +38,16 @@ export function findCatalogModel(key: string): CatalogModel | undefined {
   return byKey.get(key);
 }
 
+/**
+ * Models at or above this size ask before downloading. A wrong click on a 25 GB
+ * model costs hours of bandwidth; anything smaller downloads as before.
+ */
+export const LARGE_MODEL_DOWNLOAD_BYTES = 4_000_000_000;
+
+export function needsDownloadConfirmation(model: CatalogModel): boolean {
+  return model.size >= LARGE_MODEL_DOWNLOAD_BYTES;
+}
+
 /** Decimal MB/GB, matching the sizes SpeakFlow already showed for these models. */
 export function formatModelSize(bytes: number): string {
   if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(2)} GB`;

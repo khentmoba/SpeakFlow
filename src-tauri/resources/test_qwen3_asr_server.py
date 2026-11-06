@@ -591,7 +591,7 @@ class LongClipTests(unittest.TestCase):
         self.assertEqual(result["type"], "transcription_error")
 
     def test_input_ceiling_of_zero_sends_the_whole_clip(self):
-        server = self._server("whisper-tiny")
+        server = self._server("moonshine-tiny")
         server.session.limits = types.SimpleNamespace(effective_max_audio_ms=0)
         payload = base64.b64encode(np.zeros(16_000 * 45, dtype="<i2").tobytes()).decode("ascii")
         result = server.transcribe_audio(

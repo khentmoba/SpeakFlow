@@ -357,6 +357,7 @@ const en = {
     engine: "ASR Engine",
     r2t2Desc: "native streaming · stable captions · FireRedVAD",
     browseModels: "Browse models",
+    confirmLargeDownload: "Download {{name}}? It is {{size}}, and it downloads to your model folder. You can cancel while it runs.",
     searchModels: "Search models",
     searchModelsPlaceholder: "Search by name or description",
     filterByLanguage: "Filter by language",

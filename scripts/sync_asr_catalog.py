@@ -64,6 +64,12 @@ LICENSE_OVERRIDES = {
     "medasr": "health-ai-developer-foundations",
 }
 
+# Model families SpeakFlow does not offer. Whisper and SenseVoice were retired
+# here before the catalog existed, and `src-tauri/tests/retired_*_contract.rs`
+# keeps them out. Their GGUF ports would run on transcribe.cpp, but the product
+# decision stands until it is deliberately reversed.
+EXCLUDED_PREFIXES = ("whisper", "sensevoicesmall")
+
 _KEY_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 
@@ -81,11 +87,15 @@ def convert(source):
     models = []
     benchmarks = {}
     seen = set()
+    excluded = set()
     for item in source["models"]:
         key = engine_key(item["id"])
         if key in seen:
             raise ValueError(f"Duplicate engine key {key}")
         seen.add(key)
+        if key.startswith(EXCLUDED_PREFIXES):
+            excluded.add(key)
+            continue
         pin = LEGACY_PINS.get(key)
         model = {
             "key": key,
@@ -124,7 +134,11 @@ def convert(source):
         "source_commit": SOURCE_COMMIT,
         "models": models,
     }
-    return catalog, {"source_commit": SOURCE_COMMIT, "models": benchmarks}
+    return (
+        catalog,
+        {"source_commit": SOURCE_COMMIT, "models": benchmarks},
+        sorted(excluded),
+    )
 
 
 def render(document, key):
@@ -158,13 +172,14 @@ def main():
     parser.add_argument("--output", default=str(OUTPUT))
     parser.add_argument("--benchmark-output", default=str(BENCHMARK_OUTPUT))
     args = parser.parse_args()
-    catalog, benchmarks = convert(load_source(args.source))
+    catalog, benchmarks, excluded = convert(load_source(args.source))
     Path(args.output).write_text(render(catalog, "models"), encoding="utf-8", newline="\n")
     Path(args.benchmark_output).write_text(
         render(benchmarks, "models"), encoding="utf-8", newline="\n"
     )
     print(f"Wrote {len(catalog['models'])} models to {args.output}")
     print(f"Wrote benchmarks to {args.benchmark_output}")
+    print(f"Excluded retired families: {', '.join(excluded) or 'none'}")
 
 
 if __name__ == "__main__":

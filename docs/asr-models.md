@@ -52,15 +52,29 @@ no longer than that ceiling, each cut landing on the quietest short frame near t
 limit so words are not split mid-syllable. Pieces are transcribed in order and
 joined without a space between Chinese or Japanese characters.
 
-Models that report no ceiling (`0`, for example Whisper) receive the whole clip,
-as before. A decode that stops early with a partial transcript keeps that text
-instead of failing the request.
+Models that report no ceiling (`0`) receive the whole clip, as before. A decode
+that stops early with a partial transcript keeps that text instead of failing the
+request.
+
+## Large downloads
+
+Selecting a model of 4 GB or more asks for confirmation first, naming the model
+and its size. Declining leaves the current engine selected, so nothing downloads.
+A model that is already on disk never asks. The threshold is
+`LARGE_MODEL_DOWNLOAD_BYTES` in `src/lib/asrCatalog.ts`.
 
 ## Benchmarks
 
 The browser shows each model's grade and error percentage for the selected
 language, plus its speed per 30 seconds of audio. These come from Handy's
 published benchmark, not from SpeakFlow. The interface says so under the list.
+
+## Retired families
+
+Whisper and SenseVoice are not offered. `EXCLUDED_PREFIXES` in the sync script
+drops them, and `src-tauri/tests/retired_*_contract.rs` fails if either returns.
+Their GGUF ports would run on transcribe.cpp, so removing them from that list is
+a product decision, not a technical one.
 
 ## Licenses
 

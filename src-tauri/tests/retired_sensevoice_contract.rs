@@ -29,6 +29,8 @@ fn sensevoice_is_not_a_selectable_or_runnable_engine() {
     // Small GGUF through transcribe.cpp, which is a different engine; it must
     // not resurrect the old "sensevoice" key.
     assert!(!catalog.contains("\"key\":\"sensevoice\""));
+    assert!(!catalog.contains("\"key\":\"sensevoicesmall\""));
+    assert!(!catalog.to_ascii_lowercase().contains("sensevoice"));
     // Engine lists are generated, so the UI can only offer catalog models.
     // Default selection is exercised by the paths module's configuration tests.
     assert!(settings.contains("from \"@/lib/asrEngineOptions\""));
