@@ -535,6 +535,15 @@
     ],
     "commands::file_transcription::transcribe_audio_file": [
       "engine"
+    ],
+    "commands::support::get_diagnostics": [
+      "support"
+    ],
+    "commands::support::open_logs_folder": [
+      "support"
+    ],
+    "commands::support::get_free_disk_space": [
+      "support"
     ]
   },
   "events": {
@@ -1493,6 +1502,22 @@
         "formal/lean/StateContracts.lean#gpuMayUnload"
       ],
       "assumptions": "Monotonic time and weakly fair timer/command completion; finite clocks in TLC and unbounded Nat policy in Lean. Native load/free success is an input, not a driver proof. AppWorkflow GpuIdle represents R2T2 recording as an active stream. Input focus/click ordering is checked by real user-event regression tests; linguistic accuracy is outside proof."
+    },
+    "support": {
+      "obligation": "Diagnostics read only app-owned files, bound the log tail, and redact credential-shaped lines; opening the log folder resolves the app log directory and never executes user input; free-space checks resolve a volume without writing to it.",
+      "models": {
+        "SettingsContracts": [
+          "ReadSnapshot",
+          "OpenUrl"
+        ]
+      },
+      "implementation": [
+        "src-tauri/src/commands/support.rs"
+      ],
+      "evidence": [
+        "src-tauri/src/commands/support.rs#tests"
+      ],
+      "assumptions": "The Windows shell and filesystem are external; the contract covers read-only access, redaction and directory resolution, not OS behavior."
     }
   },
   "runs": {
@@ -2330,6 +2355,9 @@
     "commands::magpie::detect_magpie": "src-tauri/src/commands/magpie.rs#fn detect_magpie(",
     "commands::dictation_tools::get_dictation_tools": "src-tauri/src/commands/dictation_tools.rs#fn get_dictation_tools(",
     "commands::dictation_tools::set_dictation_tools": "src-tauri/src/commands/dictation_tools.rs#fn set_dictation_tools(",
-    "commands::file_transcription::transcribe_audio_file": "src-tauri/src/commands/file_transcription.rs#fn transcribe_audio_file("
+    "commands::file_transcription::transcribe_audio_file": "src-tauri/src/commands/file_transcription.rs#fn transcribe_audio_file(",
+    "commands::support::get_diagnostics": "src-tauri/src/commands/support.rs#fn get_diagnostics(",
+    "commands::support::open_logs_folder": "src-tauri/src/commands/support.rs#fn open_logs_folder(",
+    "commands::support::get_free_disk_space": "src-tauri/src/commands/support.rs#fn get_free_disk_space("
   }
 }

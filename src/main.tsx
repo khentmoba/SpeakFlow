@@ -129,7 +129,8 @@ function AppWorkspace() {
   return (
     <RecordingProvider>
       <div className="app-shell">
-        <div className="app-workspace">
+        <a className="skip-link" href="#main-content">{i18n.t("app.skipToContent")}</a>
+        <div className="app-workspace" id="main-content" tabIndex={-1}>
           <TitleBar
             title={i18n.t(`viewTitle.${view}`)}
             view={view}
@@ -197,6 +198,18 @@ if (windowLabel === "subtitle") {
     })
     .catch((error) => {
       console.error("Selection window load failed:", error);
+    });
+} else if (windowLabel === "recording-pill") {
+  import("./pages/RecordingPill")
+    .then(({ default: RecordingPill }) => {
+      ReactDOM.createRoot(document.getElementById("root")!).render(
+        <React.StrictMode>
+          <RecordingPill />
+        </React.StrictMode>
+      );
+    })
+    .catch((error) => {
+      console.error("Recording pill load failed:", error);
     });
 } else {
   ReactDOM.createRoot(document.getElementById("root")!).render(

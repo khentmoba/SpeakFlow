@@ -72,3 +72,55 @@ describe("StatusIndicator model integrity repair", () => {
     expect(screen.queryByRole("button", { name: /repair/i })).not.toBeInTheDocument();
   });
 });
+
+describe("StatusIndicator download controls", () => {
+  function renderDownloading(overrides: Record<string, unknown> = {}) {
+    const pauseDownload = vi.fn();
+    const resumeDownload = vi.fn();
+    const view = render(
+      <StatusIndicator
+        stage="downloading"
+        isReady={false}
+        isStarting={false}
+        isRecording={false}
+        isProcessing={false}
+        device="cpu"
+        gpuName={null}
+        downloadProgress={42}
+        downloadMessage={null}
+        isDownloading
+        downloadEstimate={{ bytesPerSecond: 5_000_000, secondsRemaining: 30 }}
+        downloadModels={vi.fn()}
+        cancelDownload={vi.fn()}
+        pauseDownload={pauseDownload}
+        resumeDownload={resumeDownload}
+        {...overrides}
+      />,
+    );
+    return { ...view, pauseDownload, resumeDownload };
+  }
+
+  it("shows the measured speed and time remaining", () => {
+    renderDownloading();
+    expect(screen.getByText(/5\.00 MB\/s/)).toBeInTheDocument();
+    expect(screen.getByText(/30 s left/)).toBeInTheDocument();
+  });
+
+  it("pauses a running download", () => {
+    const { pauseDownload } = renderDownloading();
+    fireEvent.click(screen.getByRole("button", { name: /pause/i }));
+    expect(pauseDownload).toHaveBeenCalledOnce();
+  });
+
+  it("offers Resume and says the download is paused", () => {
+    const { resumeDownload } = renderDownloading({
+      stage: "need_download",
+      isDownloading: false,
+      isDownloadPaused: true,
+      downloadEstimate: null,
+    });
+    expect(screen.getByText(/download paused/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /resume/i }));
+    expect(resumeDownload).toHaveBeenCalledOnce();
+  });
+});

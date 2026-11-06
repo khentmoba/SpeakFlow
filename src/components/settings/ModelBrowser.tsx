@@ -16,6 +16,7 @@ import {
   formatModelSpeed,
   gradeScore,
   languageQuality,
+  recommendedModelFor,
   type LanguageQuality,
 } from "@/lib/asrBenchmarks";
 
@@ -50,7 +51,7 @@ function ModelRow({
   selected,
   installed,
   disabled,
-  bestForLanguage,
+  recommendedForLanguage,
   onSelect,
 }: {
   model: CatalogModel;
@@ -58,7 +59,7 @@ function ModelRow({
   selected: boolean;
   installed: boolean;
   disabled: boolean;
-  bestForLanguage: boolean;
+  recommendedForLanguage: boolean;
   onSelect: (engine: string) => void;
 }) {
   const { t } = useTranslation();
@@ -78,7 +79,7 @@ function ModelRow({
       <span className="model-browser-row-head">
         <strong>{model.name}</strong>
         <span className="model-badges">
-          {bestForLanguage && (
+          {recommendedForLanguage && (
             <span className="model-badge model-badge-recommended">
               <Star size={10} strokeWidth={2} aria-hidden="true" />
               {t("settings.modelBestForLanguage", { language: languageName(language) })}
@@ -204,14 +205,14 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
     () => filterCatalogModels({ language, query }, CATALOG_MODELS),
     [language, query],
   );
-  // The first row of the unfiltered language ranking is the best model for
-  // that language. Search must not change who gets the badge.
-  const bestForLanguage = useMemo(() => {
+  // The model SpeakFlow recommends for the chosen language. Search must not
+  // change who gets the badge.
+  const recommendedForLanguage = useMemo(() => {
     if (language === "all") return null;
-    const top = filterCatalogModels({ language, query: "" }, CATALOG_MODELS)[0];
-    if (!top) return null;
-    const quality = languageQuality(accuracyFor(top, language)?.grade);
-    return quality === "unknown" || quality === "poor" ? null : top.key;
+    const model = recommendedModelFor(language);
+    if (!model) return null;
+    const quality = languageQuality(accuracyFor(model, language)?.grade);
+    return quality === "unknown" || quality === "poor" ? null : model.key;
   }, [language]);
   // A short first view: what is installed, plus a few recommendations. Search
   // and "Show all" reveal the rest.
@@ -233,11 +234,11 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
     // behind "Show all".
     const selected = models.find((model) => model.key === engine);
     if (selected) short.push(selected);
-    const best = models.find((model) => model.key === bestForLanguage);
-    if (best) short.push(best);
+    const recommendedForThisLanguage = models.find((model) => model.key === recommendedForLanguage);
+    if (recommendedForThisLanguage) short.push(recommendedForThisLanguage);
     // Keep the ranked order rather than the grouping above.
     return models.filter((model) => short.includes(model));
-  }, [bestForLanguage, engine, installed, models, searching]);
+  }, [recommendedForLanguage, engine, installed, models, searching]);
   const folded = showAll || searching ? models : collapsed;
   const hiddenCount = models.length - collapsed.length;
   // R2T2 and the cloud services are not catalog models, so the language rail
@@ -310,7 +311,7 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
                     selected={engine === model.key}
                     installed={installed.has(model.key)}
                     disabled={disabled}
-                    bestForLanguage={bestForLanguage === model.key}
+                    recommendedForLanguage={recommendedForLanguage === model.key}
                     onSelect={onSelect}
                   />
                 ))}

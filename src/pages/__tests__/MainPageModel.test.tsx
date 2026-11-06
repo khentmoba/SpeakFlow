@@ -8,6 +8,8 @@ const api = vi.hoisted(() => ({
   getOnlineAsrApiKey: vi.fn(), getOnlineAsrEndpoint: vi.fn(), getAlibabaAsrConfig: vi.fn(),
   listAlibabaAsrModels: vi.fn(), setAlibabaAsrModel: vi.fn(), listInstalledModels: vi.fn(),
   setOnlineAsrApiKey: vi.fn(), setOnlineAsrEndpoint: vi.fn(),
+  listInputDevices: vi.fn(), setInputDevice: vi.fn(),
+  startMicrophoneLevelMonitor: vi.fn(), stopMicrophoneLevelMonitor: vi.fn(),
 }));
 const recording = vi.hoisted(() => ({
   isStarting: false, isRecording: false, isProcessing: false, isReady: true,
@@ -33,6 +35,10 @@ beforeEach(() => {
   api.getAlibabaAsrConfig.mockResolvedValue({ model: "qwen3-asr-flash", models: ["qwen3-asr-flash", "qwen3-asr-flash-realtime"] });
   api.setAlibabaAsrModel.mockResolvedValue(undefined);
   api.listInstalledModels.mockResolvedValue([]);
+  api.listInputDevices.mockResolvedValue({ devices: [], selectedDeviceName: null });
+  api.setInputDevice.mockResolvedValue(undefined);
+  api.startMicrophoneLevelMonitor.mockResolvedValue("started");
+  api.stopMicrophoneLevelMonitor.mockResolvedValue(undefined);
 });
 
 async function setup() {
@@ -88,5 +94,28 @@ describe("Dictation model selector", () => {
     fireEvent.change(model, { target: { value: "qwen3-asr-flash-realtime" } });
     await waitFor(() => expect(api.setAlibabaAsrModel).toHaveBeenCalledWith("qwen3-asr-flash-realtime"));
     await waitFor(() => expect(model).toHaveValue("qwen3-asr-flash-realtime"));
+  });
+
+  it("starts dictation with Space when focus is not in a text field", async () => {
+    await setup();
+    fireEvent.keyDown(window, { key: " ", code: "Space" });
+    expect(recording.startRecording).toHaveBeenCalledOnce();
+  });
+
+  it("leaves Space alone inside the transcript editor", async () => {
+    await setup();
+    const editor = document.createElement("textarea");
+    document.body.appendChild(editor);
+    fireEvent.keyDown(editor, { key: " ", code: "Space" });
+    expect(recording.startRecording).not.toHaveBeenCalled();
+    editor.remove();
+  });
+
+  it("stops an active recording with Escape", async () => {
+    const { rerender } = await setup();
+    recording.isRecording = true;
+    rerender(<MainPage onNavigate={vi.fn()} />);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(recording.stopRecording).toHaveBeenCalledOnce();
   });
 });

@@ -17,6 +17,21 @@
   overflow: hidden;
 }
 
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 100;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  transition: top 120ms ease-out;
+}
+.skip-link:focus { top: 8px; }
+.app-workspace:focus { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+
 .app-workspace {
   min-width: 0;
   min-height: 0;
@@ -241,6 +256,37 @@
   transition: color 180ms ease-out;
 }
 .update-steps [data-active="true"] { color: var(--color-accent); }
+
+.update-notes {
+  margin-top: 14px;
+  border-top: 1px solid var(--color-border-subtle);
+  padding-top: 12px;
+}
+.update-notes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.update-notes-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 0;
+  font-size: 11px;
+  color: var(--color-accent);
+  background: none;
+  border: 0;
+}
+.update-notes-body {
+  margin-top: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
 
 @keyframes update-rotate { to { transform: rotate(360deg); } }
 @keyframes update-travel { from { transform: translateX(-110%); } to { transform: translateX(420%); } }

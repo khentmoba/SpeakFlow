@@ -1,12 +1,16 @@
-import { Download, RefreshCw, ShieldCheck } from "lucide-react";
+import { Download, RefreshCw, ShieldCheck, ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { openAppReleasePage } from "@/api/tauri";
 import { useAppUpdates } from "@/contexts/AppUpdateContext";
 
 export default function AppUpdatePanel({ appVersion }: { appVersion: string }) {
   const { t } = useTranslation();
   const { updateChecking, updateInstalling, updateProgress, updateStatusText,
-    latestAvailableVersion, handleCheckForUpdates, handleInstallUpdate } = useAppUpdates();
+    latestAvailableVersion, latestRelease, handleCheckForUpdates, handleInstallUpdate } = useAppUpdates();
   const installing = updateProgress?.phase === "installing";
+  const releaseNotes = latestRelease?.notes?.trim() ?? "";
+  const releaseUrl = latestRelease?.url ?? null;
   const percent = updateProgress?.total && !installing
     ? Math.min(100, Math.max(0, updateProgress.downloaded * 100 / updateProgress.total)) : undefined;
 
@@ -46,6 +50,24 @@ export default function AppUpdatePanel({ appVersion }: { appVersion: string }) {
         </div>
       )}
       <p className="settings-hint settings-update-source">{t("updates.scheduleHint")}</p>
+      {latestAvailableVersion && releaseNotes && (
+        <div className="update-notes">
+          <div className="update-notes-head">
+            <span className="permission-label">{t("updates.releaseNotes")}</span>
+            {releaseUrl && (
+              <button
+                type="button"
+                className="btn-ghost update-notes-link"
+                onClick={() => { void openAppReleasePage(releaseUrl).catch(() => toast.error(t("updates.releaseOpenFailed"))); }}
+              >
+                {t("updates.viewRelease")}
+                <ExternalLink size={11} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+          <p className="update-notes-body">{releaseNotes}</p>
+        </div>
+      )}
       {latestAvailableVersion && <p className="settings-hint settings-update-source">{t("settings.updateSource")}</p>}
     </section>
   );

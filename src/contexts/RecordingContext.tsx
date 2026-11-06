@@ -42,9 +42,12 @@ interface RecordingContextValue {
   downloadProgress: number;
   downloadMessage: string | null;
   isDownloading: boolean;
+  isDownloadPaused: boolean;
   modelError: string | null;
   downloadModels: () => void;
   cancelDownload: () => void;
+  pauseDownload: () => void;
+  resumeDownload: () => void;
   retryModel: () => void;
   // hotkey
   hotkeyDisplay: string;
@@ -86,9 +89,12 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     downloadProgress,
     downloadMessage,
     isDownloading,
+    isDownloadPaused,
     error: modelError,
     downloadModels,
     cancelDownload,
+    pauseDownload,
+    resumeDownload,
     retry: retryModel,
   } = useModelStatus();
 
@@ -175,9 +181,12 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     downloadProgress,
     downloadMessage,
     isDownloading,
+    isDownloadPaused,
     modelError,
     downloadModels,
     cancelDownload,
+    pauseDownload,
+    resumeDownload,
     retryModel,
     hotkeyDisplay,
     hotkeyError,
@@ -190,7 +199,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     editBaselineText, setEditBaselineText,
     durationSec, charCount, detectedLanguage, editGrabStatus, timing, history, resultMode,
     stage, isReady, device, gpuName, downloadProgress, downloadMessage, isDownloading,
-    modelError, downloadModels, cancelDownload, retryModel,
+    isDownloadPaused, modelError, downloadModels, cancelDownload, pauseDownload, resumeDownload, retryModel,
     hotkeyDisplay, hotkeyError, setHotkey, hotkeyDiagnostic,
   ]);
 

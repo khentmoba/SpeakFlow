@@ -46,12 +46,13 @@ describe("ModelBrowser", () => {
     expect(screen.getByText("26 models")).toBeInTheDocument();
   });
 
-  it("keeps the best-for-language badge on the real winner during a search", () => {
+  it("keeps the recommended-for-language badge on the real winner during a search", () => {
     setup();
     fireEvent.click(screen.getByRole("button", { name: /^French/ }));
-    // The best French model is not recommended, so it must be in the folded list.
-    const best = within(listbox()).getByRole("option", { name: /Voxtral Small 24B/ });
-    expect(best).toHaveTextContent("Best for French");
+    // The recommended French model is not one of the catalog's recommended
+    // models, so it must still be in the folded list.
+    const best = within(listbox()).getByRole("option", { name: /Parakeet Ultra/ });
+    expect(best).toHaveTextContent("Recommended for French");
 
     fireEvent.change(screen.getByRole("searchbox", { name: "Search models" }), {
       target: { value: "whisper" },
@@ -60,7 +61,14 @@ describe("ModelBrowser", () => {
       .getAllByRole("option")
       .find((option) => /Whisper Large v3/.test(option.textContent ?? "")
         && !/Turbo/.test(option.textContent ?? ""))!;
-    expect(whisper).not.toHaveTextContent("Best for French");
+    expect(whisper).not.toHaveTextContent("Recommended for French");
+  });
+
+  it("recommends Parakeet Unified EN for English", () => {
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: /^English/ }));
+    const row = within(listbox()).getByRole("option", { name: /Parakeet Unified EN 0.6B/ });
+    expect(row).toHaveTextContent("Recommended for English");
   });
 
   it("marks the current engine and offers the others", () => {
@@ -89,7 +97,7 @@ describe("ModelBrowser", () => {
     expect(options.some((option) => option.textContent?.includes("Parakeet Unified"))).toBe(false);
     expect(options[0]).toHaveTextContent("French");
     expect(options[0]).toHaveTextContent("error");
-    expect(options[0]).toHaveTextContent("Best for French");
+    expect(options.some((option) => option.textContent?.includes("Recommended for French"))).toBe(true);
   });
 
   it("labels Whisper as long tail and never as recommended", () => {
@@ -123,7 +131,7 @@ describe("ModelBrowser", () => {
     const options = within(listbox()).getAllByRole("option");
     expect(options[0]).toHaveTextContent("Yoruba");
     expect(options[0]).toHaveTextContent("Poor");
-    expect(options[0]).not.toHaveTextContent("Best for Yoruba");
+    expect(options[0]).not.toHaveTextContent("Recommended for Yoruba");
   });
 
   it("keeps the other engines out of a language filter", () => {

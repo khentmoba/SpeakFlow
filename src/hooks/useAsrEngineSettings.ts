@@ -137,8 +137,8 @@ export function useAsrEngineSettings({
     }));
   }, [t]);
 
-  const handleEngineSwitch = useCallback(async (newEngine: string) => {
-    if (transitioning.current || engineLoading || newEngine === engine) return;
+  const handleEngineSwitch = useCallback(async (newEngine: string): Promise<boolean> => {
+    if (transitioning.current || engineLoading || newEngine === engine) return false;
     transitioning.current = true;
     setEngineLoading(true);
     // Flush the old engine's key before set_engine so the two writes keep their order.
@@ -146,9 +146,9 @@ export function useAsrEngineSettings({
       try {
         await onlineAsrKeySave.flush();
       } catch {
-        return;
+        return false;
       }
-      if (!(await confirmLargeDownload(newEngine))) return;
+      if (!(await confirmLargeDownload(newEngine))) return false;
       await setEngine(newEngine);
       configVersion.current += 1;
       modelsRequestId.current += 1;
@@ -172,8 +172,10 @@ export function useAsrEngineSettings({
         }
       }
       retryModel();
+      return true;
     } catch {
       toast.error(t("toast.switchEngineFailed"));
+      return false;
     } finally {
       transitioning.current = false;
       setEngineLoading(false);

@@ -34,6 +34,8 @@ import Kbd from "@/components/Kbd";
 import AppearanceSettingsSection from "@/components/settings/AppearanceSettingsSection";
 import AiModelsSettingsSection from "@/components/settings/AiModelsSettingsSection";
 import SystemSettingsSections from "@/components/settings/SystemSettingsSections";
+import SupportSettingsSection from "@/components/settings/SupportSettingsSection";
+import SettingsNav from "@/components/settings/SettingsNav";
 import AppProfileRulesSettingsSection from "@/components/settings/AppProfileRulesSettingsSection";
 import HistorySettingsSection from "@/components/settings/HistorySettingsSection";
 import DictationToolsSettingsSection from "@/components/settings/DictationToolsSettingsSection";
@@ -55,6 +57,7 @@ import { useTranslation } from "react-i18next";
 
 import { engineDisplayDescription, engineDisplayLabel } from "@/lib/asrEngineOptions";
 import { isOnlineEngineKey, asrCapabilityTagKeys, inputOptions, recordingModeOptions, sourceLabels, sourceColors, findRecordingModeOption } from "@/pages/settings/settingsOptions";
+import { settingsSectionMatches } from "@/pages/settings/settingsSearch";
 
 const CorrectionRulesModal = lazy(() => import("@/components/settings/CorrectionRulesModal"));
 
@@ -97,8 +100,11 @@ export default function SettingsPage({
     { id: "history-settings", labelKey: "settings.historySettings" },
     { id: "vocabulary", labelKey: "settings.vocabulary" },
     { id: "startup", labelKey: "settings.startup" },
+    { id: "updates", labelKey: "settings.update" },
+    { id: "support", labelKey: "settings.support" },
   ] as const, []);
   const [activeNavSection, setActiveNavSection] = useState("appearance");
+  const [navQuery, setNavQuery] = useState("");
   const settingsContentRef = useRef<HTMLDivElement | null>(null);
   const navScrollRef = useRef<HTMLDivElement | null>(null);
   const isNavClickScrolling = useRef(false);
@@ -118,12 +124,14 @@ export default function SettingsPage({
     const updateSection = () => {
       frame = 0;
       if (isNavClickScrolling.current) return;
+      const visibleSections = sectionEls.filter((section) => !(section as HTMLElement).hidden);
+      if (visibleSections.length === 0) return;
       const atBottom = container.scrollHeight > container.clientHeight
         && container.scrollTop + container.clientHeight >= container.scrollHeight - 2;
       const top = container.getBoundingClientRect().top + container.clientHeight * 0.1;
-      const current = atBottom ? sectionEls[sectionEls.length - 1] : sectionEls.reduce((selected, section) => (
+      const current = atBottom ? visibleSections[visibleSections.length - 1] : visibleSections.reduce((selected, section) => (
         section.getBoundingClientRect().top <= top ? section : selected
-      ), sectionEls[0]);
+      ), visibleSections[0]);
       const id = (current as HTMLElement).dataset.navId;
       if (id) setActiveNavSection(id);
     };
@@ -180,6 +188,34 @@ export default function SettingsPage({
     container.scrollTo({ top, behavior: "smooth" });
   }, []);
 
+  // Hide sections that do not match the nav filter. The nav uses the same
+  // matcher, so the rail and the content never disagree.
+  useEffect(() => {
+    const container = settingsContentRef.current;
+    if (!container) return;
+    const filtering = navQuery.trim().length > 0;
+    const matched = new Set<string>(
+      navSections
+        .filter(({ id, labelKey }) => settingsSectionMatches(id, t(labelKey), navQuery))
+        .map(({ id }) => id),
+    );
+    // Hide every section the rail does not list too (for example the Updates
+    // panel), so a filtered rail never sits next to unrelated content.
+    container.querySelectorAll<HTMLElement>("[data-nav-id]").forEach((section) => {
+      const id = section.dataset.navId ?? "";
+      section.hidden = filtering && !matched.has(id);
+    });
+  }, [navQuery, navSections, t, settingsReady]);
+
+  // Keep the scroll-spy on a section the filter still shows.
+  useEffect(() => {
+    if (!navQuery.trim()) return;
+    const visible = navSections.filter(({ id, labelKey }) =>
+      settingsSectionMatches(id, t(labelKey), navQuery));
+    if (visible.length > 0 && !visible.some(({ id }) => id === activeNavSection)) {
+      setActiveNavSection(visible[0].id);
+    }
+  }, [navQuery, navSections, t, activeNavSection]);
 
   // Auto-scroll the nav bar to keep active tab visible + measure indicator position
   useEffect(() => {
@@ -558,26 +594,14 @@ export default function SettingsPage({
         ) : (
           <>
         {/* Settings nav */}
-        <nav className="settings-nav" aria-label={t("settings.title")} ref={navScrollRef}>
-          <div className="settings-nav-head">
-            <span className="settings-nav-title">{t("settings.title")}</span>
-            <span className="settings-nav-count">{String(navSections.length).padStart(2, "0")}</span>
-          </div>
-          {navSections.map(({ id, labelKey }, index) => (
-            <button
-              key={id}
-              type="button"
-              className="settings-nav-tab"
-              aria-current={activeNavSection === id ? "location" : undefined}
-              data-active={activeNavSection === id}
-              data-nav-tab={id}
-              onClick={() => handleNavClick(id)}
-            >
-              <span className="settings-nav-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
-              <span className="settings-nav-label">{t(labelKey)}</span>
-            </button>
-          ))}
-        </nav>
+        <SettingsNav
+          sections={navSections}
+          activeId={activeNavSection}
+          query={navQuery}
+          navRef={navScrollRef}
+          onQueryChange={setNavQuery}
+          onSelect={handleNavClick}
+        />
 
         {/* Content */}
         <div className="settings-content" ref={settingsContentRef}>
@@ -1338,6 +1362,8 @@ export default function SettingsPage({
             onToggleAutostart={() => { void handleAutostartToggle(); }}
             onToggleAutostartMinimized={() => { void handleAutostartMinimizedToggle(); }}
           />
+
+          <SupportSettingsSection />
         </div>
       </div>
 

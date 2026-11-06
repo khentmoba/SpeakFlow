@@ -4,11 +4,14 @@ import { toast } from "sonner";
 import { useRecordingContext } from "@/contexts/RecordingContext";
 import { copyToClipboard, listInstalledModels, submitUserCorrection } from "@/api/tauri";
 import RecordingButton from "@/components/RecordingButton";
+import SetupWizard from "@/components/SetupWizard";
 import StatusIndicator from "@/components/StatusIndicator";
 import TranscriptionResult from "@/components/TranscriptionResult";
 import TranscriptionHistory from "@/components/TranscriptionHistory";
 import { useAsrEngineSettings } from "@/hooks/useAsrEngineSettings";
 import { engineOptions, engineOptionLabel } from "@/lib/asrEngineOptions";
+import { findCatalogModel } from "@/lib/asrCatalog";
+import { useDownloadEstimate } from "@/hooks/useDownloadEstimate";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { useWaveformBars, WAVEFORM_BAR_COUNT, WAVEFORM_LIVE_TAIL } from "@/hooks/useWaveformBars";
 import { useTranslation } from "react-i18next";
@@ -27,8 +30,8 @@ export default function MainPage({ onNavigate, animClass = "" }: {
     recordingError, transcriptionResult, originalAsrText, editBaselineText, setEditBaselineText, setTranscriptionResult, polishAuditWarning,
     durationSec, charCount, detectedLanguage, editGrabStatus, timing, history, recordingMode, stage: modelStage, isReady: modelReady,
     device, gpuName, downloadProgress, downloadMessage,
-    isDownloading, modelError, hotkeyDisplay,
-    downloadModels: triggerDownload, cancelDownload, retryModel,
+    isDownloading, isDownloadPaused, modelError, hotkeyDisplay,
+    downloadModels: triggerDownload, cancelDownload, pauseDownload, resumeDownload, retryModel,
   } = useRecordingContext();
 
   const engineLabel = useCallback((value: string) => {
@@ -42,6 +45,9 @@ export default function MainPage({ onNavigate, animClass = "" }: {
   const isReady = modelReady && !engineLoading && !alibabaAsrModelSaving;
   const stage = engineLoading || alibabaAsrModelSaving ? "checking" : modelStage;
   const modelSelectionDisabled = engineLoading || alibabaAsrModelSaving || isStarting || isRecording || isProcessing || isDownloading;
+
+  const downloadTotalBytes = findCatalogModel(engine)?.size ?? null;
+  const downloadEstimate = useDownloadEstimate(downloadProgress, downloadTotalBytes, isDownloading);
 
   const [installedEngines, setInstalledEngines] = useState<ReadonlySet<string>>(() => new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -63,7 +69,7 @@ export default function MainPage({ onNavigate, animClass = "" }: {
       .then((keys) => { if (!disposed) setInstalledEngines(new Set(keys)); })
       .catch(() => { if (!disposed) setInstalledEngines(new Set()); });
     return () => { disposed = true; };
-  }, [engine, modelReady]);
+  }, [engine, modelReady, stage]);
 
   useLayoutEffect(() => {
     const root = resultsRef.current;
@@ -93,6 +99,14 @@ export default function MainPage({ onNavigate, animClass = "" }: {
       writeLocalStorage(ONBOARDING_DISMISSED_KEY, "true");
     }
   }, [transcriptionResult, onboardingDismissed]);
+  // A user with history never saw this guide; treat them as set up so a
+  // missing model still downloads automatically on a cold start.
+  useEffect(() => {
+    if (history.length > 0 && readLocalStorage(ONBOARDING_DISMISSED_KEY) !== "true") {
+      setOnboardingDismissed(true);
+      writeLocalStorage(ONBOARDING_DISMISSED_KEY, "true");
+    }
+  }, [history.length]);
   useEffect(() => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current); }, []);
 
   const correctionSubmit = useDebouncedCallback((previousText: string, nextText: string, rawOriginalText: string | null) => {
@@ -145,6 +159,31 @@ export default function MainPage({ onNavigate, animClass = "" }: {
     else if (isReady) void startRecording();
   }, [isReady, isRecording, isStarting, startRecording, stopRecording]);
 
+  // Space starts or stops dictation when focus is not in a text field. Escape
+  // stops a recording that is already starting or running. Both ignore
+  // modified keys so they never shadow a system shortcut.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target && (target.isContentEditable
+        || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+      if (event.key === " " || event.code === "Space") {
+        // A focused button or link already activates on Space.
+        if (target?.closest("button, [role='button'], a[href]")) return;
+        event.preventDefault();
+        handleToggleRecording();
+        return;
+      }
+      if (event.key === "Escape" && (isRecording || isStarting)) {
+        event.preventDefault();
+        void stopRecording();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleToggleRecording, isRecording, isStarting, stopRecording]);
+
   const stateLabel = isRecording
     ? t("main.statusListening")
     : isStarting
@@ -189,8 +228,12 @@ export default function MainPage({ onNavigate, animClass = "" }: {
                   downloadProgress={downloadProgress}
                   downloadMessage={downloadMessage}
                   isDownloading={isDownloading}
+                  isDownloadPaused={isDownloadPaused}
+                  downloadEstimate={downloadEstimate}
                   downloadModels={triggerDownload}
                   cancelDownload={cancelDownload}
+                  pauseDownload={pauseDownload}
+                  resumeDownload={resumeDownload}
                 />
               </div>
               <div className="wave-clock">
@@ -319,31 +362,27 @@ export default function MainPage({ onNavigate, animClass = "" }: {
                 timing={timing}
               />
 
-              {!onboardingDismissed && !transcriptionResult && !isProcessing && isReady && history.length === 0 && (
-                <div className="signal-quickstart">
-                  <div className="signal-quickstart-head">
-                    <span className="signal-label">{t("main.quickStart")}</span>
-                    <button
-                      className="icon-btn icon-btn-sm"
-                      aria-label={t("common.close")}
-                      onClick={() => {
-                        setOnboardingDismissed(true);
-                        writeLocalStorage(ONBOARDING_DISMISSED_KEY, "true");
-                      }}
-                    >
-                      <X size={11} />
-                    </button>
-                  </div>
-                  <ol>
-                    <li>
-                      {isToggleMode ? t("main.pressHotkey") : t("main.holdHotkey")}{" "}
-                      <kbd className="signal-key">{hotkeyDisplay || "F2"}</kbd>{" "}
-                      {isToggleMode ? t("main.step1ToggleSuffix") : t("main.step1HoldSuffix")}
-                    </li>
-                    <li>{t("main.step2Text")}</li>
-                  </ol>
-                  <p className="signal-quickstart-note">{t("main.onboardingSubtext")}</p>
-                </div>
+              {!onboardingDismissed && !transcriptionResult && !isProcessing && history.length === 0 && (
+                <SetupWizard
+                  engine={engine}
+                  installed={installedEngines}
+                  isToggleMode={isToggleMode}
+                  stage={stage}
+                  isReady={isReady}
+                  isDownloading={isDownloading}
+                  downloadProgress={downloadProgress}
+                  downloadMessage={downloadMessage}
+                  onSelectEngine={handleEngineSwitch}
+                  onDownload={triggerDownload}
+                  onRetryModel={retryModel}
+                  onCancelDownload={cancelDownload}
+                  hotkeyDisplay={hotkeyDisplay}
+                  onOpenSettings={() => onNavigate("settings")}
+                  onDismiss={() => {
+                    setOnboardingDismissed(true);
+                    writeLocalStorage(ONBOARDING_DISMISSED_KEY, "true");
+                  }}
+                />
               )}
             </div>
           </section>

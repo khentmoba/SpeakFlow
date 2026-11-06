@@ -48,7 +48,7 @@ describe("online ASR credential ownership", () => {
     const { result } = await setup("alibaba-asr");
     const old = deferred<{models: string[]; source: "live"}>();
     api.listAlibabaAsrModels.mockReturnValueOnce(old.promise);
-    let pending!: Promise<void>;
+    let pending!: Promise<unknown>;
     act(() => { pending = result.current.refreshAlibabaModels(); });
     api.listAlibabaAsrModels.mockResolvedValueOnce({models: ["new-model"], source: "live"});
     await act(async () => { await result.current.refreshAlibabaModels(); });
@@ -106,7 +106,7 @@ describe("online ASR credential ownership", () => {
     const { result } = await setup("alibaba-asr");
     const switching = deferred<void>();
     api.setEngine.mockReturnValueOnce(switching.promise);
-    let pending!: Promise<void>;
+    let pending!: Promise<unknown>;
     act(() => { pending = result.current.handleEngineSwitch("glm-asr"); });
     await act(async () => { await Promise.resolve(); });
     await act(async () => { await result.current.handleOnlineAsrRegionChange("domestic"); });
@@ -132,7 +132,7 @@ describe("online ASR credential ownership", () => {
     const save = deferred<void>();
     api.setOnlineAsrApiKey.mockReturnValueOnce(save.promise);
     act(() => { result.current.handleOnlineAsrApiKeyChange("FAKE_EDIT"); });
-    let pending!: Promise<void>;
+    let pending!: Promise<unknown>;
     act(() => { pending = kind === "engine"
       ? result.current.handleEngineSwitch("glm-asr")
       : result.current.handleOnlineAsrRegionChange("domestic"); });
@@ -148,7 +148,7 @@ describe("online ASR credential ownership", () => {
     const { result } = await setup("alibaba-asr");
     const switching = deferred<{region: string; url: string}>();
     api.setOnlineAsrEndpoint.mockReturnValueOnce(switching.promise);
-    let pending!: Promise<void>;
+    let pending!: Promise<unknown>;
     act(() => { pending = result.current.handleOnlineAsrRegionChange("domestic"); });
     await act(async () => { await Promise.resolve(); });
     await act(async () => { await result.current.handleEngineSwitch("glm-asr"); });

@@ -11,6 +11,7 @@ function useUpdateController(automatic: boolean) {
   const [updateInstalling, setUpdateInstalling] = useState(false);
   const [updateStatusText, setUpdateStatusText] = useState("");
   const [latestAvailableVersion, setLatestAvailableVersion] = useState<string | null>(null);
+  const [latestRelease, setLatestRelease] = useState<{ notes: string | null; url: string | null } | null>(null);
   const [updateProgress, setUpdateProgress] = useState<AppUpdateProgress | null>(null);
   const pending = useRef(false);
   const lastCheck = useRef(0);
@@ -24,6 +25,9 @@ function useUpdateController(automatic: boolean) {
     try {
       const info = await checkAppUpdate();
       setLatestAvailableVersion(info.available ? info.latestVersion ?? null : null);
+      setLatestRelease(info.available
+        ? { notes: info.notes ?? null, url: info.releaseUrl ?? null }
+        : null);
       const message = !info.latestVersion ? t("toast.noPublishedReleases")
         : info.available ? t("toast.newVersionFound", { version: info.latestVersion })
         : t("toast.alreadyLatest");
@@ -78,6 +82,7 @@ function useUpdateController(automatic: boolean) {
           }) : t("settings.downloadingUpdate"));
       });
       setLatestAvailableVersion(null);
+      setLatestRelease(null);
       setUpdateStatusText(t("settings.installingUpdate"));
     } catch (error) {
       const message = error instanceof Error ? error.message : t("toast.installUpdateFailed");
@@ -92,7 +97,7 @@ function useUpdateController(automatic: boolean) {
   }, [latestAvailableVersion, t]);
 
   return { updateChecking, updateInstalling, updateStatusText, latestAvailableVersion,
-    updateProgress, handleCheckForUpdates, handleInstallUpdate };
+    latestRelease, updateProgress, handleCheckForUpdates, handleInstallUpdate };
 }
 
 const AppUpdateContext = createContext<ReturnType<typeof useUpdateController> | null>(null);
