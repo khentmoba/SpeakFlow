@@ -26,6 +26,8 @@ fn whisper_engine_is_retired_from_runtime_and_ui() {
     assert!(!settings.contains("key: \"whisper\""));
     assert!(!engine_options.contains("key: \"whisper\""));
     assert!(!engine_cli.contains("choices=[\"whisper\""));
+    // Whisper GGUFs are offered through transcribe.cpp; the retired
+    // faster-whisper server, its model ids and its dependencies stay out.
     assert!(!rust_paths.contains("\"whisper\""));
     assert!(!rust_paths.contains("get_whisper_server_path"));
     assert!(!rust_commands.contains("\"whisper\","));
