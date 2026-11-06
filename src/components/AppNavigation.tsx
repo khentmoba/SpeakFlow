@@ -1,6 +1,4 @@
 import { AudioLines, History, Settings, RefreshCw } from "lucide-react";
-import { SpeakFlowBrandIcon } from "./TitleBar";
-
 export type AppView = "main" | "history" | "settings" | "updates";
 
 const destinations = [
@@ -17,28 +15,23 @@ export default function AppNavigation({ view, onNavigate, updateAvailable = fals
   updateInstalling?: boolean;
 }) {
   return (
-    <aside className="app-sidebar">
-      <div className="sidebar-brand">
-        <SpeakFlowBrandIcon size={30} />
-        <span>SpeakFlow</span>
-      </div>
-      <nav className="app-navigation" aria-label="Main navigation">
-        {destinations.map(({ view: destination, label, icon: Icon }) => (
-          <button
-            key={destination}
-            type="button"
-            className="app-nav-item"
-            data-destination={destination}
-            aria-current={view === destination ? "page" : undefined}
-            onClick={() => onNavigate(destination)}
-          >
-            <Icon size={18} strokeWidth={1.7} aria-hidden="true" className={destination === "updates" && updateInstalling ? "update-spinner" : undefined} />
-            <span>{label}</span>
-            {destination === "updates" && updateAvailable && <span className="update-nav-dot" role="img" aria-label={updateInstalling ? "Update in progress" : "New release available"} />}
-          </button>
-        ))}
-      </nav>
-      <div className="sidebar-note"><span className="sidebar-note-rule" /><p>Speak freely.<br /><span>Stay in your flow.</span></p></div>
-    </aside>
+    <nav className="app-navigation" aria-label="Main navigation">
+      {destinations.map(({ view: destination, label, icon: Icon }) => (
+        <button
+          key={destination}
+          type="button"
+          className="app-nav-item"
+          data-destination={destination}
+          aria-current={view === destination ? "page" : undefined}
+          onClick={() => onNavigate(destination)}
+        >
+          <Icon size={12} strokeWidth={1.9} aria-hidden="true" className={destination === "updates" && updateInstalling ? "update-spinner" : undefined} />
+          <span>{label}</span>
+          {destination === "updates" && updateAvailable && (
+            <span className="update-nav-dot" role="img" aria-label={updateInstalling ? "Update in progress" : "New release available"} />
+          )}
+        </button>
+      ))}
+    </nav>
   );
 }

@@ -1,164 +1,255 @@
-﻿---
+---
 name: SpeakFlow
-description: Quiet Windows dictation with charcoal surfaces and restrained blue actions
+description: Black ground, one amber signal, and the voice drawn as a waveform
 colors:
-  primary: "#315EAB"
-  primary-dark: "#79A9FF"
-  bg-primary: "#F7F8FA"
-  bg-secondary: "#EEEFF2"
-  bg-elevated: "#FFFFFF"
-  text-primary: "#191C21"
-  text-secondary: "#515863"
-  border: "#CBD5E1"
-  bg-primary-dark: "#101112"
-  bg-secondary-dark: "#17191C"
-  bg-elevated-dark: "#1B1D20"
-  bg-tertiary-dark: "#222529"
-  shell-dark: "#0B0C0D"
-  shell-active-dark: "#202328"
-  text-primary-dark: "#F3F4F5"
-  text-secondary-dark: "#A4A8B0"
-  text-tertiary-dark: "#858B95"
-  border-dark: "#34383E"
+  primary: "#FFB020"
+  primary-light: "#A86200"
+  bg-primary: "#000000"
+  bg-secondary: "#070707"
+  bg-tertiary: "#0E0E0E"
+  bg-elevated: "#0A0A0A"
+  text-primary: "#FFFFFF"
+  text-secondary: "#8A8A8A"
+  text-tertiary: "#585858"
+  border: "#1A1A1A"
+  success: "#4ADE80"
+  error: "#FF453A"
+  warning: "#FFD60A"
+  assistant: "#B98CFF"
+  bg-primary-light: "#FFFFFF"
+  bg-secondary-light: "#F4F4F1"
+  bg-tertiary-light: "#E9E9E4"
+  text-primary-light: "#0A0A0A"
+  text-secondary-light: "#565656"
+  border-light: "#D4D4CE"
 typography:
-  headline:
+  display:
+    fontFamily: '"Bahnschrift", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
+    fontSize: "8px"
+    fontWeight: 600
+    letterSpacing: "0.17em"
+    textTransform: "uppercase"
+  liveLine:
     fontFamily: '"Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
-    fontSize: "30px"
-    fontWeight: 500
-    lineHeight: 1.2
-    letterSpacing: "-0.03em"
-  title:
-    fontFamily: '"Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
-    fontSize: "20px"
-    fontWeight: 550
-    letterSpacing: "-0.02em"
-  body:
-    fontFamily: '"Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
-    fontSize: "14px"
+    fontSize: "19px"
     fontWeight: 400
-    lineHeight: 1.6
-    letterSpacing: "-0.008em"
-  label:
+    lineHeight: 1.5
+    letterSpacing: "-0.012em"
+  row:
     fontFamily: '"Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
-    fontSize: "12px"
-    lineHeight: 1.7
-  keycap:
+    fontSize: "11.5px"
+    lineHeight: 1.4
+  numeric:
     fontFamily: '"Cascadia Mono", Consolas, monospace'
-    fontSize: "11px"
+    fontSize: "15px"
+    fontVariantNumeric: "tabular-nums"
+  counter:
+    fontFamily: '"Cascadia Mono", Consolas, monospace'
+    fontSize: "44px"
+    letterSpacing: "-0.03em"
 rounded:
-  xs: "4px"
-  sm: "8px"
-  md: "12px"
-  lg: "14px"
-  xl: "18px"
+  control: "0px"
   full: "9999px"
 spacing:
+  hair: "1px"
   xs: "4px"
   sm: "8px"
-  md: "16px"
+  md: "14px"
   lg: "24px"
-  xl: "32px"
-  2xl: "48px"
 components:
-  recording-panel-dark:
-    backgroundColor: "{colors.bg-elevated-dark}"
-    textColor: "{colors.text-primary-dark}"
-    rounded: "{rounded.lg}"
-    padding: "24px"
-  navigation-active-dark:
-    backgroundColor: "{colors.shell-active-dark}"
-    textColor: "{colors.text-primary-dark}"
-    rounded: "{rounded.sm}"
-    padding: "10px 12px"
-  workspace-link-dark:
-    textColor: "{colors.text-secondary-dark}"
-    rounded: "{rounded.sm}"
-    padding: "9px 12px"
+  title-bar:
+    height: "32px"
+    backgroundColor: "{colors.bg-primary}"
+    borderBottom: "1px solid {colors.border}"
+  nav-active:
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.bg-primary}"
+    rounded: "{rounded.control}"
+  wave-panel:
+    height: "168px"
+    backgroundColor: "{colors.bg-primary}"
+    borderBottom: "1px solid {colors.border}"
+  status-bar:
+    height: "24px"
+    borderTop: "1px solid {colors.border}"
 ---
 
 # Design System: SpeakFlow
 
 ## Overview
 
-**Creative North Star: "Workspace Dashboard"**
+**Creative North Star: "SIGNAL"**
 
-SpeakFlow is a quiet everyday dictation workspace beside the user's other Windows applications. Black and charcoal establish a focused environment; restrained blue marks actions, selection, and keyboard focus. Keep the SpeakFlow name, existing brand mark, native window affordances, and English interface.
+SpeakFlow is a dictation instrument. The ground is pure black, the structure is
+hairline rules, and exactly one colour exists: amber, reserved for the signal —
+recording, live state, primary action. Everything else is white, grey, or the
+absence of light.
 
-The approved direction is design 6, recorded in `.impeccable/mocks/decision/workspace.html` and `workspace-preview.png`. Its hierarchy is recording and readiness first, recent dictations second, and a quieter setup column alongside them. Reference artwork guides composition; real product states and editable text take precedence, and no reference bitmap ships as application UI.
+The interface's job is to make the voice visible. The top of the dictation
+workspace is a waveform drawn from real microphone levels, scrolling right to
+left, white for the history of the take and amber for the live edge. The
+transcript sits beneath it. The rundown sits beneath that. A sources rail holds
+what the app is using. Nothing else competes.
 
 **Key Characteristics:**
 
-- Neutral tonal layers and fine separators.
-- A horizontal recording panel above recent work.
-- Native Windows typography and readable compact controls.
-- Clear readiness, activity, recovery, and keyboard feedback.
+- Pure black ground; no charcoal, no tinted surfaces.
+- One chromatic colour, amber, used only for signal.
+- Square corners everywhere; hairlines instead of shadows.
+- Dense rows and small type; the transcript is the only large text.
+- The waveform is real data, never decoration.
 
 ## Colors
 
 ### Primary
 
-Use soft blue in dark mode and deeper blue in light mode for actions, links, selection, and focus. The frontmatter records normative values; `src/styles/theme.css` and `workspace.css` implement their theme roles.
+Amber `#FFB020` in dark, `#A86200` in light. It marks the record control, the
+live caption tag, the active navigation item, the live waveform tail, the
+recording status dot, and primary links. It is never used for large surfaces
+except the active nav item and the live tag, which are small.
+
+**The Signal Rule.** If it is amber, it is live, primary, or the thing to press.
+Nothing decorative is amber.
 
 ### Neutral
 
-The canvas is black charcoal; the sidebar is the deepest surface. Recording controls use an elevated charcoal fill. Secondary and tertiary text support the main text. Active navigation uses neutral fill and a thin blue inset marker. Dark is the fresh-install default; explicit light and system choices remain supported.
+The dark theme is `#000000` at the base, `#070707` for the rundown and rail, and
+`#0E0E0E` for hover. Text runs white, `#8A8A8A` secondary, `#585858` tertiary.
+Borders are `#1A1A1A` — visible enough to structure, quiet enough to disappear.
 
-**The Signal Rule.** Blue identifies actions or states. Keep broad surfaces neutral, and preserve the theme's semantic success, error, warning, and assistant colors.
+The light theme is a paper translation of the same system: `#FFFFFF` ground,
+`#F4F4F1` secondary, `#D4D4CE` borders, and a darkened amber `#A86200` that holds
+contrast on white. Dark is the fresh-install default.
+
+### Semantic
+
+Success, error, warning, and assistant keep their own hues and are never
+recoloured to amber. Warning is a pale yellow `#FFD60A` so it does not read as
+the signal.
 
 ## Typography
 
-Use the native UI and mono stacks in the frontmatter without remote font downloads. Keycaps use mono; counters and timestamps use tabular numerals. Keep the existing Lucide icons and SpeakFlow logo.
+Three voices, all installed on Windows. No runtime font download.
 
-Page headings use the headline role; Recent dictations uses title. The recording headline is 21px on desktop and 18px at compact widths. Your setup uses a quieter 15px heading. Setup values are 13px, support labels 11-12px, and editable transcripts 16px with generous line height, reducing to 15px on narrow windows. Settings headings are 18px. Keep type hierarchy tied to the task.
+- **Bahnschrift** for every micro-label: 8px, 600 weight, 0.17em tracking,
+  uppercase. This is the instrument's engraved voice and carries most of the
+  interface's character.
+- **Segoe UI Variable** for reading: the transcript at 19px with -0.012em
+  tracking, rundown rows at 11.5px, rail values at 11px.
+- **Cascadia Mono** for anything that counts: the take counter at 44px, the
+  duration at 15px, timestamps, character counts, and latency. Always tabular.
+
+The scale is deliberately narrow. The largest text in the app is the 44px take
+counter in the rail; the transcript at 19px is the only large reading size.
+Everything else is 8–12px.
 
 ## Layout
 
-The desktop shell uses a 208px sidebar, flexible workspace, and 48px native title area. Dictation and History lead navigation; Settings and Updates anchor its lower part. Dictation scrolls within the shell, with 24px 40px 28px content padding at ordinary desktop widths.
+The shell is three rows: a 32px title bar, the workspace, and a 24px status bar.
+The title bar carries the brand, the document name, the four navigation
+destinations, and the window controls. There is no sidebar.
 
-A horizontal recording panel spans the dashboard top: microphone, readiness, and hotkey guidance beside model selection and real engine status. Below it, flexible Recent dictations sits beside a 270px Your setup column with a vertical rule and 36px gap. The latest transcript is editable and followed by up to five recent entries. Setup contains the engine, shortcut, Configure action, active-application guidance, and conditional first-use Quick Start; it stays visually quieter than recording and text.
+Dictation is a two-column split with a draggable divider: the main column
+(1fr) and the sources rail (252px). The main column is four rows: the 168px
+waveform panel, the transcript, a 4px splitter, and the 176px rundown.
 
-At 1100px and below, the sidebar becomes 170px, setup becomes 210px, and gaps tighten. At 760px and below, navigation becomes a 72px icon rail, recording controls stack, and setup moves below recent work. At 540px and below, navigation moves to the bottom with labels, the title area becomes 40px, and content padding is 16px. At 1500px and above, Dictation padding grows to 30px 56px 36px.
+At 1100px the rail narrows to 220px. At 900px the rail is dropped and the
+splitter with it. At 640px the waveform panel shortens to 132px, the rundown to
+140px, the transcript head wraps, and the live line drops to 16px.
 
-Settings uses a vertical section index beside open form sections: 178px normally, 150px at compact widths, and a horizontal scrollable index below 760px. Preserve save semantics, providers, and native controls. History retains search, filters, entries, and detail/copy/export/delete/reprocess actions. Updates preserves progress, cancellation, and recovery states.
+History, Settings, and Updates share the shell and the square, hairline
+language. Their content areas scroll independently.
+
+Settings is a two-column grid: a 186px section index and the open form column,
+with a full-width footer beneath. The index numbers each destination 01–10 in
+mono, tracks the section in view as the form scrolls, and marks the active row
+with a 2px amber left bar. Sections are separated by hairlines rather than
+cards; each carries a tracked-caps title over a rule. Rows are 30px minimum with
+the label left and the control right. Below 720px the index becomes a horizontal
+strip above the form.
 
 ## Elevation & Depth
 
-The workspace uses tonal layers and borders rather than lifted cards. The recording panel has elevated fill and a visible border; results and setup stay open and flat. Keep shared theme shadows for menus and overlays without adding idle glow. Subtitle and selection windows retain transparent desktop roots and restrained overlay elevation.
+There is no elevation. Surfaces are separated by tone (`#000000` against
+`#070707`) and by 1px rules. Shadows are removed from the token layer so no
+component can reintroduce them. Depth is communicated by position and rule
+weight, never by blur.
+
+The one exception is the desktop overlay windows — subtitle and selection —
+which keep their own restrained shadow because they float over other
+applications.
 
 ## Shapes
 
-Use the shared radius scale for recurring controls. The recording panel has 14px corners; its 65px microphone action has 16px corners. Navigation and workspace links use 8px, the model selector 7px, and keycaps 5px with a stronger bottom border. Fine rules separate text and settings sections; status dots remain circular.
+Square. Every control, panel, and input has 0 radius. The only circles are the
+record button, status dots, and the waveform bars' 0.5px rounding. Keycaps are
+square with an amber hairline border.
 
 ## Components
 
-### Recording panel
+### Waveform panel
 
-Keep microphone, shortcut, model selection, and real readiness together. Use actual waveform events during recording and a spinner while connecting or processing. Distinguish downloads, repair, errors, connecting, recording, and processing from ready. Lock model selection during recording, processing, downloads, and selected-model saves. Preserve accessible name and pressed state; idle controls must not simulate activity.
+The signature surface. A 42px head holds the record control, the model status
+chips, the status line, and the elapsed duration. Below it, 78 bars span the
+full width; the rightmost 18 carry the amber live treatment. The panel ends with
+a hairline baseline and a 26px foot carrying the input label and the shortcut.
 
-### Recent dictations and setup
+Bars are painted imperatively inside a single animation frame from the native
+`waveform` event, which emits nine RMS values roughly eighteen times a second.
+A React render per event would re-render the whole page at that rate, so the
+buffer is written straight to the bar elements. When idle the bars rest at a
+3% hairline so the panel never looks broken, and no idle motion is simulated.
 
-Lead with the section heading and View history action. Empty guidance is left aligned. Preserve latest-transcript editing, copy, correction learning, processing, audit notices, errors, and recovery. Recent results are separated text rows. Setup uses compact labels and quiet actions; dismissible Quick Start appears only in its supported first-use state. Do not fabricate transcripts or usage statistics.
+### Transcript
 
-### Navigation and fields
+The live line is an editable textarea at 19px with no border and no card. Above
+it, a 20px header carries the result label, the original-transcript toggle, and
+copy. Below it, a mono stats line carries language, pace, characters, duration,
+and latency. The empty state is a small left-aligned block, not a centred hero.
 
-Use neutral active fill, blue inset marker, and accessible current-page state. Fields retain themed borders, caret, and selection. Keyboard focus uses a 2px accent outline with 3px offset. Preserve disabled semantics, reduced motion, and native drag/minimize/close behavior. Use the existing short duration/easing tokens for state transitions.
+### Rundown
 
-### Context awareness
+Dense rows at 26px: timestamp, transcript preview, copy. The newest entry is
+excluded when it duplicates the transcript above. The header carries the count
+and a link to History.
 
-Application text, selected text, and clipboard are native runtime sources, all on by default independently of legacy saved false values. There is no context settings page, toolbar entry, mode selector, source switch, or persisted context preference/command. Availability, password-field exclusion, original-window/session binding, and a 4,000-character per-source bound remain. See `docs/ui-redesign-research.md` for behavior and verification limits.
+### Sources rail
+
+A 44px take counter, then label/value pairs for model, shortcut, status, and
+destination, then a Configure link. The rail is the quietest surface in the
+app — it answers "what is this using" without competing with the work.
+
+### Settings index
+
+Ten numbered rows in a 186px rail. The index is navigation and table of
+contents at once: it scroll-spies the form, scrolls itself to keep the active
+row visible, and scrolls only the form column when a row is clicked. The number
+is decorative and hidden from assistive technology; the label carries the name.
+
+### Shell chrome
+
+The title bar holds navigation as small tracked caps with icons; the active
+destination is flooded amber with black text. Window controls are 46px wide and
+the close button turns red on hover. The status bar repeats the live state,
+duration, mode, compute device, and shortcut so the app's state is readable from
+any workspace.
 
 ## Do's and Don'ts
 
 ### Do:
 
-- **Do** preserve the recording-first dashboard and quieter setup column.
-- **Do** derive status and waveform feedback from real lifecycle events.
-- **Do** retain transcript editing, keyboard access, light/system themes, and recovery.
-- **Do** reflow dashboard and settings navigation at implemented breakpoints.
+- **Do** keep amber for signal only.
+- **Do** draw the waveform from real microphone levels.
+- **Do** separate surfaces with hairlines and tone, never shadows.
+- **Do** keep the transcript the largest reading text on the screen.
+- **Do** preserve editable transcripts, keyboard access, light/system themes,
+  and every recovery state.
 
 ### Don't:
 
-- **Don't** restore the discarded unified studio with a bottom recording dock.
-- **Don't** add context configuration UI or persisted source switches.
-- **Don't** wash the workspace in blue, animate fake idle activity, or download UI fonts.
-- **Don't** treat browser mocks as proof of microphone, Windows accessibility, GPU, or provider performance.
+- **Don't** introduce a second chromatic colour.
+- **Don't** round corners or add card shadows.
+- **Don't** animate the waveform or any control when idle.
+- **Don't** turn the dictation workspace back into a dashboard of cards.
+- **Don't** treat a browser render as proof of microphone, GPU, or provider
+  performance.

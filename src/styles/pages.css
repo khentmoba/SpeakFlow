@@ -1089,20 +1089,15 @@
 }
 
 .chip-dot-gpu {
-  background: #10B981;
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.75);
-  animation: led-pulse 2s ease-in-out infinite;
+  background: var(--color-accent);
 }
 
 .chip-dot-cloud {
-  background: #00D2F7;
-  box-shadow: 0 0 8px rgba(0, 210, 247, 0.75);
-  animation: led-pulse 2s ease-in-out infinite;
+  background: var(--color-text-primary);
 }
 
 .chip-dot-cpu {
-  background: #F59E0B;
-  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+  background: var(--color-text-tertiary);
 }
 
 @keyframes led-pulse {
@@ -2405,7 +2400,7 @@ select:disabled { cursor: not-allowed; opacity: 0.6; }
 
 .picker-popover-action.is-danger:hover,
 .picker-popover-action.is-danger:focus-visible {
-  color: var(--color-danger, #b44343);
+  color: var(--color-error);
 }
 
 .asr-capability-tags {

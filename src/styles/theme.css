@@ -7,48 +7,48 @@
 /* ---------- Light theme (default) ---------- */
 :root {
   color-scheme: light;
-  /* Surfaces — neutral layers keep long settings sessions visually quiet */
-  --color-bg-primary: #F7F8FA;
-  --color-bg-secondary: #EEEFF2;
-  --color-bg-tertiary: #E4E6EA;
+  /* Surfaces — paper white with a warm cast, so amber reads as a signal not a tint */
+  --color-bg-primary: #FFFFFF;
+  --color-bg-secondary: #F4F4F1;
+  --color-bg-tertiary: #E9E9E4;
   --color-bg-elevated: #FFFFFF;
-  --color-bg-overlay: rgba(248, 250, 252, 0.94);
-  --color-bg-sunken: #E4E6EA;
+  --color-bg-overlay: rgba(255, 255, 255, 0.95);
+  --color-bg-sunken: #E6E6E1;
 
-  /* Text — compact product hierarchy with WCAG AA contrast */
-  --color-text-primary: #191C21;
-  --color-text-secondary: #515863;
-  --color-text-tertiary: #626976;
+  /* Text — ink on paper */
+  --color-text-primary: #0A0A0A;
+  --color-text-secondary: #565656;
+  --color-text-tertiary: #6E6E6E;
   --color-text-inverse: #FFFFFF;
   --color-text-brand: var(--color-accent);
 
-  /* Brand signal — recording, polish, and primary actions */
-  --color-accent: #315EAB;
-  --color-accent-hover: #254B8C;
-  --color-accent-active: #1D3C72;
-  --color-accent-subtle: rgba(49, 94, 171, 0.10);
-  --color-accent-muted: rgba(49, 94, 171, 0.05);
-  --color-accent-rgb: 49, 94, 171;
+  /* Signal — amber marks recording, live state, and primary action. Nothing else is coloured. */
+  --color-accent: #A86200;
+  --color-accent-hover: #8A4F00;
+  --color-accent-active: #6B3D00;
+  --color-accent-subtle: rgba(168, 98, 0, 0.12);
+  --color-accent-muted: rgba(168, 98, 0, 0.06);
+  --color-accent-rgb: 168, 98, 0;
 
-  /* Borders */
-  --color-border: #CBD5E1;
-  --color-border-subtle: rgba(0, 0, 0, 0.07);
-  --color-border-accent: rgba(49, 94, 171, 0.30);
+  /* Borders — hairlines do the structural work */
+  --color-border: #D4D4CE;
+  --color-border-subtle: rgba(0, 0, 0, 0.08);
+  --color-border-accent: rgba(168, 98, 0, 0.32);
 
   /* Status */
-  --color-success: #16A34A;
-  --color-success-bg: rgba(22, 163, 74, 0.08);
-  --color-error: #DC2626;
-  --color-error-bg: rgba(191, 77, 67, 0.08);
-  --color-warning: #D97706;
-  --color-warning-bg: rgba(212, 137, 10, 0.08);
-  --color-info: #315EAB;
-  --color-info-bg: rgba(44, 111, 187, 0.08);
+  --color-success: #15803D;
+  --color-success-bg: rgba(21, 128, 61, 0.08);
+  --color-error: #C1121F;
+  --color-error-bg: rgba(193, 18, 31, 0.08);
+  --color-warning: #A16207;
+  --color-warning-bg: rgba(161, 98, 7, 0.08);
+  --color-info: #0A0A0A;
+  --color-info-bg: rgba(0, 0, 0, 0.05);
 
   /* Semantic — assistant remains distinct from polish */
-  --color-assistant: #7C3AED;
-  --color-assistant-glow: rgba(124, 58, 237, 0.34);
-  --color-learned: #0D9488;
+  --color-assistant: #6D28D9;
+  --color-assistant-glow: rgba(109, 40, 217, 0.30);
+  --color-learned: #0F766E;
 
   /* Shadows — enhanced for subtle background distinction */
   --shadow-xs: 0 1px 2px rgba(23, 32, 48, 0.06);
@@ -59,7 +59,7 @@
   --shadow-glow: 0 0 0 3px rgba(var(--color-accent-rgb), 0.15);
   --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04);
   --shadow-card-hover: 0 4px 16px rgba(23, 32, 48, 0.10), 0 1px 3px rgba(23, 32, 48, 0.05);
-  --glow-acoustic: 0 0 20px rgba(49, 94, 171, 0.22);
+  --glow-acoustic: 0 0 20px rgba(168, 98, 0, 0.22);
   --shadow-record-ring: 0 0 0 4px rgba(var(--color-accent-rgb), 0.20);
 
   /* Radii */
@@ -103,7 +103,9 @@
   --font-serif: var(--font-ui);
   --font-sans: var(--font-ui);
   --font-mono: "Cascadia Mono", Consolas, monospace;
-  --font-display: var(--font-ui);
+  /* Display voice — Bahnschrift ships with Windows 10/11 and gives the tracked
+  micro-labels their DIN character without a runtime font download. */
+  --font-display: "Bahnschrift", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
 
   /* Text sizes */
   --text-2xs: 0.75rem;  /* 12px minimum for compact labels */
@@ -138,56 +140,56 @@
   --bg-gradient: var(--color-bg-primary);
 }
 
-/* ---------- Dark theme — neutral black with a restrained blue signal ---------- */
+/* ---------- Dark theme — pure black with one amber signal ---------- */
 [data-theme="dark"],
 .dark {
   color-scheme: dark;
-  --color-bg-primary: #121316;
-  --color-bg-secondary: #1A1C22;
-  --color-bg-tertiary: #22252D;
-  --color-bg-elevated: #16181D;
-  --color-bg-overlay: rgba(9, 10, 12, 0.96);
-  --color-bg-sunken: #090A0C;
+  --color-bg-primary: #000000;
+  --color-bg-secondary: #070707;
+  --color-bg-tertiary: #0E0E0E;
+  --color-bg-elevated: #0A0A0A;
+  --color-bg-overlay: rgba(0, 0, 0, 0.96);
+  --color-bg-sunken: #000000;
 
-  --color-text-primary: #F3F4F6;
-  --color-text-secondary: #9CA3AF;
-  --color-text-tertiary: #6B7280;
-  --color-text-inverse: #090A0C;
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #8A8A8A;
+  --color-text-tertiary: #585858;
+  --color-text-inverse: #000000;
   --color-text-brand: var(--color-accent);
 
-  --color-accent: #3B82F6;
-  --color-accent-hover: #60A5FA;
-  --color-accent-active: #2563EB;
-  --color-accent-subtle: rgba(59, 130, 246, 0.12);
-  --color-accent-muted: rgba(59, 130, 246, 0.06);
-  --color-accent-rgb: 59, 130, 246;
+  --color-accent: #FFB020;
+  --color-accent-hover: #FFC44D;
+  --color-accent-active: #E09400;
+  --color-accent-subtle: rgba(255, 176, 32, 0.14);
+  --color-accent-muted: rgba(255, 176, 32, 0.07);
+  --color-accent-rgb: 255, 176, 32;
 
-  --color-border: #262930;
+  --color-border: #1A1A1A;
   --color-border-subtle: rgba(255, 255, 255, 0.07);
-  --color-border-accent: rgba(59, 130, 246, 0.35);
+  --color-border-accent: rgba(255, 176, 32, 0.35);
 
-  --color-success: #22C55E;
-  --color-success-bg: rgba(34, 197, 94, 0.10);
-  --color-error: #EF4444;
-  --color-error-bg: rgba(239, 68, 68, 0.10);
-  --color-warning: #F59E0B;
-  --color-warning-bg: rgba(245, 158, 11, 0.10);
-  --color-info: #38BDF8;
-  --color-info-bg: rgba(90, 155, 213, 0.10);
+  --color-success: #4ADE80;
+  --color-success-bg: rgba(74, 222, 128, 0.10);
+  --color-error: #FF453A;
+  --color-error-bg: rgba(255, 69, 58, 0.10);
+  --color-warning: #FFD60A;
+  --color-warning-bg: rgba(255, 214, 10, 0.10);
+  --color-info: #FFFFFF;
+  --color-info-bg: rgba(255, 255, 255, 0.08);
 
-  --color-assistant: #A78BFA;
-  --color-assistant-glow: rgba(167, 139, 250, 0.34);
+  --color-assistant: #B98CFF;
+  --color-assistant-glow: rgba(185, 140, 255, 0.34);
   --color-learned: #2DD4BF;
 
-  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.20);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.15);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.20);
-  --shadow-lg: 0 8px 18px rgba(0, 0, 0, 0.40), 0 3px 6px rgba(0, 0, 0, 0.22);
-  --shadow-xl: 0 14px 28px rgba(0, 0, 0, 0.48), 0 5px 10px rgba(0, 0, 0, 0.25);
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.40);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.40);
+  --shadow-lg: 0 8px 18px rgba(0, 0, 0, 0.70), 0 3px 6px rgba(0, 0, 0, 0.42);
+  --shadow-xl: 0 14px 28px rgba(0, 0, 0, 0.78), 0 5px 10px rgba(0, 0, 0, 0.45);
   --shadow-glow: 0 0 0 3px rgba(var(--color-accent-rgb), 0.22);
-  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.06);
-  --shadow-card-hover: 0 6px 20px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.10);
-  --glow-acoustic: 0 0 28px rgba(59, 130, 246, 0.35);
+  --shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --shadow-card-hover: 0 0 0 1px rgba(255, 255, 255, 0.14);
+  --glow-acoustic: 0 0 28px rgba(255, 176, 32, 0.35);
   --shadow-record-ring: 0 0 0 4px rgba(var(--color-accent-rgb), 0.18);
 
   --bg-gradient: var(--color-bg-primary);
@@ -525,15 +527,6 @@ textarea,
 .animate-spin { animation: spin 1s linear infinite; }
 
 /* Equalizer bars — recording waveform (uses scaleY for GPU perf) */
-.eq-bar {
-  width: 2.5px;
-  height: 18px;
-  border-radius: 1.5px;
-  background: currentColor;
-  transform-origin: center;
-  transition: transform var(--dur-1) linear;
-  will-change: transform;
-}
 
 /* Download progress indeterminate pulse */
 @keyframes download-pulse {
@@ -853,55 +846,12 @@ textarea,
 }
 
 /* Title bar — shared between pages */
-.title-bar {
-  display: flex;
-  align-items: center;
-  height: 32px;
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--color-border-subtle);
-  background: var(--color-bg-overlay);
-  backdrop-filter: blur(8px);
-  transition: background-color var(--dur-3) var(--ease-out-expo),
-              border-color var(--dur-3) var(--ease-out-expo);
-}
 
-.title-bar-logo {
-  flex-shrink: 0;
-  filter: drop-shadow(0 1px 3px rgba(121, 169, 255, 0.35));
-  transition: transform var(--dur-2) var(--ease-out-expo);
-}
 
-.title-bar-logo:hover {
-  transform: scale(1.1);
-}
 
 /* Recording button — circular mic button with microinteractions */
-.record-btn {
-  position: relative;
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background var(--dur-4) var(--ease-out-expo),
-              color var(--dur-3) var(--ease-out-expo),
-              box-shadow var(--dur-4) var(--ease-out-expo),
-              transform var(--dur-5) var(--ease-out-expo),
-              opacity var(--dur-3) var(--ease-out-expo),
-              border-color var(--dur-3) var(--ease-out-expo);
-  will-change: transform;
-}
 
-.record-btn:not(:disabled):hover {
-  transform: scale(1.03);
-  box-shadow: var(--shadow-lg) !important;
-}
 
-.record-btn:not(:disabled):active {
-  transform: scale(0.97);
-  transition: transform var(--dur-1) var(--ease-micro);
-}
 
 /* Toggle switch — autostart etc. */
 .toggle-switch {
@@ -916,24 +866,8 @@ textarea,
               box-shadow var(--dur-4) var(--ease-out-expo);
 }
 
-.record-icon {
-  position: absolute;
-  inset: 0;
-  width: 24px;
-  height: 24px;
-  margin: auto;
-  display: grid;
-  place-items: center;
-  opacity: 0;
-  transition: opacity var(--dur-2) var(--ease-out-expo);
-  pointer-events: none;
-}
 
-.record-icon[data-visible="true"] {
-  opacity: 1;
-}
 
-.record-icon > svg { width: 18px; height: 18px; }
 
 .toggle-switch[aria-checked="false"] {
   background: var(--color-bg-tertiary);

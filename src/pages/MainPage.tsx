@@ -1,10 +1,8 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
-import { ArrowUpRight, AudioLines, FileText, Keyboard, Minus, Settings, X } from "lucide-react";
+import { ArrowUpRight, AudioLines, Settings, X } from "lucide-react";
 import { toast } from "sonner";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useRecordingContext } from "@/contexts/RecordingContext";
-import { copyToClipboard, hideMainWindow, listInstalledModels, submitUserCorrection } from "@/api/tauri";
-import TitleBar from "@/components/TitleBar";
+import { copyToClipboard, listInstalledModels, submitUserCorrection } from "@/api/tauri";
 import RecordingButton from "@/components/RecordingButton";
 import StatusIndicator from "@/components/StatusIndicator";
 import TranscriptionResult from "@/components/TranscriptionResult";
@@ -12,10 +10,17 @@ import TranscriptionHistory from "@/components/TranscriptionHistory";
 import { useAsrEngineSettings } from "@/hooks/useAsrEngineSettings";
 import { engineOptions, engineOptionLabel } from "@/lib/asrEngineOptions";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
+import { useWaveformBars, WAVEFORM_BAR_COUNT, WAVEFORM_LIVE_TAIL } from "@/hooks/useWaveformBars";
 import { useTranslation } from "react-i18next";
 import { ONBOARDING_DISMISSED_KEY, RECORDING_MODE_KEY } from "@/lib/constants";
 import { readLocalStorage, writeLocalStorage } from "@/lib/storage";
 import { prefersReducedMotion } from "@/lib/motion";
+
+function formatDuration(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds) || seconds <= 0) return "0:00";
+  const total = Math.floor(seconds);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
 
 export default function MainPage({ onNavigate, animClass = "" }: {
   onNavigate: (v: "main" | "settings" | "history") => void;
@@ -52,14 +57,26 @@ export default function MainPage({ onNavigate, animClass = "" }: {
   const stage = engineLoading || alibabaAsrModelSaving ? "checking" : modelStage;
   const modelSelectionDisabled = engineLoading || alibabaAsrModelSaving || isStarting || isRecording || isProcessing || isDownloading;
 
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [installedEngines, setInstalledEngines] = useState<ReadonlySet<string>>(() => new Set());
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [errorDismissed, setErrorDismissed] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => readLocalStorage(ONBOARDING_DISMISSED_KEY) === "true");
   const isToggleMode = readLocalStorage(RECORDING_MODE_KEY) === "toggle";
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const waveRef = useRef<HTMLDivElement>(null);
   const previousResult = useRef<{ id: string; top: number } | null>(null);
+
+  useWaveformBars(waveRef, isRecording);
+
+  // Groups the model list so the current download is easy to find.
+  useEffect(() => {
+    let disposed = false;
+    listInstalledModels()
+      .then((keys) => { if (!disposed) setInstalledEngines(new Set(keys)); })
+      .catch(() => { if (!disposed) setInstalledEngines(new Set()); });
+    return () => { disposed = true; };
+  }, [engine, modelReady]);
 
   useLayoutEffect(() => {
     const root = resultsRef.current;
@@ -82,7 +99,6 @@ export default function MainPage({ onNavigate, animClass = "" }: {
   }, [history, transcriptionResult]);
 
   useEffect(() => { setErrorDismissed(false); }, [recordingError, modelError]);
-  // Auto-dismiss onboarding after first successful transcription
   useEffect(() => {
     if (transcriptionResult && !onboardingDismissed) {
       setOnboardingDismissed(true);
@@ -90,8 +106,6 @@ export default function MainPage({ onNavigate, animClass = "" }: {
     }
   }, [transcriptionResult, onboardingDismissed]);
   useEffect(() => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current); }, []);
-
-  const pageContentClass = `page-content ${animClass || ""}`.trim();
 
   const correctionSubmit = useDebouncedCallback((previousText: string, nextText: string, rawOriginalText: string | null) => {
     submitUserCorrection(previousText, nextText, rawOriginalText)
@@ -128,260 +142,293 @@ export default function MainPage({ onNavigate, animClass = "" }: {
       setEditBaselineText(newText);
       setTranscriptionResult(newText);
       correctionSubmit.schedule(prevText, newText, originalAsrText);
+    } else {
+      setTranscriptionResult(newText);
     }
-  }, [
-    correctionSubmit,
-    editBaselineText,
-    originalAsrText,
-    recordingMode,
-    setTranscriptionResult,
-    setEditBaselineText,
-  ]);
+  }, [correctionSubmit, editBaselineText, originalAsrText, recordingMode, setEditBaselineText, setTranscriptionResult]);
 
-  const flushPendingEditAndNavigate = useCallback((target: "main" | "settings" | "history") => {
-    const active = document.activeElement;
-    if (active instanceof HTMLElement && (active.isContentEditable || active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement)) {
-      active.blur();
-    }
-    correctionSubmit.flush();
+  const flushPendingEditAndNavigate = useCallback((target: "settings" | "history") => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     onNavigate(target);
-  }, [correctionSubmit, onNavigate]);
+  }, [onNavigate]);
 
   const handleToggleRecording = useCallback(() => {
-    if (!isReady) return;
-    if (isStarting || isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
-  }, [isReady, isStarting, isRecording, stopRecording, startRecording]);
+    if (isRecording || isStarting) void stopRecording();
+    else void startRecording();
+  }, [isRecording, isStarting, startRecording, stopRecording]);
+
+  const stateLabel = isRecording
+    ? t("main.statusListening")
+    : isStarting
+      ? t("main.statusConnecting")
+      : isProcessing
+        ? t("main.statusProcessing")
+        : isReady
+          ? t("main.statusReady")
+          : t("main.statusPreparing");
+
+  const hasError = Boolean(recordingError || modelError) && !errorDismissed;
+  const showEmpty = !transcriptionResult && !isProcessing && history.length === 0;
 
   return (
-    <div className="page-root main-page">
-      <TitleBar
-        title={t("main.title")}
-        rightActions={
-          <>
-            <button aria-label={t("common.minimize")} className="icon-btn" onClick={() => getCurrentWindow().minimize()}>
-              <Minus size={12} strokeWidth={1.5} />
-            </button>
-            <button aria-label={t("common.close")} className="icon-btn" onClick={() => hideMainWindow()}>
-              <X size={12} strokeWidth={1.5} />
-            </button>
-          </>
-        }
-      />
+    <div className="page-root signal-page">
+      <div className={`signal-body ${animClass}`.trim()}>
 
-      <div className={`${pageContentClass} dictation-content`}>
-        <header className="workspace-heading">
-          <div>
-            <h1>{t("main.dashboardTitle")}</h1>
-            <p>{t("main.dashboardSubtitle")}</p>
-          </div>
-          <button className="workspace-settings-link" onClick={() => flushPendingEditAndNavigate("settings")}>
-            <Settings size={15} aria-hidden="true" /> {t("main.configure")}
-          </button>
-        </header>
-        <div className="dictation-dashboard">
+        <div className="signal-main">
 
-        {(recordingError || modelError) && !errorDismissed && (
-          <div className="error-section animate-shake">
-            <div className="error-banner">
-              <div className="error-banner-inner">
-                <p className="settings-error" style={{ lineHeight: 1.6, flex: 1 }}>{recordingError || modelError}</p>
-                <button onClick={() => setErrorDismissed(true)} aria-label={t("common.close")} className="error-dismiss-btn">
-                  <X size={12} />
-                </button>
+          {/* ── signal panel: the voice, drawn ── */}
+          <section className="wave-panel" aria-label={t("main.recordingControlsLabel")}>
+            <div className="wave-head">
+              <RecordingButton
+                isStarting={isStarting}
+                isRecording={isRecording}
+                isProcessing={isProcessing}
+                isReady={isReady}
+                onToggle={handleToggleRecording}
+              />
+              <div className="wave-status">
+                <StatusIndicator
+                  stage={stage}
+                  isReady={isReady}
+                  isStarting={isStarting}
+                  isRecording={isRecording}
+                  isProcessing={isProcessing}
+                  device={device}
+                  gpuName={gpuName}
+                  downloadProgress={downloadProgress}
+                  downloadMessage={downloadMessage}
+                  isDownloading={isDownloading}
+                  downloadModels={triggerDownload}
+                  cancelDownload={cancelDownload}
+                />
               </div>
-              {stage === "error" && <button onClick={retryModel} className="error-retry-link">{t("common.retry")}</button>}
+              <div className="wave-clock">
+                <span className="wave-clock-value">{formatDuration(durationSec)}</span>
+              </div>
             </div>
-          </div>
-        )}
 
-        <section className="recording-panel" data-recording={isRecording || isStarting} aria-label={t("main.recordingControlsLabel")}>
-          <div className="recording-dock-action">
-            <RecordingButton
-              isStarting={isStarting}
-              isRecording={isRecording}
-              isProcessing={isProcessing}
-              isReady={isReady}
-              onToggle={handleToggleRecording}
-            />
-            <div className="recording-dock-copy">
-        <div className="recording-panel-heading">
-          <h2>{isRecording ? t("main.statusListening") : isStarting ? t("main.statusConnecting") : isProcessing ? t("main.statusProcessing") : isReady ? t("main.dashboardReady") : stage === "error" ? t("main.statusError") : t("main.statusPreparing")}</h2>
-          <p>{isRecording ? t("main.hintListening") : isReady ? t("main.hintReady") : t("main.hintDefault")}</p>
-        </div>          {isReady && !recordingError && !modelError && (
-            <div className="tactile-hotkey-bar" aria-hidden="true">
-              <span className={`tactile-hotkey-badge${isRecording ? " is-active" : ""}`}>
-                <kbd className="tactile-key">{hotkeyDisplay || "F2"}</kbd>
-                <span className="tactile-hotkey-label">
-                  {isToggleMode ? t("main.hotkeyHintToggle") : t("main.hotkeyHintHold")}
-                </span>
-              </span>
-            </div>
-          )}
-            </div>
-          </div>
-          <div className="recording-dock-engine">
-          <div className="dictation-model-selector">
-            <label htmlFor="dictation-model">{t("main.modelLabel")}</label>
-            <select
-              id="dictation-model"
-              value={engine}
-              disabled={modelSelectionDisabled}
-              onChange={(event) => { void handleEngineSwitch(event.target.value); }}
-            >
-              {([
-                ["main.modelGroupInstalled", engineOptions.filter((option) => installedEngines.has(option.key))],
-                ["main.modelGroupRecommended", engineOptions.filter((option) => !installedEngines.has(option.key) && option.recommended)],
-                ["main.modelGroupOther", engineOptions.filter((option) => !installedEngines.has(option.key) && !option.recommended)],
-              ] as const).map(([labelKey, options]) => options.length === 0 ? null : (
-                <optgroup key={labelKey} label={t(labelKey)}>
-                  {options.map((option) => (
-                    <option key={option.key} value={option.key}>{engineOptionLabel(option, t)}</option>
-                  ))}
-                </optgroup>
+            <div className="wave-bars" ref={waveRef} aria-hidden="true">
+              {Array.from({ length: WAVEFORM_BAR_COUNT }, (_, index) => (
+                <i key={index} data-live={index >= WAVEFORM_BAR_COUNT - WAVEFORM_LIVE_TAIL ? "" : undefined} />
               ))}
-              {!engineOptions.some((option) => option.key === engine) && <option value={engine}>{engine}</option>}
-            </select>
-            <button
-              type="button"
-              className="dictation-model-browse"
-              onClick={() => onNavigate("settings")}
-            >
-              {t("main.browseModels")}
-            </button>
-            {engine === "alibaba-asr" && (
-              <>
-                <label htmlFor="dictation-cloud-model">{t("main.cloudModelLabel")}</label>
-                <select
-                  id="dictation-cloud-model"
-                  value={alibabaAsrModel}
-                  disabled={modelSelectionDisabled || alibabaAsrModelsLoading}
-                  onChange={(event) => { void handleAlibabaAsrModelSelect(event.target.value); }}
-                >
-                  {Array.from(new Set([alibabaAsrModel, ...alibabaAsrModels])).map((model) => (
-                    <option key={model} value={model}>{model}</option>
-                  ))}
-                </select>
-              </>
-            )}
-          </div>
-          <div className="recording-dock-status">
-          <StatusIndicator
-            stage={stage}
-            isReady={isReady}
-            isStarting={isStarting}
-            isRecording={isRecording}
-            isProcessing={isProcessing}
-            device={device}
-            gpuName={gpuName}
-            downloadProgress={downloadProgress}
-            downloadMessage={downloadMessage}
-            isDownloading={isDownloading}
-            downloadModels={triggerDownload}
-            cancelDownload={cancelDownload}
-          >
-
-          </StatusIndicator>
-          </div>
-          </div>
-        </section>
-        <div className="dashboard-grid">
-        {/* Results */}
-        <section ref={resultsRef} className="results-area" aria-label={t("main.workspaceLabel")}>
-          <div className="transcript-heading">
-            <h2><FileText size={16} aria-hidden="true" />{t("main.recentDictations")}</h2>
-            <div className="studio-toolbar-actions">
-            <button onClick={() => flushPendingEditAndNavigate("history")}>{t("main.viewHistory")} <ArrowUpRight size={14} aria-hidden="true" /></button>
             </div>
-          </div>
-          {!transcriptionResult && !isProcessing && history.length === 0 && (
-            <div className="transcript-empty">
-              <div className="studio-empty-mark"><AudioLines size={28} strokeWidth={1.3} aria-hidden="true" /></div>
-              <h3>{t("main.dashboardEmptyTitle")}</h3>
-              <p>{t("main.dashboardEmptySubtitle")}</p>
-              <div className="studio-shortcut"><kbd>{hotkeyDisplay || "F2"}</kbd><span>{isToggleMode ? t("main.studioToggleHint") : t("main.studioHoldHint")}</span></div>
-            </div>
-          )}
-          {polishAuditWarning && (
-            <div className="polish-audit-notice" role="status">
-              <p>{t("settings.jevAuditWarning")}</p>
-              {originalAsrText && <details><summary>{t("settings.jevAuditOriginal")}</summary><p>{originalAsrText}</p></details>}
-            </div>
-          )}
-          <TranscriptionResult
-            text={transcriptionResult}
-            originalText={originalAsrText}
-            baselineText={editBaselineText}
-            isProcessing={isProcessing}
-            copiedId={copiedId}
-            onCopy={handleCopy}
-            onDraftChange={handleDraftChange}
-            onTextChange={handleTextChange}
-            durationSec={durationSec}
-            charCount={charCount}
-            detectedLanguage={detectedLanguage}
-            editGrabStatus={editGrabStatus}
-            timing={timing}
-          />
-          <TranscriptionHistory
-            history={history.slice(0, 5)}
-            currentResult={transcriptionResult}
-            copiedId={copiedId}
-            onCopy={handleCopy}
-          />
+            <div className="wave-base" aria-hidden="true" />
 
-        </section>
+            <div className="wave-foot">
+              <span className="signal-label">{t("signal.input")}</span>
+              <div className="wave-foot-right">
+                <span className="signal-label">{isToggleMode ? t("main.hotkeyHintToggle") : t("main.hotkeyHintHold")}</span>
+                <kbd className="signal-key">{hotkeyDisplay || "F2"}</kbd>
+              </div>
+            </div>
+          </section>
 
-        <aside className="dashboard-setup" aria-label={t("main.yourSetup")}>
-          <h2><Settings size={16} aria-hidden="true" />{t("main.yourSetup")}</h2>
-          <dl className="setup-details">
-            <div><dt>{t("main.modelLabel")}</dt><dd>{engineLabel(engine)}</dd></div>
-            <div><dt>{t("main.shortcutLabel")}</dt><dd><kbd>{hotkeyDisplay || "F2"}</kbd><span>{isToggleMode ? t("main.studioToggleHint") : t("main.studioHoldHint")}</span></dd></div>
-          </dl>
-          <button className="workspace-settings-link" onClick={() => flushPendingEditAndNavigate("settings")}>
-            {t("main.configure")}<ArrowUpRight size={14} aria-hidden="true" />
-          </button>
-          <p className="setup-app-hint"><Keyboard size={15} aria-hidden="true" />{t("main.footerActiveApp")} {t("main.footerNoSwitch")}</p>
-          {/* First-use onboarding hint */}
-          {!onboardingDismissed && !transcriptionResult && !isProcessing && isReady && history.length === 0 && (
-            <div className="onboarding-hero-card">
-                <div className="result-card-header">
-                  <span className="result-card-title">
-                    <span className="result-dot" />
-                    {t("main.quickStart")}
-                  </span>
-                  <button
-                    aria-label={t("common.close")}
-                    className="icon-btn icon-btn-sm"
-                    onClick={() => {
-                      setOnboardingDismissed(true);
-                      writeLocalStorage(ONBOARDING_DISMISSED_KEY, "true");
-                    }}
+          {/* ── transcript ── */}
+          <section className="transcript-panel" ref={resultsRef} aria-label={t("main.workspaceLabel")}>
+            <div className="transcript-head">
+              <span className="signal-tag" data-live={isRecording || isStarting ? "" : undefined}>
+                {isRecording || isStarting ? t("main.statusListening") : t("result.title")}
+              </span>
+              <span className="signal-label">
+                {recordingMode === "assistant" ? t("historyPage.assistant") : t("historyPage.dictation")}
+                {charCount ? ` · ${charCount}` : ""}
+              </span>
+              <div className="transcript-actions">
+                <label className="signal-select">
+                  <span className="signal-label">{t("main.modelLabel")}</span>
+                  <select
+                    aria-label={t("main.modelLabel")}
+                    value={engine}
+                    disabled={modelSelectionDisabled}
+                    onChange={(event) => { void handleEngineSwitch(event.target.value); }}
                   >
-                    <X size={12} strokeWidth={1.5} />
-                  </button>
-                </div>
-                <div className="onboarding-body">
-                  <div className="onboarding-step-row">
-                    <span className="onboarding-step-pill">1</span>
-                    <p>
-                      {isToggleMode ? t("main.pressHotkey") : t("main.holdHotkey")} <strong className="onboarding-accent">{hotkeyDisplay || "F2"}</strong> {isToggleMode ? t("main.step1ToggleSuffix") : t("main.step1HoldSuffix")}
-                    </p>
-                  </div>
-                  <div className="onboarding-step-row">
-                    <span className="onboarding-step-pill">2</span>
-                    <p>{t("main.step2Text")}</p>
-                  </div>
-                  <p className="onboarding-subtext">{t("main.onboardingSubtext")}</p>
-                </div>
+                    {([
+                      ["main.modelGroupInstalled", engineOptions.filter((option) => installedEngines.has(option.key))],
+                      ["main.modelGroupRecommended", engineOptions.filter((option) => !installedEngines.has(option.key) && option.recommended)],
+                      ["main.modelGroupOther", engineOptions.filter((option) => !installedEngines.has(option.key) && !option.recommended)],
+                    ] as const).map(([labelKey, options]) => options.length === 0 ? null : (
+                      <optgroup key={labelKey} label={t(labelKey)}>
+                        {options.map((option) => (
+                          <option key={option.key} value={option.key}>{engineOptionLabel(option, t)}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    {!engineOptions.some((option) => option.key === engine) && <option value={engine}>{engine}</option>}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="dictation-model-browse"
+                  onClick={() => flushPendingEditAndNavigate("settings")}
+                >
+                  {t("main.browseModels")}
+                </button>
+                {engine === "alibaba-asr" && (
+                  <label className="signal-select">
+                    <span className="signal-label">{t("main.cloudModelLabel")}</span>
+                    <select
+                      aria-label={t("main.cloudModelLabel")}
+                      value={alibabaAsrModel}
+                      disabled={modelSelectionDisabled || alibabaAsrModelsLoading}
+                      onChange={(event) => { void handleAlibabaAsrModelSelect(event.target.value); }}
+                    >
+                      {Array.from(new Set([alibabaAsrModel, ...alibabaAsrModels])).map((model) => (
+                        <option key={model} value={model}>{model}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
             </div>
-          )}
+
+            <div className="transcript-body">
+              {hasError && (
+                <div className="signal-error" role="alert">
+                  <p>{recordingError || modelError}</p>
+                  <div className="signal-error-actions">
+                    {stage === "error" && <button className="signal-link" onClick={retryModel}>{t("common.retry")}</button>}
+                    <button className="icon-btn icon-btn-sm" aria-label={t("common.close")} onClick={() => setErrorDismissed(true)}>
+                      <X size={11} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {polishAuditWarning && (
+                <div className="signal-notice" role="status">
+                  <p>{t("settings.jevAuditWarning")}</p>
+                  {originalAsrText && <details><summary>{t("settings.jevAuditOriginal")}</summary><p>{originalAsrText}</p></details>}
+                </div>
+              )}
+
+              {showEmpty && (
+                <div className="signal-empty">
+                  <AudioLines size={18} strokeWidth={1.4} aria-hidden="true" />
+                  <div>
+                    <h3>{t("main.dashboardEmptyTitle")}</h3>
+                    <p>{t("main.dashboardEmptySubtitle")}</p>
+                  </div>
+                </div>
+              )}
+
+              <TranscriptionResult
+                text={transcriptionResult}
+                originalText={originalAsrText}
+                baselineText={editBaselineText}
+                isProcessing={isProcessing}
+                copiedId={copiedId}
+                onCopy={handleCopy}
+                onDraftChange={handleDraftChange}
+                onTextChange={handleTextChange}
+                durationSec={durationSec}
+                charCount={charCount}
+                detectedLanguage={detectedLanguage}
+                editGrabStatus={editGrabStatus}
+                timing={timing}
+              />
+
+              {!onboardingDismissed && !transcriptionResult && !isProcessing && isReady && history.length === 0 && (
+                <div className="signal-quickstart">
+                  <div className="signal-quickstart-head">
+                    <span className="signal-label">{t("main.quickStart")}</span>
+                    <button
+                      className="icon-btn icon-btn-sm"
+                      aria-label={t("common.close")}
+                      onClick={() => {
+                        setOnboardingDismissed(true);
+                        writeLocalStorage(ONBOARDING_DISMISSED_KEY, "true");
+                      }}
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                  <ol>
+                    <li>
+                      {isToggleMode ? t("main.pressHotkey") : t("main.holdHotkey")}{" "}
+                      <kbd className="signal-key">{hotkeyDisplay || "F2"}</kbd>{" "}
+                      {isToggleMode ? t("main.step1ToggleSuffix") : t("main.step1HoldSuffix")}
+                    </li>
+                    <li>{t("main.step2Text")}</li>
+                  </ol>
+                  <p className="signal-quickstart-note">{t("main.onboardingSubtext")}</p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <div className="signal-hsplit" aria-hidden="true" />
+
+          {/* ── rundown ── */}
+          <section className="rundown-panel" aria-label={t("main.recentDictations")}>
+            <div className="rundown-head">
+              <span className="signal-label">{t("main.recentDictations")}</span>
+              <span className="rundown-count">{history.length}</span>
+              <button className="signal-link" onClick={() => flushPendingEditAndNavigate("history")}>
+                {t("main.viewHistory")} <ArrowUpRight size={11} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="rundown-cols" aria-hidden="true">
+              <span>{t("signal.time")}</span>
+              <span>{t("signal.transcript")}</span>
+              <span />
+            </div>
+            <div className="rundown-rows">
+              <TranscriptionHistory
+                history={history.slice(0, 12)}
+                currentResult={transcriptionResult}
+                copiedId={copiedId}
+                onCopy={handleCopy}
+              />
+            </div>
+          </section>
+
+        </div>
+
+        <div className="signal-vsplit" aria-hidden="true" />
+
+        {/* ── sources rail ── */}
+        <aside className="signal-rail" aria-label={t("main.yourSetup")}>
+          <div className="rail-head">
+            <span className="signal-label">{t("main.yourSetup")}</span>
+            <button className="icon-btn icon-btn-sm" aria-label={t("main.configure")} onClick={() => flushPendingEditAndNavigate("settings")}>
+              <Settings size={12} />
+            </button>
+          </div>
+
+          <div className="rail-count">
+            <span className="rail-count-value">{String(history.length).padStart(2, "0")}</span>
+            <span className="signal-label">{t("main.recentDictations")}</span>
+          </div>
+
+          <dl className="rail-sources">
+            <div>
+              <dt className="signal-label">{t("main.modelLabel")}</dt>
+              <dd>{engineLabel(engine)}</dd>
+            </div>
+            <div>
+              <dt className="signal-label">{t("main.shortcutLabel")}</dt>
+              <dd><kbd className="signal-key">{hotkeyDisplay || "F2"}</kbd></dd>
+            </div>
+            <div>
+              <dt className="signal-label">{t("signal.status")}</dt>
+              <dd className="rail-state" data-ready={isReady ? "" : undefined}>
+                <span className="rail-dot" aria-hidden="true" />
+                {stateLabel}
+              </dd>
+            </div>
+            <div>
+              <dt className="signal-label">{t("signal.destination")}</dt>
+              <dd className="rail-muted">{t("main.footerNoSwitch")}</dd>
+            </div>
+          </dl>
+
+          <div className="rail-foot">
+            <button className="signal-link" onClick={() => flushPendingEditAndNavigate("settings")}>
+              {t("main.configure")} <ArrowUpRight size={11} aria-hidden="true" />
+            </button>
+          </div>
         </aside>
-        </div>
-        </div>
+
       </div>
     </div>
   );

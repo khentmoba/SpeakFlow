@@ -16,12 +16,26 @@ const en = {
     settings: "Settings",
     back: "Back",
     minimize: "Minimize",
+    maximize: "Maximize",
     change: "Change",
     loading: "Loading...",
   },
   app: {
     title: "SpeakFlow",
     errorRestart: "An error occurred. Please restart the app.",
+  },
+  viewTitle: {
+    main: "Dictation",
+    history: "History",
+    settings: "Settings",
+    updates: "Updates",
+  },
+  signal: {
+    input: "Input",
+    time: "Time",
+    transcript: "Transcript",
+    status: "Status",
+    destination: "Destination",
   },
   selection: {
     toolbarLabel: "Selection assistant actions",
