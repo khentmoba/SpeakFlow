@@ -6,7 +6,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { RecordingProvider } from "./contexts/RecordingContext";
 import { prefersReducedMotion } from "./lib/motion";
 import MainPage from "./pages/MainPage";
-import AppNavigation from "./components/AppNavigation";
+import TitleBar from "./components/TitleBar";
+import ShellStatusBar from "./components/ShellStatusBar";
 import { AppUpdateProvider, useAppUpdates } from "./contexts/AppUpdateContext";
 import { useTheme } from "./hooks/useTheme";
 import { useProfileSaveNotifications } from "./hooks/useProfileSaveNotifications";
@@ -14,6 +15,7 @@ import i18n from "./i18n";
 import "./styles/theme.css";
 import "./styles/pages.css";
 import "./styles/workspace.css";
+import "./styles/signal.css";
 
 type View = "main" | "settings" | "history" | "updates";
 const loadUpdatesPage = () => import("./pages/UpdatesPage");
@@ -127,8 +129,14 @@ function AppWorkspace() {
   return (
     <RecordingProvider>
       <div className="app-shell">
-        <AppNavigation view={view} onNavigate={navigateTo} updateAvailable={Boolean(latestAvailableVersion)} updateInstalling={updateInstalling} />
         <div className="app-workspace">
+          <TitleBar
+            title={i18n.t(`viewTitle.${view}`)}
+            view={view}
+            onNavigate={navigateTo}
+            updateAvailable={Boolean(latestAvailableVersion)}
+            updateInstalling={updateInstalling}
+          />
           <Suspense fallback={<div className="workspace-loading" role="status">Loading workspace…</div>}>
             {view === "main" ? (
               <MainPage onNavigate={navigateTo} animClass={animClass} />
@@ -141,6 +149,7 @@ function AppWorkspace() {
             )}
           </Suspense>
         </div>
+        <ShellStatusBar />
       </div>
       <Toaster
         className="app-toaster"

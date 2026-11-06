@@ -14,6 +14,17 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 vi.mock("./contexts/RecordingContext", () => ({
   RecordingProvider: ({ children }: { children: ReactNode }) => children,
+  useRecordingContext: () => ({
+    isRecording: false,
+    isStarting: false,
+    isProcessing: false,
+    isReady: true,
+    stage: "ready",
+    durationSec: null,
+    device: null,
+    hotkeyDisplay: "F2",
+    recordingMode: "dictation",
+  }),
 }));
 
 vi.mock("./hooks/useTheme", () => ({ useTheme: vi.fn() }));
@@ -89,7 +100,7 @@ describe("App profile-save notifications", () => {
 });
 
 describe("App page motion", () => {
-  it("opens updates from the sidebar", async () => {
+  it("opens updates from the title bar navigation", async () => {
     setReducedMotion(true);
     render(<App />);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Updates" })); });

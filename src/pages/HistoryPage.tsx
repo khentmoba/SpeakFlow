@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
-  ArrowLeft,
   Check,
   ChevronDown,
   ChevronUp,
@@ -10,11 +8,9 @@ import {
   Copy,
   Download,
   FileAudio,
-  Minus,
   RefreshCw,
   Search,
   Trash2,
-  X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -24,11 +20,9 @@ import {
   deleteTranscriptionHistory,
   exportTranscriptionHistory,
   getTranscriptionHistoryStats,
-  hideMainWindow,
   listTranscriptionHistory,
   reprocessTranscriptionHistory,
 } from "@/api/tauri";
-import TitleBar from "@/components/TitleBar";
 import { prefersReducedMotion } from "@/lib/motion";
 import type {
   PersistentHistoryRecord,
@@ -69,7 +63,6 @@ function recordDate(value: number, language: string): string {
 }
 
 export default function HistoryPage({
-  onNavigate,
   animClass = "",
 }: {
   onNavigate: (view: View) => void;
@@ -237,25 +230,6 @@ export default function HistoryPage({
 
   return (
     <div className="page-root">
-      <TitleBar
-        title={t("historyPage.title")}
-        leftAction={(
-          <button className="icon-btn plain" aria-label={t("common.back")} onClick={() => onNavigate("main")}>
-            <ArrowLeft size={14} />
-          </button>
-        )}
-        rightActions={(
-          <>
-            <button aria-label={t("common.minimize")} className="icon-btn" onClick={() => getCurrentWindow().minimize()}>
-              <Minus size={12} />
-            </button>
-            <button aria-label={t("common.close")} className="icon-btn" onClick={() => hideMainWindow()}>
-              <X size={12} />
-            </button>
-          </>
-        )}
-      />
-
       <main className={`page-content history-page ${animClass}`.trim()}>
         <section className="history-command-bar" aria-label={t("historyPage.title")}>
           <label className="history-search">

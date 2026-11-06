@@ -1,5 +1,8 @@
+import { useTranslation } from "react-i18next";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { PADDING } from "@/lib/constants";
+import { Minus, Square, X } from "lucide-react";
+import { hideMainWindow } from "@/api/tauri";
+import AppNavigation, { type AppView } from "./AppNavigation";
 
 export function SpeakFlowBrandIcon({ size = 15, className }: { size?: number; className?: string }) {
   return (
@@ -35,12 +38,17 @@ export function SpeakFlowBrandIcon({ size = 15, className }: { size?: number; cl
 
 interface TitleBarProps {
   title: string;
-  leftAction?: React.ReactNode;
-  rightActions?: React.ReactNode;
-  showLogo?: boolean;
+  view: AppView;
+  onNavigate: (view: AppView) => void;
+  updateAvailable?: boolean;
+  updateInstalling?: boolean;
 }
 
-export default function TitleBar({ title, leftAction, rightActions, showLogo }: TitleBarProps) {
+export default function TitleBar({
+  title, view, onNavigate, updateAvailable = false, updateInstalling = false,
+}: TitleBarProps) {
+  const { t } = useTranslation();
+
   const startDrag = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
 
@@ -64,23 +72,47 @@ export default function TitleBar({ title, leftAction, rightActions, showLogo }: 
     // Window dragging is a pointer-only desktop affordance; keyboard actions
     // remain on the real buttons rendered in the action slots.
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
-    <header
-      onMouseDown={startDrag}
-      className="title-bar"
-      style={{ padding: `0 ${PADDING - 8}px`, justifyContent: rightActions ? "space-between" : "flex-start" }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        {leftAction}
-        {showLogo && <SpeakFlowBrandIcon size={15} className="title-bar-logo" />}
-        <span className={`title-text${!leftAction && !showLogo ? " title-text-indented" : ""}`}>
-          {title}
-        </span>
+    <header onMouseDown={startDrag} className="title-bar">
+      <div className="title-bar-brand">
+        <SpeakFlowBrandIcon size={14} className="title-bar-logo" />
+        <span className="title-bar-name">SpeakFlow</span>
+        <span className="title-bar-div" aria-hidden="true" />
+        <span className="title-bar-doc">{title}</span>
       </div>
-      {rightActions && (
-        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-          {rightActions}
+
+      <AppNavigation
+        view={view}
+        onNavigate={onNavigate}
+        updateAvailable={updateAvailable}
+        updateInstalling={updateInstalling}
+      />
+
+      <div className="title-bar-actions">
+        <div className="window-controls">
+          <button
+            type="button"
+            aria-label={t("common.minimize")}
+            onClick={() => void getCurrentWindow().minimize()}
+          >
+            <Minus size={10} strokeWidth={1.1} />
+          </button>
+          <button
+            type="button"
+            aria-label={t("common.maximize")}
+            onClick={() => { void getCurrentWindow().toggleMaximize?.().catch(() => undefined); }}
+          >
+            <Square size={9} strokeWidth={1.1} />
+          </button>
+          <button
+            type="button"
+            data-close
+            aria-label={t("common.close")}
+            onClick={() => void hideMainWindow()}
+          >
+            <X size={11} strokeWidth={1.1} />
+          </button>
         </div>
-      )}
+      </div>
     </header>
   );
 }

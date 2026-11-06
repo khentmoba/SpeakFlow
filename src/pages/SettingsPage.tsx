@@ -1,6 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ArrowLeft, Mic, Keyboard, ClipboardPaste, AudioLines, BookOpen, Plus, X, Minus, ChevronsUpDown, FolderOpen, RotateCcw, HardDrive, AlertTriangle } from "lucide-react";
+import { Mic, Keyboard, ClipboardPaste, AudioLines, BookOpen, Plus, X, ChevronsUpDown, FolderOpen, RotateCcw, HardDrive, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useHotkeyCapture } from "@/hooks/useHotkeyCapture";
 import { useExclusivePicker } from "@/hooks/useExclusivePicker";
@@ -15,7 +14,6 @@ import {
   removeHotWord,
   setSoundEnabled,
   setRecordingMode,
-  hideMainWindow,
   detectMagpie,
   listInstalledModels,
   getVoiceProcessing,
@@ -31,7 +29,6 @@ import type { UserProfile } from "@/types";
 import { useRecordingContext } from "@/contexts/RecordingContext";
 import SecretInput from "@/components/SecretInput";
 import Kbd from "@/components/Kbd";
-import TitleBar from "@/components/TitleBar";
 import AppearanceSettingsSection from "@/components/settings/AppearanceSettingsSection";
 import AiModelsSettingsSection from "@/components/settings/AiModelsSettingsSection";
 import SystemSettingsSections from "@/components/settings/SystemSettingsSections";
@@ -42,7 +39,7 @@ import { SettingsReveal } from "@/components/settings/SettingsReveal";
 import R2T2SettingsSection from "@/components/settings/R2T2SettingsSection";
 import { ModelBrowser } from "@/components/settings/ModelBrowser";
 import { prefersReducedMotion } from "@/lib/motion";
-import { PADDING, INPUT_METHOD_KEY, DEFAULT_HOTKEY, SOUND_ENABLED_KEY, RECORDING_MODE_KEY } from "@/lib/constants";
+import { INPUT_METHOD_KEY, DEFAULT_HOTKEY, SOUND_ENABLED_KEY, RECORDING_MODE_KEY } from "@/lib/constants";
 import { formatAsrEngineDescription, getAsrEngineCapability } from "@/lib/asrEngineCapabilities";
 import {
   llmProviderOptions,
@@ -57,7 +54,6 @@ import { isOnlineEngineKey, asrCapabilityTagKeys, inputOptions, recordingModeOpt
 const CorrectionRulesModal = lazy(() => import("@/components/settings/CorrectionRulesModal"));
 
 export default function SettingsPage({
-  onNavigate,
   active,
   animClass = "",
 }: {
@@ -97,7 +93,6 @@ export default function SettingsPage({
     { id: "startup", labelKey: "settings.startup" },
   ] as const, []);
   const [activeNavSection, setActiveNavSection] = useState("appearance");
-  const [navIndicatorStyle, setNavIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
   const settingsContentRef = useRef<HTMLDivElement | null>(null);
   const navScrollRef = useRef<HTMLDivElement | null>(null);
   const isNavClickScrolling = useRef(false);
@@ -193,7 +188,6 @@ export default function SettingsPage({
       } else {
         navEl.scrollTo({ left: activeBtn.offsetLeft - navEl.offsetWidth / 2 + activeBtn.offsetWidth / 2, behavior });
       }
-      setNavIndicatorStyle({ left: activeBtn.offsetLeft, width: activeBtn.offsetWidth });
     };
     updateIndicator();
     window.addEventListener("resize", updateIndicator);
@@ -511,25 +505,6 @@ export default function SettingsPage({
   return (
     <div className="page-root settings-page">
 
-      <TitleBar
-        title={t("settings.title")}
-        leftAction={
-          <button aria-label={t("common.back")} className="icon-btn plain" onClick={() => onNavigate("main")}>
-            <ArrowLeft size={14} strokeWidth={1.5} />
-          </button>
-        }
-        rightActions={
-          <>
-            <button aria-label={t("common.minimize")} className="icon-btn" onClick={() => getCurrentWindow().minimize()}>
-              <Minus size={12} strokeWidth={1.5} />
-            </button>
-            <button aria-label={t("common.close")} className="icon-btn" onClick={() => hideMainWindow()}>
-              <X size={12} strokeWidth={1.5} />
-            </button>
-          </>
-        }
-      />
-
       <div className={`${pageContentClass} settings-layout`}>
         {!settingsReady ? (
           <div className="settings-content settings-load-state" role={profileLoadError ? "alert" : "status"}>
@@ -547,13 +522,11 @@ export default function SettingsPage({
           <>
         {/* Settings nav */}
         <nav className="settings-nav" aria-label={t("settings.title")} ref={navScrollRef}>
-          {navIndicatorStyle && (
-            <div
-              className="settings-nav-indicator"
-              style={{ transform: `translateX(${navIndicatorStyle.left}px) scaleX(${navIndicatorStyle.width})`, width: 1 }}
-            />
-          )}
-          {navSections.map(({ id, labelKey }) => (
+          <div className="settings-nav-head">
+            <span className="settings-nav-title">{t("settings.title")}</span>
+            <span className="settings-nav-count">{String(navSections.length).padStart(2, "0")}</span>
+          </div>
+          {navSections.map(({ id, labelKey }, index) => (
             <button
               key={id}
               type="button"
@@ -563,13 +536,14 @@ export default function SettingsPage({
               data-nav-tab={id}
               onClick={() => handleNavClick(id)}
             >
-              {t(labelKey)}
+              <span className="settings-nav-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+              <span className="settings-nav-label">{t(labelKey)}</span>
             </button>
           ))}
         </nav>
 
         {/* Content */}
-        <div className="settings-content" ref={settingsContentRef} style={{ padding: `16px ${PADDING}px 16px` }}>
+        <div className="settings-content" ref={settingsContentRef}>
           <div className="settings-sections">
 
           <AppearanceSettingsSection />
@@ -1322,7 +1296,7 @@ export default function SettingsPage({
       </div>
 
         {/* Footer */}
-        <div className="settings-footer" style={{ padding: `10px ${PADDING}px` }}>
+        <div className="settings-footer">
           <p className="settings-footer-text">
             {t("settings.footer")} <span className="settings-footer-version">v{appVersion}</span>
             <span style={{ margin: "0 6px" }}>·</span>

@@ -55,7 +55,10 @@ describe("settings CSS contracts", () => {
     expect(root).toMatch(/--font-serif:\s*var\(--font-ui\);/);
     expect(root).toMatch(/--font-sans:\s*var\(--font-ui\);/);
     expect(root).toMatch(/--font-mono:\s*"Cascadia Mono",\s*Consolas,\s*monospace;/);
-    expect(root).toMatch(/--font-display:\s*var\(--font-ui\);/);
+    // Display voice stays a Windows system face: Bahnschrift ships with Windows 10/11.
+    expect(root).toMatch(
+      /--font-display:\s*"Bahnschrift",\s*"Segoe UI Variable",\s*"Segoe UI",\s*system-ui,\s*sans-serif;/,
+    );
     expect(root).toMatch(/--tracking-body:\s*-0\.008em;/);
     expect(root).toMatch(/--tracking-display:\s*-0\.02em;/);
     expect(themeCss).not.toContain("../assets/fonts/");

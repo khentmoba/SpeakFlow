@@ -19,9 +19,14 @@ describe("workspace navigation", () => {
     expect(screen.getByRole("button", { name: "Dictation" })).not.toHaveAttribute("aria-current");
   });
 
+  it("names an available update without the installing suffix", () => {
+    render(<AppNavigation view="main" onNavigate={vi.fn()} updateAvailable />);
+    expect(screen.getByRole("button", { name: "Updates, New release available" })).toBeInTheDocument();
+  });
+
   it("marks an available update and identifies the update destination", () => {
     render(<AppNavigation view="updates" onNavigate={vi.fn()} updateAvailable updateInstalling />);
-    expect(screen.getByRole("button", { name: /Updates/ })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Updates, Update in progress" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("img", { name: "Update in progress" })).toBeInTheDocument();
   });
 });
