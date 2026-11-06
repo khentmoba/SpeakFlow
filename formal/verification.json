@@ -1504,10 +1504,9 @@
       "assumptions": "Monotonic time and weakly fair timer/command completion; finite clocks in TLC and unbounded Nat policy in Lean. Native load/free success is an input, not a driver proof. AppWorkflow GpuIdle represents R2T2 recording as an active stream. Input focus/click ordering is checked by real user-event regression tests; linguistic accuracy is outside proof."
     },
     "support": {
-      "obligation": "Diagnostics read only app-owned files, bound the log tail, and redact credential-shaped lines; opening the log folder resolves the app log directory and never executes user input; free-space checks resolve a volume without writing to it.",
+      "obligation": "Opening the log folder resolves the app log directory and never executes user input; diagnostics read only app-owned files, bound the log tail, and redact credential-shaped lines (covered by the command tests).",
       "models": {
         "SettingsContracts": [
-          "ReadSnapshot",
           "OpenUrl"
         ]
       },
@@ -1517,7 +1516,7 @@
       "evidence": [
         "src-tauri/src/commands/support.rs#tests"
       ],
-      "assumptions": "The Windows shell and filesystem are external; the contract covers read-only access, redaction and directory resolution, not OS behavior."
+      "assumptions": "The Windows shell and filesystem are external; the formal binding covers the validated external-open action, while read-only access and redaction are checked by the command tests."
     }
   },
   "runs": {
