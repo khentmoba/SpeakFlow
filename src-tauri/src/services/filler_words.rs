@@ -184,7 +184,9 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
         // The filler occupied the horizontal whitespace before it; line breaks
         // and indentation before it stay.
         let cut = out.trim_end_matches([' ', '\t']).len();
-        out.truncate(cut);
+        if !out[..cut].ends_with('\n') {
+            out.truncate(cut);
+        }
         let before = out.clone();
         let opener = before
             .chars()
@@ -232,6 +234,9 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
                         out.truncate(keep);
                     }
                 }
+                if c == '"' {
+                    straight_quote_open = false;
+                }
             }
             next += 1;
         }
@@ -242,23 +247,28 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
             .is_none_or(|t| t.kind == Kind::Punct && first_char(t).is_some_and(is_terminator));
         if ends_sentence {
             trim_trailing_separator(&mut out);
+            trim_trailing_dash(&mut out);
         }
-        // "I think — um — yes" keeps one dash.
+        // "I think — um — yes" keeps one dash; "Um — hello" drops the leading one.
         if let Some(position) = tokens[next..]
             .iter()
             .position(|t| t.kind != Kind::Space)
             .map(|offset| next + offset)
         {
-            let dash_text = tokens[position].text.as_str();
-            let is_dash_token = first_char(&tokens[position]).is_some_and(is_dash)
-                && (tokens[position].kind == Kind::Punct || dash_text == "-");
-            if is_dash_token && out.trim_end().chars().last().is_some_and(is_dash) {
-                next = position + 1;
+            if is_dash_token(&tokens[position]) {
+                trim_trailing_separator(&mut out);
+                if out.trim_end().chars().last().is_some_and(is_dash) || at_sentence_start {
+                    next = position + 1;
+                }
             }
         }
 
         seam = true;
-        capitalize_next = at_sentence_start;
+        // Mid-text, only a capitalized filler marks a sentence start; otherwise
+        // "3 p.m. um we left" would gain a capital after an abbreviation.
+        let at_text_start = head.trim_end().is_empty();
+        capitalize_next = at_text_start
+            || (at_sentence_start && token.text.chars().next().is_some_and(char::is_uppercase));
         index = next;
     }
 
@@ -295,7 +305,8 @@ fn write_seam(
     let before_closer = token.kind == Kind::Punct
         && (is_terminator(first)
             || is_separator(first)
-            || matches!(first, ')' | ']' | '}' | '\u{201D}' | '\u{2019}'));
+            || matches!(first, ')' | ']' | '}' | '\u{201D}' | '\u{2019}')
+            || (first == '"' && straight_quote_open));
     // Chinese and Japanese are written without spaces between words.
     let joins_unspaced = out
         .chars()
@@ -338,6 +349,19 @@ fn unspaced_script(c: char) -> bool {
         || (0xFF00..=0xFFEF).contains(&code)
         || (0x0E00..=0x0E7F).contains(&code)
         || (0x3000..=0x303F).contains(&code)
+}
+
+fn is_dash_token(token: &Token) -> bool {
+    !token.text.is_empty() && token.text.chars().all(is_dash)
+}
+
+fn trim_trailing_dash(out: &mut String) {
+    let trimmed_len = out.trim_end().len();
+    if let Some(dash) = out[..trimmed_len].chars().last().filter(|c| is_dash(*c)) {
+        out.truncate(trimmed_len - dash.len_utf8());
+        let cut = out.trim_end().len();
+        out.truncate(cut);
+    }
 }
 
 fn trim_trailing_separator(out: &mut String) {
@@ -431,9 +455,42 @@ mod tests {
 
     #[test]
     fn keeps_newlines_and_indentation() {
-        assert_eq!(clean("Hello.\num, world"), "Hello.\nWorld");
+        assert_eq!(clean("Hello.\num, world"), "Hello.\nworld");
         assert_eq!(clean("Um, hello.\n\n"), "Hello.\n\n");
         assert_eq!(clean("Um, one\n  two"), "One\n  two");
+        assert_eq!(clean("- item\n  um, next item"), "- item\n  next item");
+    }
+
+    #[test]
+    fn keeps_a_closing_quote_tight_against_the_word() {
+        assert_eq!(
+            clean("She said \"okay um\" and left."),
+            "She said \"okay\" and left."
+        );
+        assert_eq!(clean("\"Hello, um\" she said."), "\"Hello,\" she said.");
+        // Removing a quoted filler must not flip the quote state for later text.
+        assert_eq!(
+            clean("He said \"um\" and \"hello\" um there."),
+            "He said and \"hello\" there."
+        );
+    }
+
+    #[test]
+    fn does_not_capitalize_after_an_abbreviation() {
+        assert_eq!(clean("at 3 p.m. um we left"), "at 3 p.m. we left");
+        assert_eq!(clean("e.g. um the file"), "e.g. the file");
+        assert_eq!(clean("Hello\u{2026} um, world"), "Hello\u{2026} world");
+        // A capitalized filler still marks a sentence start.
+        assert_eq!(clean("Hello. Um, how are you?"), "Hello. How are you?");
+    }
+
+    #[test]
+    fn drops_dashes_that_only_framed_the_filler() {
+        assert_eq!(clean("Um \u{2014} hello"), "Hello");
+        assert_eq!(clean("Um - hello"), "Hello");
+        assert_eq!(clean("I think -- um -- yes"), "I think -- yes");
+        assert_eq!(clean("I think, um \u{2014} yes"), "I think \u{2014} yes");
+        assert_eq!(clean("Yes \u{2014} um."), "Yes.");
     }
 
     #[test]
