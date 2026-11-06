@@ -82,12 +82,17 @@ Two preferences in the same section change how a recording is transcribed:
 - **Skip silence before recognition** (on by default). When off, the whole
   recording is sent to the model instead of the speech regions FireRedVAD keeps.
   Confucius4-R2T2 is the exception: it always segments with its own detector to
-  keep the native stream bounded, so the switch does not change it.
-- **Remove filler words** (on by default). Removes `um`, `uh`, `er`, `hmm` and
-  similar sounds from the finished transcript. The list is deliberately short:
-  words that can carry meaning (`like`, `so`, `you know`) are never touched, and
-  a term in the dictionary is never removed. Live previews keep their fillers
-  until the final transcript arrives.
+  keep the native stream bounded, so the switch does not change it. The detector
+  still runs when the switch is off, so a clip with no speech returns nothing
+  instead of whatever the model invents.
+- **Remove filler words** (on by default). Removes `um`, `uh`, `hmm` and similar
+  sounds from the finished transcript, and only when the transcript is English:
+  `um` is the article "a" in Portuguese and `er` means "he" in German, so
+  neither is on the list and other languages are left alone. Words that can carry
+  meaning (`like`, `so`, `you know`) are never touched, and any word inside a
+  dictionary entry is never removed. Live previews keep their fillers until the
+  final transcript arrives. Cloud engines and R2T2 streaming produce their own
+  text and are not affected.
 
 Both are stored in `engine.json`; a missing value means on.
 

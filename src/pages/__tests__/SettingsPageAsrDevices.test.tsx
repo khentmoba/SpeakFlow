@@ -654,6 +654,8 @@ describe("SettingsPage speech processing", () => {
     fireEvent.click(screen.getByRole("button", { name: `Remove ${folder}` }));
     await waitFor(() => expect(tauriMock.setModelDirs).toHaveBeenLastCalledWith([]));
     expect(screen.getByText("No extra folders.")).toBeInTheDocument();
+    // The selected model may now be found in (or lost from) the folders.
+    expect(recordingContextMock.retryModel).toHaveBeenCalled();
   });
 
   it("shows the transcript from a model test and explains a missing model", async () => {

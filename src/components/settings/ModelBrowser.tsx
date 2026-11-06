@@ -189,9 +189,13 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
       ...installedModels,
       ...(recommended.length > 0 ? recommended : fallback).slice(0, SHORT_LIST_RECOMMENDATIONS),
     ];
+    // The selected model stays visible even when it is neither installed nor
+    // recommended, so the list never hides the current choice.
+    const selected = models.find((model) => model.key === engine);
+    if (selected) short.push(selected);
     // Keep the ranked order rather than the grouping above.
     return models.filter((model) => short.includes(model));
-  }, [installed, models, searching, showAll]);
+  }, [engine, installed, models, searching, showAll]);
   const hiddenCount = models.length - folded.length;
   // R2T2 and the cloud services are not catalog models, so the language rail
   // does not apply to them; they are listed whenever no language is chosen.
@@ -278,25 +282,25 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
               )}
             </>
           )}
-          {hiddenCount > 0 && (
-            <button
-              type="button"
-              className="model-browser-more"
-              onClick={() => setShowAll(true)}
-            >
-              {t("settings.showAllModels", { count: models.length })}
-            </button>
-          )}
-          {showAll && !searching && models.length > SHORT_LIST_RECOMMENDATIONS && (
-            <button
-              type="button"
-              className="model-browser-more"
-              onClick={() => setShowAll(false)}
-            >
-              {t("settings.showFewerModels")}
-            </button>
-          )}
         </div>
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            className="model-browser-more"
+            onClick={() => setShowAll(true)}
+          >
+            {t("settings.showAllModels", { count: models.length })}
+          </button>
+        )}
+        {showAll && !searching && models.length > SHORT_LIST_RECOMMENDATIONS && (
+          <button
+            type="button"
+            className="model-browser-more"
+            onClick={() => setShowAll(false)}
+          >
+            {t("settings.showFewerModels")}
+          </button>
+        )}
       </div>
       <p className="settings-hint model-browser-hint">
         {t("settings.modelBrowserHint")}

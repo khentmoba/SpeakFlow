@@ -363,10 +363,12 @@ export default function SettingsPage({
       setModelDirsState(next);
       const keys = await listInstalledModels();
       setInstalledModels(new Set(keys));
+      // The selected model may now be found in the new folder.
+      retryModel();
     } catch {
       toast.error(t("toast.settingSaveFailed"));
     }
-  }, [modelDirs, t]);
+  }, [modelDirs, retryModel, t]);
 
   const handleTestModel = useCallback(async () => {
     if (testRunning) return;
@@ -389,10 +391,11 @@ export default function SettingsPage({
       setModelDirsState(next);
       const keys = await listInstalledModels();
       setInstalledModels(new Set(keys));
+      retryModel();
     } catch {
       toast.error(t("toast.settingSaveFailed"));
     }
-  }, [modelDirs, t]);
+  }, [modelDirs, retryModel, t]);
 
   const {
     deviceListLoading,
@@ -634,7 +637,7 @@ export default function SettingsPage({
                         <button
                           type="button"
                           className="theme-btn theme-btn-xs"
-                          disabled={testRunning || engineLoading || modelStage === "downloading"}
+                          disabled={testRunning || engineLoading || isRecording || modelStage === "downloading"}
                           onClick={() => { void handleTestModel(); }}
                         >
                           <Mic size={11} />
@@ -880,6 +883,9 @@ export default function SettingsPage({
                   <div className="toggle-knob" />
                 </button>
               </div>
+              {(isOnlineEngineKey(engine) || engine === "confucius4-r2t2") && (
+                <p className="settings-hint">{t("settings.removeFillersScope")}</p>
+              )}
             </div>
           </section>
 

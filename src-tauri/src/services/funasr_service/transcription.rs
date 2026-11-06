@@ -204,7 +204,11 @@ pub(super) fn server_response_to_transcription_result(
             state,
             response.text.as_deref().unwrap_or_default(),
         );
-        let text = if options.final_pass && paths::read_remove_fillers() {
+        let text = if options.final_pass
+            && crate::services::filler_words::should_remove_fillers(
+                response.language.as_deref(),
+                paths::read_remove_fillers(),
+            ) {
             // Dictionary terms are protected, so a word the user added on
             // purpose survives even when it looks like a filler.
             let protected = state.with_profile(|profile| profile.get_hot_word_texts(100));

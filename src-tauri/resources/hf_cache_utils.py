@@ -78,11 +78,21 @@ def model_search_dirs():
 
 
 def find_shared_model_file(filename):
-    """First copy of `filename` in a shared folder that looks like real weights."""
+    """First copy of `filename` in a shared folder whose size matches the catalog.
+
+    The size rule is the same one Rust uses for readiness, so both sides pick the
+    same file. A name that is not in the catalog is never loaded from a folder.
+    """
+    expected = next(
+        (model["size"] for model in ASR_CATALOG["models"] if model["filename"] == filename),
+        None,
+    )
+    if expected is None:
+        return None
     for directory in model_search_dirs():
         candidate = os.path.join(directory, filename)
         try:
-            if os.path.isfile(candidate) and os.path.getsize(candidate) >= _MIN_WEIGHT_SIZE:
+            if os.path.isfile(candidate) and os.path.getsize(candidate) == expected:
                 return candidate
         except OSError:
             continue

@@ -361,6 +361,8 @@ class Qwen3ASRServer(BaseASRServer):
             self.initialized = True
             self._gpu_suspended = False
             self._last_load_error = None
+            # A fresh load may try the GPU again after an earlier CPU fallback.
+            self._cpu_recovery_used = False
             elapsed = time.perf_counter() - started
             logger.info("%s initialization completed; backend: %s; elapsed: %.3f seconds", self.display_name, self.backend, elapsed)
             return {
@@ -465,11 +467,14 @@ class Qwen3ASRServer(BaseASRServer):
                     "input_mode": input_mode,
                 }
 
-            if filter_silence:
-                audio, vad_segments, vad_ms = self._filter_speech(audio)
+            # The detector always runs: it is the only "is there speech here?"
+            # check. The switch decides whether its trimming is applied.
+            trimmed_audio, vad_segments, vad_ms = self._filter_speech(audio)
+            if not filter_silence and vad_segments:
+                # Send every sample, but only when there was speech to send.
+                vad_segments, vad_ms = 1, 0.0
             else:
-                # The user turned the silence filter off: send every sample.
-                vad_segments, vad_ms = (1 if len(audio) else 0), 0.0
+                audio = trimmed_audio
             speech_duration = len(audio) / float(QWEN3_VAD_SAMPLE_RATE)
             if not vad_segments:
                 return {
@@ -561,6 +566,7 @@ class Qwen3ASRServer(BaseASRServer):
             "engine": self.engine,
             "backend": self.backend,
             "speculative_decoding": False,
+            "cpu_recovery": self._cpu_recovery_used,
             "models_loaded": {
                 "asr": self.model is not None,
                 "vad": self.vad_model is not None,

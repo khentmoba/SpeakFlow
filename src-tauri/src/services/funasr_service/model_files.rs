@@ -313,7 +313,9 @@ pub(super) fn inspect_model_files_for_engine(engine: &str) -> ModelCheckResult {
         &mut missing_models,
         &mut corrupt_models,
     );
-    if model_state != ModelState::Ready {
+    // R2T2 resolves its own pinned snapshot and never reads the model folders,
+    // so a shared copy must not make it look ready.
+    if model_state != ModelState::Ready && normalized_engine != paths::R2T2_ENGINE {
         if let Some(shared) = find_shared_model_file(filename, model.size) {
             log::info!("模型来自共享文件夹: {}", shared.display());
             model_state = ModelState::Ready;

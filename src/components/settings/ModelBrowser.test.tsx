@@ -105,6 +105,12 @@ describe("ModelBrowser", () => {
     expect(catalogRows().length).toBe(foldedCount);
   });
 
+  it("keeps the selected model visible when it is neither installed nor recommended", () => {
+    setup({ engine: "moonshine-tiny", installed: new Set() });
+    expect(within(listbox()).getByRole("option", { name: /^Moonshine Tiny/ }))
+      .toHaveAttribute("aria-selected", "true");
+  });
+
   it("searches the whole catalog while folded", () => {
     setup();
     fireEvent.change(screen.getByRole("searchbox", { name: "Search models" }), {

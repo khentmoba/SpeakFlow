@@ -661,7 +661,9 @@ class SpeechProcessingTests(unittest.TestCase):
         self.assertTrue(result["success"], result)
         self.assertEqual(len(server.session.inputs[0]), 3200)
 
-    def test_silence_filter_off_still_rejects_empty_audio(self):
+    def test_silence_filter_off_still_rejects_a_clip_without_speech(self):
+        # The detector is the only "is there speech?" check, so it keeps running
+        # even when its trimming is switched off.
         server = self._server()
         server.vad_model = FakeVad([])
         payload = base64.b64encode(np.zeros(16_000 * 3, dtype="<i2").tobytes()).decode("ascii")
@@ -670,7 +672,9 @@ class SpeechProcessingTests(unittest.TestCase):
             filter_silence=False,
         )
         self.assertTrue(result["success"], result)
-        self.assertEqual(result["text"], "测试文本")
+        self.assertEqual(result["text"], "")
+        self.assertEqual(result["vad_segments"], 0)
+        self.assertEqual(server.session.calls, 0)
 
     def test_gpu_decode_failure_retries_once_on_cpu(self):
         server = self._server()
@@ -717,19 +721,26 @@ class SpeechProcessingTests(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertEqual(result["type"], "transcription_error")
 
-    def test_shared_model_folder_is_used_when_the_cache_is_empty(self):
+    def test_shared_model_folder_matches_the_catalog_name_and_size(self):
         import hf_cache_utils
 
-        with mock.patch.dict(os.environ, {"SPEAK_FLOW_MODEL_DIRS": ""}):
-            self.assertIsNone(hf_cache_utils.find_shared_model_file("missing.gguf"))
-        with tempfile.TemporaryDirectory() as directory:
-            shared = os.path.join(directory, "model-Q8_0.gguf")
-            with open(shared, "wb") as handle:
-                handle.write(b"0" * 1_000_001)
-            with mock.patch.dict(os.environ, {"SPEAK_FLOW_MODEL_DIRS": directory}):
-                self.assertEqual(hf_cache_utils.find_shared_model_file("model-Q8_0.gguf"), shared)
-                # A different file name is not a match.
-                self.assertIsNone(hf_cache_utils.find_shared_model_file("other.gguf"))
+        catalog = {"models": [{"filename": "model-Q8_0.gguf", "size": 8}]}
+        with mock.patch.object(hf_cache_utils, "ASR_CATALOG", catalog):
+            with mock.patch.dict(os.environ, {"SPEAK_FLOW_MODEL_DIRS": ""}):
+                self.assertIsNone(hf_cache_utils.find_shared_model_file("model-Q8_0.gguf"))
+            with tempfile.TemporaryDirectory() as directory:
+                shared = os.path.join(directory, "model-Q8_0.gguf")
+                with open(shared, "wb") as handle:
+                    handle.write(b"0" * 8)
+                with mock.patch.dict(os.environ, {"SPEAK_FLOW_MODEL_DIRS": directory}):
+                    self.assertEqual(hf_cache_utils.find_shared_model_file("model-Q8_0.gguf"), shared)
+                    # A name outside the catalog is never loaded from a folder.
+                    self.assertIsNone(hf_cache_utils.find_shared_model_file("other.gguf"))
+                # A size mismatch is not the pinned model.
+                with open(shared, "wb") as handle:
+                    handle.write(b"0" * 9)
+                with mock.patch.dict(os.environ, {"SPEAK_FLOW_MODEL_DIRS": directory}):
+                    self.assertIsNone(hf_cache_utils.find_shared_model_file("model-Q8_0.gguf"))
 
 
 if __name__ == "__main__":

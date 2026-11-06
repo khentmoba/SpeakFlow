@@ -142,6 +142,11 @@ pub async fn test_transcription(
                 .to_string(),
         ));
     }
+    if state.engine.native_asr_owner.try_lock().is_err() {
+        return Err(AppError::Asr(
+            "A recording is in progress; finish it before testing the model".to_string(),
+        ));
+    }
     let device = state.selected_input_device_name();
     let samples = tokio::task::spawn_blocking(move || {
         crate::services::audio_service::record_test_clip_sync(device, seconds)
