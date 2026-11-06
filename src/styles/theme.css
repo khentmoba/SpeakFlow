@@ -510,8 +510,6 @@ textarea,
 
 .animate-spin { animation: spin 1s linear infinite; }
 
-/* Equalizer bars — recording waveform (uses scaleY for GPU perf) */
-
 /* Download progress indeterminate pulse */
 @keyframes download-pulse {
   0%   { transform: translateX(-80%); opacity: 0.4; }
@@ -829,14 +827,6 @@ textarea,
   transition: transform var(--dur-1) var(--ease-micro);
 }
 
-/* Title bar — shared between pages */
-
-
-
-/* Recording button — circular mic button with microinteractions */
-
-
-
 /* Toggle switch — autostart etc. */
 .toggle-switch {
   flex: 0 0 44px;
@@ -849,9 +839,6 @@ textarea,
               opacity var(--dur-3) var(--ease-out-expo),
               box-shadow var(--dur-4) var(--ease-out-expo);
 }
-
-
-
 
 .toggle-switch[aria-checked="false"] {
   background: var(--color-bg-tertiary);
@@ -1012,8 +999,6 @@ input[type="range"]:focus-visible::-webkit-slider-thumb {
   letter-spacing: var(--tracking-display);
   font-family: var(--font-display);
 }
-
-
 
 /* Consistent Lucide strokes across state changes and window controls. */
 svg.lucide { stroke-width: 1.5; }

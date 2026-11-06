@@ -22,7 +22,9 @@ export default function AppNavigation({ view, onNavigate, updateAvailable = fals
           type="button"
           className="app-nav-item"
           data-destination={destination}
-          aria-label={label}
+          aria-label={destination === "updates" && updateAvailable
+            ? `${label}, ${updateInstalling ? "Update in progress" : "New release available"}`
+            : label}
           aria-current={view === destination ? "page" : undefined}
           onClick={() => onNavigate(destination)}
         >

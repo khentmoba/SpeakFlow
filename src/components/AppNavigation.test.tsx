@@ -21,7 +21,7 @@ describe("workspace navigation", () => {
 
   it("marks an available update and identifies the update destination", () => {
     render(<AppNavigation view="updates" onNavigate={vi.fn()} updateAvailable updateInstalling />);
-    expect(screen.getByRole("button", { name: /Updates/ })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Updates, Update in progress" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("img", { name: "Update in progress" })).toBeInTheDocument();
   });
 });
