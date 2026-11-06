@@ -648,6 +648,22 @@ fn stop_funasr_on_exit(app: &tauri::AppHandle) {
     });
 }
 
+fn refresh_tray_icon(app: &tauri::AppHandle, icon_size: u32) {
+    // Read canonical state so a delayed event from an older session cannot
+    // clear the mark while a newer recording is active.
+    let recording = app
+        .state::<AppState>()
+        .recording
+        .snapshot()
+        .is_some_and(|snapshot| snapshot.phase == state::RecordingPhase::Recording);
+    let light = tray_icon::system_uses_light_taskbar();
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        if let Err(error) = tray.set_icon(Some(tray_icon::image(icon_size, recording, light))) {
+            log::warn!("更新托盘图标失败: {error}");
+        }
+    }
+}
+
 fn setup_system_tray(app_handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -670,7 +686,11 @@ fn setup_system_tray(app_handle: &tauri::AppHandle) -> Result<(), Box<dyn std::e
         .build()?;
 
     let _tray = TrayIconBuilder::with_id("main-tray")
-        .icon(tray_icon::image(icon_size, false))
+        .icon(tray_icon::image(
+            icon_size,
+            false,
+            tray_icon::system_uses_light_taskbar(),
+        ))
         .tooltip("SpeakFlow - Voice to text")
         .menu(&menu)
         .show_menu_on_left_click(false)
@@ -698,19 +718,26 @@ fn setup_system_tray(app_handle: &tauri::AppHandle) -> Result<(), Box<dyn std::e
 
     let app = app_handle.clone();
     app_handle.listen("recording-state", move |_| {
-        // Read canonical state so a delayed event from an older session cannot
-        // clear the mark while a newer recording is active.
-        let recording = app
-            .state::<AppState>()
-            .recording
-            .snapshot()
-            .is_some_and(|snapshot| snapshot.phase == state::RecordingPhase::Recording);
-        if let Some(tray) = app.tray_by_id("main-tray") {
-            if let Err(error) = tray.set_icon(Some(tray_icon::image(icon_size, recording))) {
-                log::warn!("更新托盘录音图标失败: {error}");
-            }
-        }
+        refresh_tray_icon(&app, icon_size)
     });
+
+    // The taskbar theme can change while the app sits idle, and Windows does not
+    // report it through Tauri's window theme, so poll the setting and repaint.
+    #[cfg(windows)]
+    {
+        let watcher = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            let mut light = tray_icon::system_uses_light_taskbar();
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                let next = tray_icon::system_uses_light_taskbar();
+                if next != light {
+                    light = next;
+                    refresh_tray_icon(&watcher, icon_size);
+                }
+            }
+        });
+    }
 
     Ok(())
 }
