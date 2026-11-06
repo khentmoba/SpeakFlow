@@ -1,0 +1,11 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SpeakFlow">
+  <title>SpeakFlow</title>
+  <rect width="512" height="512" fill="#070707"/>
+  <rect x="0.5" y="0.5" width="511" height="511" stroke="#1A1A1A"/>
+  <g transform="translate(256 256) scale(1.08) translate(-257 -266)">
+    <!-- Voice: three-extrema waveform, amber, square caps -->
+    <path d="M 84 256 H 132 C 156 256 156 176 180 176 C 204 176 220 356 244 356 C 268 356 284 196 308 196 C 324 196 324 256 340 256" stroke="#FFB020" stroke-width="48" stroke-linecap="square"/>
+    <!-- Text: the caret the voice resolves into -->
+    <rect x="410" y="156" width="44" height="200" fill="#FFFFFF"/>
+  </g>
+</svg>
