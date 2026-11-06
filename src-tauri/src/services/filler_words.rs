@@ -188,7 +188,7 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
             out.truncate(cut);
         }
         let before = out.clone();
-        let opener = before
+        let mut opener = before
             .chars()
             .last()
             .filter(|c| is_opening_delimiter(*c) && (*c != '"' || straight_quote_open));
@@ -231,12 +231,19 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
                 if let Some(opener) = opener {
                     let trimmed = out.trim_end().len();
                     if let Some(keep) = trimmed.checked_sub(opener.len_utf8()) {
-                        out.truncate(keep);
+                        if out.is_char_boundary(keep) {
+                            out.truncate(keep);
+                        }
                     }
                 }
                 if c == '"' {
                     straight_quote_open = false;
                 }
+                // The space before the opener went with the pair.
+                let cut = out.trim_end_matches([' ', '\t']).len();
+                out.truncate(cut);
+                // The pair is gone; a second closer must not consume more.
+                opener = None;
             }
             next += 1;
         }
@@ -257,7 +264,20 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
         {
             if is_dash_token(&tokens[position]) {
                 trim_trailing_separator(&mut out);
-                if out.trim_end().chars().last().is_some_and(is_dash) || at_sentence_start {
+                let after_dash = tokens[position + 1..]
+                    .iter()
+                    .find(|t| t.kind != Kind::Space)
+                    .is_none_or(|t| {
+                        t.kind == Kind::Punct && first_char(t).is_some_and(is_terminator)
+                    });
+                if out.trim_end().chars().last().is_some_and(is_dash) {
+                    // Both dashes framed the filler: keep one, unless the aside
+                    // ends here, in which case neither is needed.
+                    if after_dash {
+                        trim_trailing_dash(&mut out);
+                    }
+                    next = position + 1;
+                } else if at_sentence_start {
                     next = position + 1;
                 }
             }
@@ -267,7 +287,9 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
         // Mid-text, only a capitalized filler marks a sentence start; otherwise
         // "3 p.m. um we left" would gain a capital after an abbreviation.
         let at_text_start = head.trim_end().is_empty();
-        capitalize_next = at_text_start
+        // A later filler in the same run must not clear an earlier capital.
+        capitalize_next = capitalize_next
+            || at_text_start
             || (at_sentence_start && token.text.chars().next().is_some_and(char::is_uppercase));
         index = next;
     }
@@ -356,20 +378,22 @@ fn is_dash_token(token: &Token) -> bool {
 }
 
 fn trim_trailing_dash(out: &mut String) {
-    let trimmed_len = out.trim_end().len();
-    if let Some(dash) = out[..trimmed_len].chars().last().filter(|c| is_dash(*c)) {
+    loop {
+        let trimmed_len = out.trim_end().len();
+        let Some(dash) = out[..trimmed_len].chars().last().filter(|c| is_dash(*c)) else {
+            return;
+        };
         out.truncate(trimmed_len - dash.len_utf8());
         let cut = out.trim_end().len();
         out.truncate(cut);
     }
 }
 
+/// Trims a separator only when it sits directly at the end, so a colon before a
+/// line break stays where the user put it.
 fn trim_trailing_separator(out: &mut String) {
-    let trimmed_len = out.trim_end().len();
-    if out[..trimmed_len].ends_with([',', ';', ':']) {
-        out.truncate(trimmed_len - 1);
-        let cut = out.trim_end().len();
-        out.truncate(cut);
+    if out.ends_with([',', ';', ':']) {
+        out.pop();
     }
 }
 
@@ -506,6 +530,40 @@ mod tests {
             clean("I think \u{2014} um \u{2014} yes"),
             "I think \u{2014} yes"
         );
+    }
+
+    #[test]
+    fn a_repeated_closer_does_not_panic() {
+        // The second closer must not reuse the opener that was already removed.
+        // The stray closer is the user's own text and stays.
+        assert_eq!(clean("She said \u{2014} (um))"), "She said \u{2014})");
+        assert_eq!(clean("\u{e9}(um))"), "\u{e9})");
+    }
+
+    #[test]
+    fn a_quoted_filler_keeps_the_punctuation_after_it() {
+        assert_eq!(clean("He said \"um\"."), "He said.");
+        assert_eq!(clean("He said \"um\"!"), "He said!");
+        assert_eq!(clean("(um)."), "");
+    }
+
+    #[test]
+    fn a_colon_and_indentation_survive_a_framing_dash() {
+        assert_eq!(
+            clean("Header:\n\tum \u{2014} next item"),
+            "Header:\n\t\u{2014} next item"
+        );
+    }
+
+    #[test]
+    fn consecutive_fillers_keep_the_sentence_capital() {
+        assert_eq!(clean("Hello. Um, uh, how are you?"), "Hello. How are you?");
+    }
+
+    #[test]
+    fn trailing_dash_runs_are_cleaned_completely() {
+        assert_eq!(clean("Yes -- um."), "Yes.");
+        assert_eq!(clean("Yes \u{2014} um \u{2014}."), "Yes.");
     }
 
     #[test]
