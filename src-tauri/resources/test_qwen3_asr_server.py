@@ -602,6 +602,24 @@ class LongClipTests(unittest.TestCase):
         self.assertEqual(server.session.calls, 1)
 
 
+class ModelFolderUpdateTests(unittest.TestCase):
+    def test_a_running_engine_takes_the_new_folder_list(self):
+        import server_common
+
+        with mock.patch.dict(os.environ, {"SPEAK_FLOW_MODEL_DIRS": ""}):
+            server = object.__new__(server_common.BaseASRServer)
+            server.logger = mock.Mock()
+            result = server._handle_set_model_dirs(
+                {"dirs": ["  D:\hex\models  ", "", "E:\models"]}
+            )
+            self.assertTrue(result["success"], result)
+            self.assertEqual(
+                os.environ["SPEAK_FLOW_MODEL_DIRS"],
+                os.pathsep.join(["D:\hex\models", "E:\models"]),
+            )
+            self.assertFalse(server._handle_set_model_dirs({"dirs": "nope"})["success"])
+
+
 class TranscribeDispatchContractTests(unittest.TestCase):
     def test_every_server_accepts_the_kwargs_the_dispatcher_sends(self):
         import inspect

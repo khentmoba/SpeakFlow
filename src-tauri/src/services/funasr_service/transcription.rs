@@ -35,6 +35,20 @@ pub async fn transcribe_pcm16(
     options: TranscribeOptions,
 ) -> Result<TranscriptionResult, AppError> {
     let _asr_guard = state.engine.native_asr_owner.lock().await;
+    transcribe_pcm16_owned(state, samples, sample_rate, app_handle, options).await
+}
+
+/// Same as [`transcribe_pcm16`] for a caller that already owns the engine.
+///
+/// The model test holds `native_asr_owner` across its recording and decode, so
+/// it must not take the lock again.
+pub async fn transcribe_pcm16_owned(
+    state: &AppState,
+    samples: &[i16],
+    sample_rate: u32,
+    app_handle: &tauri::AppHandle,
+    options: TranscribeOptions,
+) -> Result<TranscriptionResult, AppError> {
     // 检查服务器是否就绪
     if !state.is_funasr_ready() {
         return Err(AppError::Asr(
@@ -209,9 +223,16 @@ pub(super) fn server_response_to_transcription_result(
                 response.language.as_deref(),
                 paths::read_remove_fillers(),
             ) {
-            // Dictionary terms are protected, so a word the user added on
-            // purpose survives even when it looks like a filler.
-            let protected = state.with_profile(|profile| profile.get_hot_word_texts(100));
+            // Every dictionary entry is protected, not just the ones sent as
+            // recognition hints, so a word the user added on purpose survives
+            // even when it looks like a filler.
+            let protected = state.with_profile(|profile| {
+                profile
+                    .hot_words
+                    .iter()
+                    .map(|word| word.text.clone())
+                    .collect::<Vec<_>>()
+            });
             crate::services::filler_words::remove_fillers(&corrected, &protected)
         } else {
             corrected

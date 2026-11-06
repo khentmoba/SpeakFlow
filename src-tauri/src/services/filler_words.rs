@@ -30,6 +30,25 @@ fn is_sentence_punctuation(token: &str) -> bool {
         })
 }
 
+/// Opening delimiters keep the space before them: `say "hello"` must not become
+/// `say"hello"`.
+fn is_opening_delimiter(c: char) -> bool {
+    matches!(c, '"' | '\u{201C}' | '(' | '[' | '{' | '\'' | '\u{2018}')
+}
+
+fn matching_opener(c: char) -> Option<char> {
+    match c {
+        ')' => Some('('),
+        ']' => Some('['),
+        '}' => Some('{'),
+        '\u{201D}' => Some('\u{201C}'),
+        // A straight quote can open or close; an empty pair is removed either way.
+        '"' => Some('"'),
+        '\'' => Some('\''),
+        _ => None,
+    }
+}
+
 fn is_space(token: &str) -> bool {
     !token.is_empty() && token.chars().all(char::is_whitespace)
 }
@@ -51,8 +70,10 @@ fn tokenize(text: &str) -> Vec<(bool, String)> {
     let mut last_class: Option<u8> = None;
     for c in text.chars() {
         let class = class_of(c);
+        // Each punctuation mark is its own token, so a closing bracket is not
+        // glued to the sentence mark before it.
         match tokens.last_mut() {
-            Some((_, buffer)) if last_class == Some(class) => buffer.push(c),
+            Some((_, buffer)) if last_class == Some(class) && class != 2 => buffer.push(c),
             _ => tokens.push((class == 0, c.to_string())),
         }
         last_class = Some(class);
@@ -162,14 +183,15 @@ fn tidy(tokens: &[(bool, String)]) -> String {
             continue;
         }
         let is_punctuation = !*is_word;
-        if pending_space && !out.is_empty() && !is_punctuation {
+        let had_space = pending_space;
+        if had_space && !out.is_empty() && !is_punctuation {
             // Removing a filler between two Chinese words must not add a space.
             let joins_unspaced = out
                 .chars()
                 .last()
                 .zip(token.chars().next())
                 .is_some_and(|(left, right)| unspaced_script(left) && unspaced_script(right));
-            if !joins_unspaced {
+            if !joins_unspaced && !out.ends_with(' ') {
                 out.push(' ');
             }
         }
@@ -180,9 +202,27 @@ fn tidy(tokens: &[(bool, String)]) -> String {
             if token.trim() == "," && (out.trim().is_empty() || out.trim_end().ends_with(',')) {
                 continue;
             }
-            // Do not leave a space before punctuation.
-            while out.ends_with(' ') {
-                out.pop();
+            let first = token.chars().next().unwrap_or(' ');
+            // An empty pair left behind by the filler goes away entirely, so
+            // "(Um.)" becomes nothing rather than "(.)".
+            if let Some(opener) = matching_opener(first) {
+                let trimmed = out.trim_end();
+                if trimmed.ends_with(opener) {
+                    let keep = trimmed.len() - opener.len_utf8();
+                    out.truncate(keep);
+                    continue;
+                }
+            }
+            // Do not leave a space before punctuation, except before an opening
+            // delimiter, where the space separates real words.
+            if is_opening_delimiter(first) {
+                if had_space && !out.is_empty() && !out.ends_with(' ') {
+                    out.push(' ');
+                }
+            } else {
+                while out.ends_with(' ') {
+                    out.pop();
+                }
             }
         }
         out.push_str(token);
@@ -231,6 +271,14 @@ mod tests {
         assert_eq!(clean("I think so, um."), "I think so");
         assert_eq!(clean("Uh... so we go"), "So we go");
         assert_eq!(clean("Hmm? What?"), "What?");
+    }
+
+    #[test]
+    fn keeps_quotes_and_brackets_readable() {
+        assert_eq!(clean("Um, say \"hello\"."), "Say \"hello\".");
+        assert_eq!(clean("(Um.) Hello."), "Hello.");
+        assert_eq!(clean("He said (um) nothing."), "He said nothing.");
+        assert_eq!(clean("[Um] Fine."), "Fine.");
     }
 
     #[test]

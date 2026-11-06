@@ -67,6 +67,10 @@ pub enum ServerCommand {
     SetGpuIdle {
         seconds: u64,
     },
+    /// 更新只读模型文件夹列表，不重启进程。
+    SetModelDirs {
+        dirs: Vec<String>,
+    },
     /// 退出服务器
     Exit,
 }

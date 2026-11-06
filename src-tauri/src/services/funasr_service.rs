@@ -424,6 +424,30 @@ pub async fn push_gpu_idle_seconds(state: &AppState, seconds: u64) -> Result<(),
     Ok(())
 }
 
+/// Sends the current model-folder list to a running engine.
+///
+/// The engine reads the folders once at startup, so a change must reach the
+/// resident process; otherwise an idle-unloaded model reloads from the old list.
+pub async fn push_model_dirs(state: &AppState) -> Result<(), AppError> {
+    let has_process = {
+        let guard = state.engine.funasr_process.lock().await;
+        guard.is_some()
+    };
+    if !has_process {
+        return Ok(());
+    }
+    let dirs = paths::read_model_dirs();
+    let response =
+        send_command_to_server::<tauri::Wry>(state, &ServerCommand::SetModelDirs { dirs }, None)
+            .await?;
+    if response.success == Some(false) {
+        return Err(AppError::Asr(response.error.unwrap_or_else(|| {
+            "Failed to apply the model folders".to_string()
+        })));
+    }
+    Ok(())
+}
+
 /// 检查 FunASR 服务器的状态
 // 需要引入 Emitter trait 才能使用 emit 方法
 use tauri::Emitter;

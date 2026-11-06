@@ -142,11 +142,16 @@ pub async fn test_transcription(
                 .to_string(),
         ));
     }
-    if state.engine.native_asr_owner.try_lock().is_err() {
-        return Err(AppError::Asr(
-            "A recording is in progress; finish it before testing the model".to_string(),
-        ));
-    }
+    // Own the engine for the whole test, so a model switch or a dictation
+    // cannot take it between the recording and the decode.
+    let _asr_guard = match state.engine.native_asr_owner.try_lock() {
+        Ok(guard) => guard,
+        Err(_) => {
+            return Err(AppError::Asr(
+                "A recording is in progress; finish it before testing the model".to_string(),
+            ))
+        }
+    };
     let device = state.selected_input_device_name();
     let samples = tokio::task::spawn_blocking(move || {
         crate::services::audio_service::record_test_clip_sync(device, seconds)
@@ -154,7 +159,7 @@ pub async fn test_transcription(
     .await
     .map_err(|error| AppError::Audio(format!("Model test recording failed: {error}")))??;
 
-    let result = funasr_service::transcribe_pcm16(
+    let result = funasr_service::transcribe_pcm16_owned(
         state.inner(),
         &samples,
         16_000,
@@ -221,10 +226,17 @@ pub async fn get_model_dirs() -> Result<Vec<String>, AppError> {
 /// Replaces the folder list. Entries are trimmed, and empty, relative or
 /// duplicate paths are dropped before saving.
 #[tauri::command]
-pub async fn set_model_dirs(dirs: Vec<String>) -> Result<Vec<String>, AppError> {
+pub async fn set_model_dirs(
+    state: tauri::State<'_, AppState>,
+    dirs: Vec<String>,
+) -> Result<Vec<String>, AppError> {
     let normalized = paths::normalize_model_dirs(dirs.iter().map(String::as_str));
     paths::write_model_dirs(&normalized)
         .map_err(|error| AppError::Other(format!("Failed to save model folders: {error}")))?;
+    // A resident engine keeps the list it started with, so hand it the new one.
+    if let Err(error) = funasr_service::push_model_dirs(state.inner()).await {
+        log::warn!("模型文件夹已保存，但未能通知正在运行的引擎: {error}");
+    }
     Ok(normalized)
 }
 

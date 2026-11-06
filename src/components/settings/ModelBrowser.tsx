@@ -180,8 +180,10 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
   // A short first view: what is installed, plus a few recommendations. Search
   // and "Show all" reveal the rest.
   const searching = query.trim().length > 0;
-  const folded = useMemo(() => {
-    if (showAll || searching) return models;
+  // The collapsed list is computed whether or not it is shown, so "Show fewer"
+  // only appears when collapsing actually hides something.
+  const collapsed = useMemo(() => {
+    if (searching) return models;
     const installedModels = models.filter((model) => installed.has(model.key));
     const recommended = models.filter((model) => !installed.has(model.key) && model.recommended);
     const fallback = models.filter((model) => !installed.has(model.key) && !model.recommended);
@@ -195,8 +197,9 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
     if (selected) short.push(selected);
     // Keep the ranked order rather than the grouping above.
     return models.filter((model) => short.includes(model));
-  }, [engine, installed, models, searching, showAll]);
-  const hiddenCount = models.length - folded.length;
+  }, [engine, installed, models, searching]);
+  const folded = showAll || searching ? models : collapsed;
+  const hiddenCount = models.length - collapsed.length;
   // R2T2 and the cloud services are not catalog models, so the language rail
   // does not apply to them; they are listed whenever no language is chosen.
   const otherEngines = useMemo(() => {
@@ -292,7 +295,7 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
             {t("settings.showAllModels", { count: models.length })}
           </button>
         )}
-        {showAll && !searching && models.length > SHORT_LIST_RECOMMENDATIONS && (
+        {showAll && !searching && hiddenCount > 0 && (
           <button
             type="button"
             className="model-browser-more"

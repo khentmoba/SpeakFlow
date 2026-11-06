@@ -186,7 +186,9 @@ class Qwen3ASRServer(BaseASRServer):
                 with self.stdout_suppressor.suppress():
                     self.model = transcribe_cpp.Model(model_path, backend=backend)
                     self.session = self.model.session(**self._session_options())
-                self.backend = backend
+                # "auto" resolves to a device; keep what it resolved to, so a CPU
+                # failure is not mistaken for a GPU failure.
+                self.backend = getattr(self.model, "backend", None) or backend
                 self.device = "cuda" if backend == "cuda" else backend
                 return
             except Exception as exc:
@@ -585,6 +587,7 @@ class Qwen3ASRServer(BaseASRServer):
                 "version": version,
                 "engine": self.engine,
                 "backend": self.backend,
+                "cpu_recovery": self._cpu_recovery_used,
                 "model_loaded": model_loaded,
                 "models": {
                     "asr": model_loaded,

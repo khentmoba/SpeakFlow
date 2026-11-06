@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { CATALOG_MODELS } from "@/lib/asrCatalog";
 import "@/i18n";
 import { ModelBrowser } from "@/components/settings/ModelBrowser";
 
@@ -109,6 +110,13 @@ describe("ModelBrowser", () => {
     setup({ engine: "moonshine-tiny", installed: new Set() });
     expect(within(listbox()).getByRole("option", { name: /^Moonshine Tiny/ }))
       .toHaveAttribute("aria-selected", "true");
+  });
+
+  it("offers Show fewer only when collapsing hides something", () => {
+    // Every model installed: the collapsed list is the whole list.
+    setup({ installed: new Set(CATALOG_MODELS.map((model) => model.key)) });
+    expect(screen.queryByRole("button", { name: /Show all/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show fewer" })).toBeNull();
   });
 
   it("searches the whole catalog while folded", () => {
