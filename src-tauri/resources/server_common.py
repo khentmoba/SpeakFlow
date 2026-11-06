@@ -378,6 +378,19 @@ class BaseASRServer:
         self._ensure_gpu_idle_thread()
         self.logger.info("GPU idle unload enabled; timeout: %s seconds", seconds)
 
+    def _handle_set_model_dirs(self, command) -> dict:
+        """Update the read-only model folders the engine searches.
+
+        The next model load resolves against this list, so a folder added or
+        removed in Settings applies without restarting the process.
+        """
+        if not isinstance(command, dict) or not isinstance(command.get("dirs"), list):
+            return {"success": False, "error": "Missing dirs"}
+        dirs = [entry.strip() for entry in command["dirs"] if isinstance(entry, str) and entry.strip()]
+        os.environ["SPEAK_FLOW_MODEL_DIRS"] = os.pathsep.join(dirs)
+        self.logger.info("Model folders updated: %d", len(dirs))
+        return {"success": True, "dirs": dirs}
+
     def _handle_set_gpu_idle(self, command) -> dict:
         from gpu_idle import parse_gpu_idle_seconds
 
@@ -469,6 +482,7 @@ class BaseASRServer:
                 audio_base64=command.get("audio_base64"),
                 audio_format=command.get("audio_format"),
                 sample_rate=command.get("sample_rate"),
+                filter_silence=command.get("filter_silence", True) is not False,
             )
         if action == "status":
             return self._with_gpu_suspend_flag(self.check_status())
@@ -557,6 +571,8 @@ class BaseASRServer:
                     break
                 elif action == "set_gpu_idle":
                     result = self._handle_set_gpu_idle(command)
+                elif action == "set_model_dirs":
+                    result = self._handle_set_model_dirs(command)
                 elif self._gpu_idle_seconds > 0 and action in (
                     "transcribe",
                     "stream_start",

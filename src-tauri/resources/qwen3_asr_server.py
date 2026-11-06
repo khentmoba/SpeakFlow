@@ -72,6 +72,8 @@ class Qwen3ASRServer(BaseASRServer):
         self._last_load_error = None
         # Filled in once the runtime is loaded; empty means "catch nothing".
         self._truncated_errors = ()
+        self._cpu_recovery_used = False
+        self.model_path = None
         self._total_inference_ms = 0.0
         self._total_vad_ms = 0.0
         self._vad_calls = 0
@@ -184,7 +186,9 @@ class Qwen3ASRServer(BaseASRServer):
                 with self.stdout_suppressor.suppress():
                     self.model = transcribe_cpp.Model(model_path, backend=backend)
                     self.session = self.model.session(**self._session_options())
-                self.backend = backend
+                # "auto" resolves to a device; keep what it resolved to, so a CPU
+                # failure is not mistaken for a GPU failure.
+                self.backend = getattr(self.model, "backend", None) or backend
                 self.device = "cuda" if backend == "cuda" else backend
                 return
             except Exception as exc:
@@ -259,6 +263,42 @@ class Qwen3ASRServer(BaseASRServer):
                 joined = text
         return joined
 
+    def _recover_to_cpu(self, error):
+        """Reload on the CPU after a GPU decode failure and retry once.
+
+        A backend can fail after the model loaded (driver reset, lost device).
+        Without this, the whole recording fails even though the same model runs
+        on the CPU. Returns False when recovery is impossible or already tried.
+        """
+        import transcribe_cpp
+
+        if self.backend == "cpu" or self._cpu_recovery_used:
+            return False
+        self._cpu_recovery_used = True
+        logger.warning(
+            "%s %s decode failed (%s); reloading on the CPU and retrying once",
+            self.display_name,
+            self.backend,
+            error,
+        )
+        # Resolve again: the folder the model came from may have been removed.
+        model_path = self._resolve_model_path()
+        if not model_path:
+            logger.error("%s CPU recovery skipped: the model file is no longer available", self.display_name)
+            return False
+        try:
+            self._close_runtime()
+            self.model = transcribe_cpp.Model(model_path, backend="cpu")
+            self.session = self.model.session(**self._session_options())
+            self.backend = "cpu"
+            self.device = "cpu"
+            self.initialized = True
+            return True
+        except Exception as recovery_error:
+            logger.error("%s CPU recovery failed: %s", self.display_name, recovery_error)
+            self._close_runtime()
+            return False
+
     def _warmup_inference(self):
         try:
             import numpy as np
@@ -320,6 +360,7 @@ class Qwen3ASRServer(BaseASRServer):
         started = time.perf_counter()
         try:
             logger.info("Loading %s: %s", self.display_name, model_path)
+            self.model_path = model_path
             self._load_runtime(model_path)
             if self.vad_model is None:
                 self.vad_model = FireRedVad()
@@ -327,6 +368,8 @@ class Qwen3ASRServer(BaseASRServer):
             self.initialized = True
             self._gpu_suspended = False
             self._last_load_error = None
+            # A fresh load may try the GPU again after an earlier CPU fallback.
+            self._cpu_recovery_used = False
             elapsed = time.perf_counter() - started
             logger.info("%s initialization completed; backend: %s; elapsed: %.3f seconds", self.display_name, self.backend, elapsed)
             return {
@@ -409,6 +452,7 @@ class Qwen3ASRServer(BaseASRServer):
         audio_base64=None,
         audio_format=None,
         sample_rate=None,
+        filter_silence=True,
     ):
         if not self.initialized:
             init_result = self.initialize()
@@ -430,7 +474,14 @@ class Qwen3ASRServer(BaseASRServer):
                     "input_mode": input_mode,
                 }
 
-            audio, vad_segments, vad_ms = self._filter_speech(audio)
+            # The detector always runs: it is the only "is there speech here?"
+            # check. The switch decides whether its trimming is applied.
+            trimmed_audio, vad_segments, vad_ms = self._filter_speech(audio)
+            if not filter_silence and vad_segments:
+                # Send every sample, but only when there was speech to send.
+                vad_segments, vad_ms = 1, 0.0
+            else:
+                audio = trimmed_audio
             speech_duration = len(audio) / float(QWEN3_VAD_SAMPLE_RATE)
             if not vad_segments:
                 return {
@@ -471,6 +522,10 @@ class Qwen3ASRServer(BaseASRServer):
                             type(exc).__name__,
                         )
                         results.append(partial)
+                    except Exception as exc:
+                        if not self._recover_to_cpu(exc):
+                            raise
+                        results.append(self.session.run(piece, **run_options))
             inference_ms = (time.perf_counter() - started) * 1000
             self._total_inference_ms += inference_ms
             self.transcription_count += 1
@@ -518,6 +573,7 @@ class Qwen3ASRServer(BaseASRServer):
             "engine": self.engine,
             "backend": self.backend,
             "speculative_decoding": False,
+            "cpu_recovery": self._cpu_recovery_used,
             "models_loaded": {
                 "asr": self.model is not None,
                 "vad": self.vad_model is not None,
@@ -536,6 +592,7 @@ class Qwen3ASRServer(BaseASRServer):
                 "version": version,
                 "engine": self.engine,
                 "backend": self.backend,
+                "cpu_recovery": self._cpu_recovery_used,
                 "model_loaded": model_loaded,
                 "models": {
                     "asr": model_loaded,

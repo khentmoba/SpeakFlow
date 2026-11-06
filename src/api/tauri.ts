@@ -130,6 +130,37 @@ export function openAppReleasePage(url?: string | null): Promise<string> {
 export const checkFunASRStatus = createNoArgCommand<FunASRStatus>("check_funasr_status");
 export const checkModelFiles = createNoArgCommand<ModelCheckResult>("check_model_files");
 export const listInstalledModels = createNoArgCommand<string[]>("list_installed_models");
+
+export interface VoiceProcessingSettings {
+  silenceFilter: boolean;
+  removeFillers: boolean;
+}
+
+export const getVoiceProcessing = createNoArgCommand<VoiceProcessingSettings>("get_voice_processing");
+
+export function setSilenceFilter(enabled: boolean): Promise<boolean> {
+  return invokeCommand<boolean>("set_silence_filter", { enabled });
+}
+
+export function setRemoveFillers(enabled: boolean): Promise<boolean> {
+  return invokeCommand<boolean>("set_remove_fillers", { enabled });
+}
+
+export interface TestTranscriptionResult {
+  text: string;
+  language: string | null;
+  duration: number | null;
+}
+
+export function testTranscription(seconds: number): Promise<TestTranscriptionResult> {
+  return invokeCommand<TestTranscriptionResult>("test_transcription", { seconds });
+}
+
+export const getModelDirs = createNoArgCommand<string[]>("get_model_dirs");
+
+export function setModelDirs(dirs: string[]): Promise<string[]> {
+  return invokeCommand<string[]>("set_model_dirs", { dirs });
+}
 export const downloadModels = createNoArgCommand<string>("download_models");
 export const cancelModelDownload = createNoArgCommand<string>("cancel_model_download");
 export const restartFunASR = createNoArgCommand<string>("restart_funasr");

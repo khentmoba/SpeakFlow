@@ -449,6 +449,69 @@ pub fn parse_gpu_idle_seconds(value: Option<&serde_json::Value>) -> u64 {
     seconds.min(MAX_GPU_IDLE_SECONDS)
 }
 
+/// Speech-processing preferences. Both default on; a missing or malformed value
+/// keeps the default rather than silently disabling the feature.
+pub fn read_silence_filter() -> bool {
+    read_bool_setting("silence_filter", true)
+}
+
+pub fn write_silence_filter(enabled: bool) -> Result<(), std::io::Error> {
+    update_engine_json(|obj| obj["silence_filter"] = serde_json::Value::Bool(enabled))
+}
+
+pub fn read_remove_fillers() -> bool {
+    read_bool_setting("remove_fillers", true)
+}
+
+pub fn write_remove_fillers(enabled: bool) -> Result<(), std::io::Error> {
+    update_engine_json(|obj| obj["remove_fillers"] = serde_json::Value::Bool(enabled))
+}
+
+fn read_bool_setting(key: &str, default: bool) -> bool {
+    read_engine_json()
+        .get(key)
+        .and_then(|value| value.as_bool())
+        .unwrap_or(default)
+}
+
+/// Extra read-only folders searched for catalog model files, in order.
+///
+/// Entries are trimmed, and empty, relative or duplicate paths are dropped.
+/// Nothing is ever written to or deleted from these folders.
+pub fn read_model_dirs() -> Vec<String> {
+    let config = read_engine_json();
+    let Some(entries) = config.get("model_dirs").and_then(|value| value.as_array()) else {
+        return Vec::new();
+    };
+    normalize_model_dirs(entries.iter().filter_map(|entry| entry.as_str()))
+}
+
+pub fn write_model_dirs(dirs: &[String]) -> Result<(), std::io::Error> {
+    let normalized = normalize_model_dirs(dirs.iter().map(String::as_str));
+    update_engine_json(|obj| {
+        if normalized.is_empty() {
+            if let Some(map) = obj.as_object_mut() {
+                map.remove("model_dirs");
+            }
+        } else {
+            obj["model_dirs"] = serde_json::json!(normalized);
+        }
+    })
+}
+
+pub fn normalize_model_dirs<'a>(dirs: impl Iterator<Item = &'a str>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    dirs.map(str::trim)
+        .filter(|dir| !dir.is_empty())
+        .filter(|dir| Path::new(dir).is_absolute())
+        // The engine receives the list joined by ';', which Windows allows in a
+        // folder name, so such a path could never round-trip.
+        .filter(|dir| !dir.contains(';'))
+        .filter(|dir| seen.insert(dir.to_ascii_lowercase()))
+        .map(str::to_string)
+        .collect()
+}
+
 pub fn read_gpu_idle_seconds() -> u64 {
     parse_gpu_idle_seconds(read_engine_json().get("gpu_idle_seconds"))
 }
@@ -565,6 +628,30 @@ mod tests {
         }
         assert_eq!(super::configured_engine(None), "qwen3-asr-1.7b");
         assert_eq!(super::configured_engine(Some("invalid")), "qwen3-asr-1.7b");
+    }
+
+    #[test]
+    fn model_dirs_drop_empty_relative_and_duplicate_paths() {
+        let normalized = super::normalize_model_dirs(
+            [
+                r"  C:\models  ",
+                r"C:\models",
+                r"relative\dir",
+                "",
+                "   ",
+                r"D:\hex\models",
+                r"E:\odd;name",
+            ]
+            .into_iter(),
+        );
+        assert_eq!(normalized, vec![r"C:\models", r"D:\hex\models"]);
+    }
+
+    #[test]
+    fn speech_processing_defaults_to_on_without_a_saved_value() {
+        assert!(super::read_bool_setting("silence_filter", true));
+        assert!(super::read_bool_setting("remove_fillers", true));
+        assert!(!super::read_bool_setting("missing_key", false));
     }
 
     #[test]

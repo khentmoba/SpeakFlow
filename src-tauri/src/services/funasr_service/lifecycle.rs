@@ -71,6 +71,7 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
     let data_dir = paths::strip_win_prefix(paths::get_data_dir());
     // 仅在用户开启时传入。0/缺省不设置环境变量，启动路径与以前相同。
     let gpu_idle_at_spawn = paths::read_gpu_idle_seconds();
+    let model_dirs_at_spawn = paths::read_model_dirs();
     let mut cmd = match &runtime {
         EngineRuntime::Bundled { exe_path } => {
             log::info!("使用打包引擎: {} (engine={})", exe_path, ticket.engine);
@@ -117,6 +118,9 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
         .env("SPEAK_FLOW_DATA_DIR", &data_dir)
         .env("SPEAK_FLOW_ASR_ENGINE", &ticket.engine)
         .env("HF_HUB_CACHE", &models_dir)
+        // Read-only folders the user added. The engine looks there only when the
+        // cache has no complete copy, and never writes to them.
+        .env("SPEAK_FLOW_MODEL_DIRS", model_dirs_at_spawn.join(";"))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr({
@@ -246,7 +250,28 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
             stdout: stdout_reader,
         });
         starting_guard.release_child();
+        drop(process_guard);
         log::info!("FunASR 服务器初始化成功！");
+        // A folder saved while the process was starting is not in its
+        // environment. This must succeed before the server is announced ready:
+        // otherwise the UI stops polling and dictation fails with no recovery.
+        if paths::read_model_dirs() != model_dirs_at_spawn {
+            if let Err(error) = super::push_model_dirs(state).await {
+                log::error!("同步模型文件夹失败，启动中止: {error}");
+                let _ = super::stop_server(state).await;
+                state.set_funasr_ready(false);
+                let _ = app_handle.emit(
+                    "funasr-status",
+                    serde_json::json!({
+                        "status": "error",
+                        "message": format!("Could not apply the model folders: {error}")
+                    }),
+                );
+                return Err(AppError::Asr(format!(
+                    "Could not apply the model folders: {error}"
+                )));
+            }
+        }
         state.set_funasr_ready(true);
         let _ = app_handle.emit("funasr-status", ready_status);
     } else {
@@ -280,6 +305,7 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
                 log::warn!("同步 GPU 空闲卸载设置失败: {error}");
             }
         }
+
         Ok(())
     } else {
         Err(AppError::Asr(error_message))

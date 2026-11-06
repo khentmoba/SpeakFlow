@@ -107,6 +107,41 @@ fn installed_listing_reports_only_models_present_at_the_catalog_size() {
 }
 
 #[test]
+fn a_shared_folder_can_supply_the_selected_model() {
+    if run_in_isolated_cache(
+            "services::funasr_service::model_readiness_tests::a_shared_folder_can_supply_the_selected_model",
+        ) {
+            return;
+        }
+    let model = super::local_model_file("moonshine-tiny");
+    let shared = std::env::temp_dir().join(format!(
+        "speak-flow-shared-models-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&shared).unwrap();
+    let path = shared.join(model.filename);
+    std::fs::write(&path, vec![0_u8; model.size as usize]).unwrap();
+    crate::utils::paths::write_model_dirs(&[shared.to_string_lossy().to_string()]).unwrap();
+
+    let result = super::inspect_model_files_for_engine("moonshine-tiny");
+    assert_eq!(result.model_state, super::ModelState::Ready, "{result:?}");
+    assert!(result.all_present);
+    assert!(super::installed_catalog_engines().contains(&"moonshine-tiny".to_string()));
+
+    // A file of the wrong size is not the pinned model.
+    std::fs::write(&path, vec![0_u8; 2_000]).unwrap();
+    let result = super::inspect_model_files_for_engine("moonshine-tiny");
+    assert_ne!(result.model_state, super::ModelState::Ready);
+
+    crate::utils::paths::write_model_dirs(&[]).unwrap();
+    let _ = std::fs::remove_dir_all(&shared);
+}
+
+#[test]
 fn model_repo_invalid_manifest_cannot_fall_back_to_large_legacy_weight() {
     if run_in_isolated_cache(
             "services::funasr_service::model_readiness_tests::model_repo_invalid_manifest_cannot_fall_back_to_large_legacy_weight",

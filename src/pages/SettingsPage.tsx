@@ -18,6 +18,13 @@ import {
   hideMainWindow,
   detectMagpie,
   listInstalledModels,
+  getVoiceProcessing,
+  setSilenceFilter,
+  setRemoveFillers,
+  getModelDirs,
+  setModelDirs,
+  pickFolder,
+  testTranscription,
 } from "@/api/tauri";
 import type { MagpieStatus } from "@/api/tauri";
 import type { UserProfile } from "@/types";
@@ -61,7 +68,16 @@ export default function SettingsPage({
   const pageContentClass = `page-content ${animClass || ""}`.trim();
 
   const { t } = useTranslation();
-  const { isRecording, retryModel, hotkeyDisplay, setHotkey, hotkeyError, hotkeyDiagnostic } = useRecordingContext();
+  const {
+    isRecording,
+    retryModel,
+    hotkeyDisplay,
+    setHotkey,
+    hotkeyError,
+    hotkeyDiagnostic,
+    stage: modelStage,
+    modelError,
+  } = useRecordingContext();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoadError, setProfileLoadError] = useState(false);
   const [profileLoadPending, setProfileLoadPending] = useState(false);
@@ -205,6 +221,12 @@ export default function SettingsPage({
   const [newHotWord, setNewHotWord] = useState("");
   const [browserOpen, setBrowserOpen] = useState(false);
   const [installedModels, setInstalledModels] = useState<ReadonlySet<string>>(() => new Set());
+  const [silenceFilter, setSilenceFilterState] = useState(true);
+  const [removeFillers, setRemoveFillersState] = useState(true);
+  const [modelDirs, setModelDirsState] = useState<string[]>([]);
+  const [testRunning, setTestRunning] = useState(false);
+  const [testText, setTestText] = useState<string | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
   // --- Correction validation ---
   const [validationEnabled, setValidationEnabled] = useState(false);
   const [validationUseSeparateModel, setValidationUseSeparateModel] = useState(false);
@@ -297,6 +319,83 @@ export default function SettingsPage({
       .catch(() => { if (!disposed) setInstalledModels(new Set()); });
     return () => { disposed = true; };
   }, [engine, modelsDir]);
+
+  useEffect(() => {
+    let disposed = false;
+    getVoiceProcessing()
+      .then((settings) => {
+        if (disposed || !settings) return;
+        setSilenceFilterState(settings.silenceFilter !== false);
+        setRemoveFillersState(settings.removeFillers !== false);
+      })
+      .catch(() => {});
+    getModelDirs()
+      .then((dirs) => { if (!disposed && Array.isArray(dirs)) setModelDirsState(dirs); })
+      .catch(() => {});
+    return () => { disposed = true; };
+  }, []);
+
+  const handleSilenceFilterToggle = useCallback(async (enabled: boolean) => {
+    setSilenceFilterState(enabled);
+    try {
+      await setSilenceFilter(enabled);
+    } catch {
+      setSilenceFilterState(!enabled);
+      toast.error(t("toast.settingSaveFailed"));
+    }
+  }, [t]);
+
+  const handleRemoveFillersToggle = useCallback(async (enabled: boolean) => {
+    setRemoveFillersState(enabled);
+    try {
+      await setRemoveFillers(enabled);
+    } catch {
+      setRemoveFillersState(!enabled);
+      toast.error(t("toast.settingSaveFailed"));
+    }
+  }, [t]);
+
+  const handleAddModelFolder = useCallback(async () => {
+    try {
+      const folder = await pickFolder();
+      if (!folder) return;
+      const next = await setModelDirs([...modelDirs, folder]);
+      setModelDirsState(next);
+      const keys = await listInstalledModels();
+      setInstalledModels(new Set(keys));
+      // The selected model may now be found in the new folder.
+      retryModel();
+    } catch {
+      toast.error(t("toast.settingSaveFailed"));
+    }
+  }, [modelDirs, retryModel, t]);
+
+  const handleTestModel = useCallback(async () => {
+    if (testRunning) return;
+    setTestRunning(true);
+    setTestText(null);
+    setTestError(null);
+    try {
+      const result = await testTranscription(5);
+      setTestText(result.text.trim());
+    } catch (error) {
+      setTestError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTestRunning(false);
+    }
+  }, [testRunning]);
+
+  const handleRemoveModelFolder = useCallback(async (folder: string) => {
+    try {
+      const next = await setModelDirs(modelDirs.filter((entry) => entry !== folder));
+      setModelDirsState(next);
+      const keys = await listInstalledModels();
+      setInstalledModels(new Set(keys));
+      retryModel();
+    } catch {
+      toast.error(t("toast.settingSaveFailed"));
+    }
+  }, [modelDirs, retryModel, t]);
 
   const {
     deviceListLoading,
@@ -532,6 +631,40 @@ export default function SettingsPage({
                       />
                     </div>
                   </SettingsReveal>
+                  {!isOnlineEngineKey(engine) && (
+                    <div className="settings-column" style={{ gap: 6 }}>
+                      <div className="settings-row" style={{ gap: 8, alignItems: "center" }}>
+                        <button
+                          type="button"
+                          className="theme-btn theme-btn-xs"
+                          disabled={testRunning || engineLoading || isRecording || modelStage === "downloading"}
+                          onClick={() => { void handleTestModel(); }}
+                        >
+                          <Mic size={11} />
+                          {testRunning ? t("settings.testModelRecording") : t("settings.testModel")}
+                        </button>
+                        <span className="settings-hint">{t("settings.testModelHint")}</span>
+                      </div>
+                      {testText !== null && (
+                        <p className="settings-test-result" aria-live="polite">
+                          {testText || t("settings.testModelSilence")}
+                        </p>
+                      )}
+                      {testError && <p className="settings-error">{testError}</p>}
+                    </div>
+                  )}
+                  {modelStage === "need_download" && (
+                    <p className="settings-hint">{t("settings.engineNeedsDownload", { engine: currentLabel })}</p>
+                  )}
+                  {modelStage === "need_repair" && (
+                    <p className="settings-hint">{t("settings.engineNeedsRepair", { engine: currentLabel })}</p>
+                  )}
+                  {modelStage === "error" && modelError && (
+                    <p className="settings-error">{t("settings.engineUnavailable", { engine: currentLabel, error: modelError })}</p>
+                  )}
+                  {isOnlineEngineKey(engine) && !onlineAsrApiKey && (
+                    <p className="settings-hint">{t("settings.engineNeedsKey", { engine: currentLabel })}</p>
+                  )}
                 </div>
               );
             })()}
@@ -676,6 +809,84 @@ export default function SettingsPage({
                 </span>
               </div>
             )}
+            {/* Model folders: read-only extra locations */}
+            {!isOnlineEngineKey(engine) && (
+              <div className="settings-column" style={{ gap: 6, marginTop: 8 }}>
+                <div className="settings-row" style={{ gap: 6, alignItems: "center" }}>
+                  <FolderOpen size={13} className="icon-tertiary" style={{ flexShrink: 0 }} />
+                  <span className="settings-option-desc" style={{ flex: 1 }}>{t("settings.modelFolders")}</span>
+                  <button
+                    className="theme-btn theme-btn-xs"
+                    onClick={() => { void handleAddModelFolder(); }}
+                  >
+                    <Plus size={11} />
+                    {t("settings.addModelFolder")}
+                  </button>
+                </div>
+                <span className="settings-hint">{t("settings.modelFoldersDesc")}</span>
+                {modelDirs.length === 0 ? (
+                  <span className="settings-option-desc" style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
+                    {t("settings.modelFoldersEmpty")}
+                  </span>
+                ) : (
+                  <ul className="model-folders">
+                    {modelDirs.map((folder) => (
+                      <li key={folder} className="model-folder-row">
+                        <span className="model-folder-path">{folder}</span>
+                        <button
+                          type="button"
+                          className="theme-btn theme-btn-xs"
+                          aria-label={t("settings.removeModelFolder", { path: folder })}
+                          onClick={() => { void handleRemoveModelFolder(folder); }}
+                        >
+                          <X size={11} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            {/* Speech processing */}
+            <div className="settings-column" style={{ gap: 8, marginTop: 8 }}>
+              <span className="settings-option-desc">{t("settings.speechProcessing")}</span>
+              <div className="settings-row" style={{ gap: 8, alignItems: "center" }}>
+                <div className="settings-column" style={{ flex: 1, gap: 2 }}>
+                  <span className="settings-option-label">{t("settings.silenceFilter")}</span>
+                  <span className="settings-hint">{t("settings.silenceFilterDesc")}</span>
+                </div>
+                <button
+                  role="switch"
+                  aria-checked={silenceFilter}
+                  aria-label={t("settings.silenceFilter")}
+                  onClick={() => { void handleSilenceFilterToggle(!silenceFilter); }}
+                  className="toggle-switch"
+                >
+                  <div className="toggle-knob" />
+                </button>
+              </div>
+              {engine === "confucius4-r2t2" && (
+                <p className="settings-hint">{t("settings.silenceFilterR2T2")}</p>
+              )}
+              <div className="settings-row" style={{ gap: 8, alignItems: "center" }}>
+                <div className="settings-column" style={{ flex: 1, gap: 2 }}>
+                  <span className="settings-option-label">{t("settings.removeFillers")}</span>
+                  <span className="settings-hint">{t("settings.removeFillersDesc")}</span>
+                </div>
+                <button
+                  role="switch"
+                  aria-checked={removeFillers}
+                  aria-label={t("settings.removeFillers")}
+                  onClick={() => { void handleRemoveFillersToggle(!removeFillers); }}
+                  className="toggle-switch"
+                >
+                  <div className="toggle-knob" />
+                </button>
+              </div>
+              {(isOnlineEngineKey(engine) || engine === "confucius4-r2t2") && (
+                <p className="settings-hint">{t("settings.removeFillersScope")}</p>
+              )}
+            </div>
           </section>
 
           <AiModelsSettingsSection
@@ -818,6 +1029,7 @@ export default function SettingsPage({
             </div>
             <div className="settings-column">
               <div className="settings-row" style={{ alignItems: "center", gap: 10 }}>
+                <button className="test-btn" onClick={() => { void handleTestMicrophone(); }}>{t("common.test")}</button>
                 <div ref={picker.setRef("microphone")} style={{ position: "relative", flex: 1, minWidth: 0 }}>
                   <button
                     type="button"
@@ -884,7 +1096,6 @@ export default function SettingsPage({
                 >
                   {t("common.refresh")}
                 </button>
-                <button className="test-btn" onClick={() => { void handleTestMicrophone(); }}>{t("common.test")}</button>
               </div>
               <div className="mic-level-shell" aria-label={t("settings.micLevelPreview")}>
                 <div className="mic-level-fill" style={{ "--mic-level": `${Math.round(micLevel * 100)}%` } as React.CSSProperties} />

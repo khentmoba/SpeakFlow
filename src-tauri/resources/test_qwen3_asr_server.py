@@ -1,5 +1,6 @@
 import base64
 import os
+import tempfile
 import subprocess
 import sys
 import types
@@ -599,6 +600,171 @@ class LongClipTests(unittest.TestCase):
         )
         self.assertTrue(result["success"], result)
         self.assertEqual(server.session.calls, 1)
+
+
+class ModelFolderUpdateTests(unittest.TestCase):
+    def test_a_running_engine_takes_the_new_folder_list(self):
+        import server_common
+
+        with mock.patch.dict(os.environ, {"SPEAK_FLOW_MODEL_DIRS": ""}):
+            server = object.__new__(server_common.BaseASRServer)
+            server.logger = mock.Mock()
+            result = server._handle_set_model_dirs(
+                {"dirs": ["  D:\hex\models  ", "", "E:\models"]}
+            )
+            self.assertTrue(result["success"], result)
+            self.assertEqual(
+                os.environ["SPEAK_FLOW_MODEL_DIRS"],
+                os.pathsep.join(["D:\hex\models", "E:\models"]),
+            )
+            self.assertFalse(server._handle_set_model_dirs({"dirs": "nope"})["success"])
+
+
+class TranscribeDispatchContractTests(unittest.TestCase):
+    def test_every_server_accepts_the_kwargs_the_dispatcher_sends(self):
+        import inspect
+
+        import r2t2_asr_server
+
+        expected = (
+            "audio_path",
+            "options",
+            "hot_words",
+            "audio_base64",
+            "audio_format",
+            "sample_rate",
+            "filter_silence",
+        )
+        for server_class in (qwen3_asr_server.Qwen3ASRServer, r2t2_asr_server.R2T2ASRServer):
+            parameters = inspect.signature(server_class.transcribe_audio).parameters
+            for name in expected:
+                self.assertIn(
+                    name,
+                    parameters,
+                    f"{server_class.__name__}.transcribe_audio is missing {name}",
+                )
+
+
+class SpeechProcessingTests(unittest.TestCase):
+    """Silence filtering, shared model folders and CPU recovery."""
+
+    def _server(self, engine="moonshine-tiny"):
+        with mock.patch.object(qwen3_asr_server.Qwen3ASRServer, "_detect_device", return_value="cpu"):
+            server = qwen3_asr_server.Qwen3ASRServer(engine=engine)
+        server.model = mock.Mock()
+        server.model.supports.return_value = False
+        server.session = FakeSession()
+        server.vad_model = FakeVad([{"start": 0, "end": 16_000}])
+        server.initialized = True
+        return server
+
+    def test_silence_filter_off_sends_every_sample(self):
+        server = self._server()
+        payload = base64.b64encode(np.zeros(16_000 * 3, dtype="<i2").tobytes()).decode("ascii")
+        result = server.transcribe_audio(
+            None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,
+            filter_silence=False,
+        )
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["vad_segments"], 1)
+        self.assertEqual(len(server.session.inputs[0]), 16_000 * 3)
+
+    def test_silence_filter_on_trims_to_speech(self):
+        server = self._server()
+        server.vad_model = FakeVad([{"start": 1600, "end": 4800}])
+        payload = base64.b64encode(np.zeros(16_000 * 3, dtype="<i2").tobytes()).decode("ascii")
+        result = server.transcribe_audio(
+            None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,
+        )
+        self.assertTrue(result["success"], result)
+        self.assertEqual(len(server.session.inputs[0]), 3200)
+
+    def test_silence_filter_off_still_rejects_a_clip_without_speech(self):
+        # The detector is the only "is there speech?" check, so it keeps running
+        # even when its trimming is switched off.
+        server = self._server()
+        server.vad_model = FakeVad([])
+        payload = base64.b64encode(np.zeros(16_000 * 3, dtype="<i2").tobytes()).decode("ascii")
+        result = server.transcribe_audio(
+            None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,
+            filter_silence=False,
+        )
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["text"], "")
+        self.assertEqual(result["vad_segments"], 0)
+        self.assertEqual(server.session.calls, 0)
+
+    def test_gpu_decode_failure_retries_once_on_cpu(self):
+        server = self._server()
+        server.backend = "cuda"
+        server.device = "cuda"
+        server.model_path = "model.gguf"
+        calls = {"run": 0}
+
+        class FlakySession(FakeSession):
+            def run(self, audio, **kwargs):
+                calls["run"] += 1
+                if calls["run"] == 1:
+                    raise RuntimeError("device lost")
+                return types.SimpleNamespace(text="recovered", language="en")
+
+        server.session = FlakySession()
+        fake_module = types.SimpleNamespace(Model=FakeModel)
+        with (
+            mock.patch.dict(sys.modules, {"transcribe_cpp": fake_module}),
+            # Recovery resolves the file again, so the folder can have changed.
+            mock.patch.object(
+                qwen3_asr_server.Qwen3ASRServer, "_resolve_model_path", return_value="model.gguf"
+            ),
+        ):
+            payload = base64.b64encode(np.zeros(16_000, dtype="<i2").tobytes()).decode("ascii")
+            result = server.transcribe_audio(
+                None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,
+            )
+        self.assertTrue(result["success"], result)
+        # The retry runs on the freshly loaded CPU session.
+        self.assertEqual(result["text"], "测试文本")
+        self.assertEqual(result["backend"], "cpu")
+        self.assertEqual(calls["run"], 1)
+        self.assertEqual(FakeModel.instances[-1].backend, "cpu")
+        self.assertTrue(server._cpu_recovery_used)
+
+    def test_cpu_failure_is_not_retried(self):
+        server = self._server()
+        server.backend = "cpu"
+
+        class BrokenSession(FakeSession):
+            def run(self, audio, **kwargs):
+                raise RuntimeError("decode failed")
+
+        server.session = BrokenSession()
+        payload = base64.b64encode(np.zeros(16_000, dtype="<i2").tobytes()).decode("ascii")
+        result = server.transcribe_audio(
+            None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,
+        )
+        self.assertFalse(result["success"])
+        self.assertEqual(result["type"], "transcription_error")
+
+    def test_shared_model_folder_matches_the_catalog_name_and_size(self):
+        import hf_cache_utils
+
+        catalog = {"models": [{"filename": "model-Q8_0.gguf", "size": 8}]}
+        with mock.patch.object(hf_cache_utils, "ASR_CATALOG", catalog):
+            with mock.patch.dict(os.environ, {"SPEAK_FLOW_MODEL_DIRS": ""}):
+                self.assertIsNone(hf_cache_utils.find_shared_model_file("model-Q8_0.gguf"))
+            with tempfile.TemporaryDirectory() as directory:
+                shared = os.path.join(directory, "model-Q8_0.gguf")
+                with open(shared, "wb") as handle:
+                    handle.write(b"0" * 8)
+                with mock.patch.dict(os.environ, {"SPEAK_FLOW_MODEL_DIRS": directory}):
+                    self.assertEqual(hf_cache_utils.find_shared_model_file("model-Q8_0.gguf"), shared)
+                    # A name outside the catalog is never loaded from a folder.
+                    self.assertIsNone(hf_cache_utils.find_shared_model_file("other.gguf"))
+                # A size mismatch is not the pinned model.
+                with open(shared, "wb") as handle:
+                    handle.write(b"0" * 9)
+                with mock.patch.dict(os.environ, {"SPEAK_FLOW_MODEL_DIRS": directory}):
+                    self.assertIsNone(hf_cache_utils.find_shared_model_file("model-Q8_0.gguf"))
 
 
 if __name__ == "__main__":

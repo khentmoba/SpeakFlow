@@ -63,6 +63,52 @@ and its size. Declining leaves the current engine selected, so nothing downloads
 A model that is already on disk never asks. The threshold is
 `LARGE_MODEL_DOWNLOAD_BYTES` in `src/lib/asrCatalog.ts`.
 
+## Model folders
+
+Settings → ASR Engine → Model folders lists extra folders that are searched for
+model files after the models directory. They are read-only: SpeakFlow never
+downloads into them or deletes from them. A file counts as the model only when
+its name matches the catalog exactly and its size matches the catalog size, so a
+half-copied file or another quantization is ignored.
+
+The list is stored in `engine.json` as `model_dirs`. Rust uses it for readiness
+and the installed list; the Python engine receives it as
+`SPEAK_FLOW_MODEL_DIRS` and only looks there when the cache has no complete copy.
+
+## Speech processing
+
+Two preferences in the same section change how a recording is transcribed:
+
+- **Skip silence before recognition** (on by default). When off, the whole
+  recording is sent to the model instead of the speech regions FireRedVAD keeps.
+  Confucius4-R2T2 is the exception: it always segments with its own detector to
+  keep the native stream bounded, so the switch does not change it. The detector
+  still runs when the switch is off, so a clip with no speech returns nothing
+  instead of whatever the model invents.
+- **Remove filler words** (on by default). Removes `um`, `uh`, `hmm` and similar
+  sounds from the finished transcript, and only when the transcript is English:
+  `um` is the article "a" in Portuguese and `er` means "he" in German, so
+  neither is on the list and other languages are left alone. Words that can carry
+  meaning (`like`, `so`, `you know`) are never touched, and any word inside a
+  dictionary entry is never removed. Live previews keep their fillers until the
+  final transcript arrives. Cloud engines and R2T2 streaming produce their own
+  text and are not affected.
+
+Both are stored in `engine.json`; a missing value means on.
+
+## CPU recovery
+
+If a decode fails on the GPU after the model loaded (a lost device or driver
+reset), the engine reloads the model on the CPU and retries the request once.
+The retry is marked in the log and reported as `backend: cpu`. A failure on the
+CPU itself is returned as an error instead of looping.
+
+## Model test
+
+Settings → ASR Engine → Test model records five seconds from the selected
+microphone and returns what the model heard. It does not run AI polish, does not
+write history, and never pastes into the active application.
+
 ## Benchmarks
 
 The browser shows each model's grade and error percentage for the selected

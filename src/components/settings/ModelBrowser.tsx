@@ -24,6 +24,9 @@ interface ModelBrowserProps {
   installed: ReadonlySet<string>;
 }
 
+/** Installed models plus this many recommendations when the list is folded. */
+const SHORT_LIST_RECOMMENDATIONS = 5;
+
 function gradeTone(grade: string): "good" | "fair" | "poor" {
   const score = gradeScore(grade);
   if (score >= 6) return "good";
@@ -168,11 +171,35 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
   const { t } = useTranslation();
   const [language, setLanguage] = useState<string | "all">("all");
   const [query, setQuery] = useState("");
+  const [showAll, setShowAll] = useState(false);
   const languages = useMemo(() => catalogLanguages(), []);
   const models = useMemo(
     () => filterCatalogModels({ language, query }, CATALOG_MODELS),
     [language, query],
   );
+  // A short first view: what is installed, plus a few recommendations. Search
+  // and "Show all" reveal the rest.
+  const searching = query.trim().length > 0;
+  // The collapsed list is computed whether or not it is shown, so "Show fewer"
+  // only appears when collapsing actually hides something.
+  const collapsed = useMemo(() => {
+    if (searching) return models;
+    const installedModels = models.filter((model) => installed.has(model.key));
+    const recommended = models.filter((model) => !installed.has(model.key) && model.recommended);
+    const fallback = models.filter((model) => !installed.has(model.key) && !model.recommended);
+    const short = [
+      ...installedModels,
+      ...(recommended.length > 0 ? recommended : fallback).slice(0, SHORT_LIST_RECOMMENDATIONS),
+    ];
+    // The selected model stays visible even when it is neither installed nor
+    // recommended, so the list never hides the current choice.
+    const selected = models.find((model) => model.key === engine);
+    if (selected) short.push(selected);
+    // Keep the ranked order rather than the grouping above.
+    return models.filter((model) => short.includes(model));
+  }, [engine, installed, models, searching]);
+  const folded = showAll || searching ? models : collapsed;
+  const hiddenCount = models.length - collapsed.length;
   // R2T2 and the cloud services are not catalog models, so the language rail
   // does not apply to them; they are listed whenever no language is chosen.
   const otherEngines = useMemo(() => {
@@ -229,8 +256,8 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
             <div className="picker-empty">{t("settings.modelNoResults")}</div>
           ) : (
             <>
-              <div role="group" aria-label={t("settings.browseModels")}>
-                {models.map((model) => (
+              <div role="group" aria-label={t("settings.modelListGroup")}>
+                {folded.map((model) => (
                   <ModelRow
                     key={model.key}
                     model={model}
@@ -259,6 +286,24 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
             </>
           )}
         </div>
+        {!showAll && hiddenCount > 0 && (
+          <button
+            type="button"
+            className="model-browser-more"
+            onClick={() => setShowAll(true)}
+          >
+            {t("settings.showAllModels", { count: models.length })}
+          </button>
+        )}
+        {showAll && !searching && hiddenCount > 0 && (
+          <button
+            type="button"
+            className="model-browser-more"
+            onClick={() => setShowAll(false)}
+          >
+            {t("settings.showFewerModels")}
+          </button>
+        )}
       </div>
       <p className="settings-hint model-browser-hint">
         {t("settings.modelBrowserHint")}

@@ -42,6 +42,12 @@ const tauriMock = vi.hoisted(() => ({
   listAiModels: vi.fn(),
   listAlibabaAsrModels: vi.fn(),
   listInstalledModels: vi.fn(),
+  getVoiceProcessing: vi.fn(),
+  setSilenceFilter: vi.fn(),
+  setRemoveFillers: vi.fn(),
+  getModelDirs: vi.fn(),
+  setModelDirs: vi.fn(),
+  testTranscription: vi.fn(),
   listInputDevices: vi.fn(),
   loginGrokBuildOauth: vi.fn(),
   loginOpenaiCodexOauth: vi.fn(),
@@ -281,6 +287,8 @@ function resetTauriMocks(exportPath: string | null = null) {
   tauriMock.isAutostartEnabled.mockResolvedValue(false);
   tauriMock.listAiModels.mockResolvedValue({ models: [], sourceUrl: "" });
   tauriMock.listInstalledModels.mockResolvedValue([]);
+  tauriMock.getVoiceProcessing.mockResolvedValue({ silenceFilter: true, removeFillers: true });
+  tauriMock.getModelDirs.mockResolvedValue([]);
   tauriMock.listAlibabaAsrModels.mockResolvedValue({
     models: ["qwen3-asr-flash"],
     source: "fallback",

@@ -9,6 +9,7 @@ pub mod codex_oauth_service;
 pub mod context_awareness;
 pub mod download_service;
 pub mod external_correction_service;
+pub mod filler_words;
 pub mod funasr_service;
 pub mod glm_asr_service;
 pub mod grok_build_oauth_service;

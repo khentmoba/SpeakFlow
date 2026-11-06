@@ -236,6 +236,21 @@ pub(super) fn snapshot_matches_legacy_weight_check(snapshot_path: &std::path::Pa
     ready
 }
 
+/// A catalog model file found in one of the user's read-only model folders.
+///
+/// The file must sit directly in the folder and match the catalog size exactly,
+/// the same rule the cache uses, so a half-copied or different quantization is
+/// not mistaken for the pinned model.
+pub(super) fn find_shared_model_file(filename: &str, size: u64) -> Option<PathBuf> {
+    paths::read_model_dirs().into_iter().find_map(|dir| {
+        let candidate = PathBuf::from(dir).join(filename);
+        std::fs::metadata(&candidate)
+            .ok()
+            .filter(|meta| meta.is_file() && meta.len() == size)
+            .map(|_| candidate)
+    })
+}
+
 /// True when any snapshot of `repo_dir` holds `filename` at exactly `size` bytes.
 ///
 /// A size match is enough for the model browser's "Installed" label. It does not
@@ -250,7 +265,8 @@ pub(super) fn repo_dir_has_file(repo_dir: &std::path::Path, filename: &str, size
     })
 }
 
-/// Catalog engines whose model file is present in the models directory.
+/// Catalog engines whose model file is present in the models directory or in
+/// one of the user's read-only model folders.
 pub fn installed_catalog_engines() -> Vec<String> {
     let cache_root = get_hf_cache_root();
     crate::utils::asr_catalog::models()
@@ -258,6 +274,7 @@ pub fn installed_catalog_engines() -> Vec<String> {
         .filter(|model| {
             let repo_dir = cache_root.join(format!("models--{}", model.repo_id.replace('/', "--")));
             repo_dir_has_file(&repo_dir, &model.filename, model.size)
+                || find_shared_model_file(&model.filename, model.size).is_some()
         })
         .map(|model| model.key.clone())
         .collect()
@@ -289,13 +306,23 @@ pub(super) fn inspect_model_files_for_engine(engine: &str) -> ModelCheckResult {
         (model.repo_id, model.filename, model.description.as_str());
     let mut missing_models = Vec::new();
     let mut corrupt_models = Vec::new();
-    let model_state = report_model_repo_file_state(
+    let mut model_state = report_model_repo_file_state(
         repo_id,
         Some(filename),
         description,
         &mut missing_models,
         &mut corrupt_models,
     );
+    // R2T2 resolves its own pinned snapshot and never reads the model folders,
+    // so a shared copy must not make it look ready.
+    if model_state != ModelState::Ready && normalized_engine != paths::R2T2_ENGINE {
+        if let Some(shared) = find_shared_model_file(filename, model.size) {
+            log::info!("模型来自共享文件夹: {}", shared.display());
+            model_state = ModelState::Ready;
+            missing_models.clear();
+            corrupt_models.clear();
+        }
+    }
     let asr_present = model_state == ModelState::Ready;
 
     ModelCheckResult {

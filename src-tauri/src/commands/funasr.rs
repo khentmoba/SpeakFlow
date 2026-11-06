@@ -112,6 +112,146 @@ pub async fn check_model_files() -> Result<funasr_service::ModelCheckResult, App
     funasr_service::check_model_files().await
 }
 
+/// Result of the model test in Settings.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestTranscriptionResult {
+    pub text: String,
+    pub language: Option<String>,
+    pub duration: Option<f64>,
+}
+
+/// Records a short clip and transcribes it with the selected engine.
+///
+/// This is a check, not a dictation: the text is returned to the caller and is
+/// never polished, saved to history, or pasted into the active application.
+#[tauri::command]
+pub async fn test_transcription(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    seconds: u32,
+) -> Result<TestTranscriptionResult, AppError> {
+    if paths::is_online_engine(&paths::read_engine_config()) {
+        return Err(AppError::Asr(
+            "Model test works with local models only".to_string(),
+        ));
+    }
+    if !state.is_funasr_ready() {
+        return Err(AppError::Asr(
+            "Speech recognition engine is not ready yet; please wait for initialization to finish"
+                .to_string(),
+        ));
+    }
+    // Own the engine for the whole test, so a model switch or a dictation
+    // cannot take it between the recording and the decode.
+    let _asr_guard = match state.engine.native_asr_owner.try_lock() {
+        Ok(guard) => guard,
+        Err(_) => {
+            return Err(AppError::Asr(
+                "A recording is in progress; finish it before testing the model".to_string(),
+            ))
+        }
+    };
+    let device = state.selected_input_device_name();
+    let samples = tokio::task::spawn_blocking(move || {
+        crate::services::audio_service::record_test_clip_sync(device, seconds)
+    })
+    .await
+    .map_err(|error| AppError::Audio(format!("Model test recording failed: {error}")))??;
+
+    let result = funasr_service::transcribe_pcm16_owned(
+        state.inner(),
+        &samples,
+        16_000,
+        &app_handle,
+        funasr_service::TranscribeOptions { final_pass: true },
+    )
+    .await?;
+    if !result.success {
+        return Err(AppError::Asr(result.error.unwrap_or_else(|| {
+            "The model could not transcribe the test clip".to_string()
+        })));
+    }
+    Ok(TestTranscriptionResult {
+        text: result.text,
+        language: result.language,
+        duration: result.duration,
+    })
+}
+
+/// Speech-processing preferences that change how a recording is transcribed.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoiceProcessingSettings {
+    /// Trim silence with the VAD before recognition.
+    pub silence_filter: bool,
+    /// Remove spoken filler words from the finished transcript.
+    pub remove_fillers: bool,
+}
+
+#[tauri::command]
+pub async fn get_voice_processing() -> Result<VoiceProcessingSettings, AppError> {
+    Ok(VoiceProcessingSettings {
+        silence_filter: paths::read_silence_filter(),
+        remove_fillers: paths::read_remove_fillers(),
+    })
+}
+
+#[tauri::command]
+pub async fn set_silence_filter(enabled: bool) -> Result<bool, AppError> {
+    paths::write_silence_filter(enabled).map_err(|error| {
+        AppError::Other(format!(
+            "Failed to save the silence filter setting: {error}"
+        ))
+    })?;
+    Ok(enabled)
+}
+
+#[tauri::command]
+pub async fn set_remove_fillers(enabled: bool) -> Result<bool, AppError> {
+    paths::write_remove_fillers(enabled).map_err(|error| {
+        AppError::Other(format!(
+            "Failed to save the filler removal setting: {error}"
+        ))
+    })?;
+    Ok(enabled)
+}
+
+/// Extra read-only folders searched for model files, in search order.
+#[tauri::command]
+pub async fn get_model_dirs() -> Result<Vec<String>, AppError> {
+    Ok(paths::read_model_dirs())
+}
+
+/// Replaces the folder list. Entries are trimmed, and empty, relative or
+/// duplicate paths are dropped before saving.
+#[tauri::command]
+pub async fn set_model_dirs(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    dirs: Vec<String>,
+) -> Result<Vec<String>, AppError> {
+    let normalized = paths::normalize_model_dirs(dirs.iter().map(String::as_str));
+    paths::write_model_dirs(&normalized)
+        .map_err(|error| AppError::Other(format!("Failed to save model folders: {error}")))?;
+    // A resident engine keeps the list it started with, so hand it the new one.
+    // If that fails, restart it: a stale list would load the wrong file or fail
+    // to find a model that is now in a different folder.
+    if let Err(error) = funasr_service::push_model_dirs(state.inner()).await {
+        log::warn!("模型文件夹已保存，但未能通知正在运行的引擎，改为重启: {error}");
+        if !state.engine.is_funasr_starting() {
+            let lifecycle_guard = state.engine.funasr_lifecycle_op.lock().await;
+            let asr_guard = lock_idle_asr(state.inner())?;
+            funasr_service::stop_server(state.inner()).await?;
+            drop(asr_guard);
+            drop(lifecycle_guard);
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            funasr_service::start_server(&app_handle, state.inner()).await?;
+        }
+    }
+    Ok(normalized)
+}
+
 /// Catalog engines whose model file is already downloaded.
 #[tauri::command]
 pub async fn list_installed_models() -> Result<Vec<String>, AppError> {

@@ -60,10 +60,42 @@ def is_hf_repo_ready(repo_id):
 
 
 def find_hf_snapshot_file(repo_id, filename):
-    """Resolve one exact cached file without scanning unrelated quantizations."""
+    """Resolve one exact cached file without scanning unrelated quantizations.
+
+    Falls back to the user's read-only model folders, which are searched only
+    after the cache. Nothing is ever written to those folders.
+    """
     for snapshot_path in _snapshot_paths(repo_id):
         if _snapshot_is_ready(snapshot_path, filename):
             return os.path.join(snapshot_path, filename.replace("/", os.sep))
+    return find_shared_model_file(filename)
+
+
+def model_search_dirs():
+    """Read-only folders from `SPEAK_FLOW_MODEL_DIRS`, in search order."""
+    raw = os.environ.get("SPEAK_FLOW_MODEL_DIRS", "")
+    return [entry.strip() for entry in raw.split(os.pathsep) if entry.strip()]
+
+
+def find_shared_model_file(filename):
+    """First copy of `filename` in a shared folder whose size matches the catalog.
+
+    The size rule is the same one Rust uses for readiness, so both sides pick the
+    same file. A name that is not in the catalog is never loaded from a folder.
+    """
+    expected = next(
+        (model["size"] for model in ASR_CATALOG["models"] if model["filename"] == filename),
+        None,
+    )
+    if expected is None:
+        return None
+    for directory in model_search_dirs():
+        candidate = os.path.join(directory, filename)
+        try:
+            if os.path.isfile(candidate) and os.path.getsize(candidate) == expected:
+                return candidate
+        except OSError:
+            continue
     return None
 
 

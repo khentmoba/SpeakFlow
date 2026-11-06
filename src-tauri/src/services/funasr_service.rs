@@ -177,9 +177,15 @@ struct LocalModelFile {
     repo_id: &'static str,
     filename: &'static str,
     description: String,
+    /// Expected file size, used to recognize a copy in a shared model folder.
+    size: u64,
 }
 
-const R2T2_MODEL: (&str, &str) = ("davidxifeng/Confucius4-R2T2-gguf", "r2t2-q8_0.gguf");
+const R2T2_MODEL: (&str, &str, u64) = (
+    "davidxifeng/Confucius4-R2T2-gguf",
+    "r2t2-q8_0.gguf",
+    2_477_512_064,
+);
 
 /// Model for a local engine. Unknown or legacy values fall back to the default engine.
 fn local_model_file(engine: &str) -> LocalModelFile {
@@ -189,6 +195,7 @@ fn local_model_file(engine: &str) -> LocalModelFile {
             repo_id: R2T2_MODEL.0,
             filename: R2T2_MODEL.1,
             description: "Confucius4-R2T2 Q8 model".to_string(),
+            size: R2T2_MODEL.2,
         };
     }
     let model = crate::utils::asr_catalog::find(engine)
@@ -199,6 +206,7 @@ fn local_model_file(engine: &str) -> LocalModelFile {
         repo_id: model.repo_id.as_str(),
         filename: model.filename.as_str(),
         description: format!("{} Q8 model", model.name),
+        size: model.size,
     }
 }
 
@@ -411,6 +419,30 @@ pub async fn push_gpu_idle_seconds(state: &AppState, seconds: u64) -> Result<(),
     if response.success == Some(false) {
         return Err(AppError::Asr(response.error.unwrap_or_else(|| {
             "Failed to configure GPU idle unload".to_string()
+        })));
+    }
+    Ok(())
+}
+
+/// Sends the current model-folder list to a running engine.
+///
+/// The engine reads the folders once at startup, so a change must reach the
+/// resident process; otherwise an idle-unloaded model reloads from the old list.
+pub async fn push_model_dirs(state: &AppState) -> Result<(), AppError> {
+    let has_process = {
+        let guard = state.engine.funasr_process.lock().await;
+        guard.is_some()
+    };
+    if !has_process {
+        return Ok(());
+    }
+    let dirs = paths::read_model_dirs();
+    let response =
+        send_command_to_server::<tauri::Wry>(state, &ServerCommand::SetModelDirs { dirs }, None)
+            .await?;
+    if response.success == Some(false) {
+        return Err(AppError::Asr(response.error.unwrap_or_else(|| {
+            "Failed to apply the model folders".to_string()
         })));
     }
     Ok(())

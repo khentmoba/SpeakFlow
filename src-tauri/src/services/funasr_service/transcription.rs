@@ -10,7 +10,21 @@ pub async fn transcribe(
 ) -> Result<TranscriptionResult, AppError> {
     let _asr_guard = state.engine.native_asr_owner.lock().await;
     let hot_words = profile_hot_words(state);
-    transcribe_wav_bytes_via_path(state, audio_data, hot_words, app_handle).await
+    transcribe_wav_bytes_via_path(
+        state,
+        audio_data,
+        hot_words,
+        app_handle,
+        TranscribeOptions { final_pass: true },
+    )
+    .await
+}
+
+/// Which pass a request belongs to. Filler removal only touches the finished
+/// transcript, so live previews never flicker as words disappear.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TranscribeOptions {
+    pub final_pass: bool,
 }
 
 pub async fn transcribe_pcm16(
@@ -18,8 +32,23 @@ pub async fn transcribe_pcm16(
     samples: &[i16],
     sample_rate: u32,
     app_handle: &tauri::AppHandle,
+    options: TranscribeOptions,
 ) -> Result<TranscriptionResult, AppError> {
     let _asr_guard = state.engine.native_asr_owner.lock().await;
+    transcribe_pcm16_owned(state, samples, sample_rate, app_handle, options).await
+}
+
+/// Same as [`transcribe_pcm16`] for a caller that already owns the engine.
+///
+/// The model test holds `native_asr_owner` across its recording and decode, so
+/// it must not take the lock again.
+pub async fn transcribe_pcm16_owned(
+    state: &AppState,
+    samples: &[i16],
+    sample_rate: u32,
+    app_handle: &tauri::AppHandle,
+    options: TranscribeOptions,
+) -> Result<TranscriptionResult, AppError> {
     // 检查服务器是否就绪
     if !state.is_funasr_ready() {
         return Err(AppError::Asr(
@@ -52,11 +81,27 @@ pub async fn transcribe_pcm16(
     // for duration accounting, while the ASR backends assume the in-memory array
     // is already at their expected rate. Preserve non-16k audio by sending WAV.
     if sample_rate != TARGET_SAMPLE_RATE_FOR_INLINE_AUDIO {
-        return transcribe_pcm16_via_path(state, samples, sample_rate, hot_words, app_handle).await;
+        return transcribe_pcm16_via_path(
+            state,
+            samples,
+            sample_rate,
+            hot_words,
+            app_handle,
+            options,
+        )
+        .await;
     }
 
     if state.inline_audio_transport() == Some(false) {
-        return transcribe_pcm16_via_path(state, samples, sample_rate, hot_words, app_handle).await;
+        return transcribe_pcm16_via_path(
+            state,
+            samples,
+            sample_rate,
+            hot_words,
+            app_handle,
+            options,
+        )
+        .await;
     }
 
     let response = send_command_to_server(
@@ -68,6 +113,7 @@ pub async fn transcribe_pcm16(
             audio_format: Some(INLINE_AUDIO_FORMAT_PCM_S16LE.to_string()),
             sample_rate: Some(sample_rate),
             hot_words: hot_words.clone(),
+            filter_silence: Some(paths::read_silence_filter()),
         },
         Some(app_handle),
     )
@@ -75,17 +121,29 @@ pub async fn transcribe_pcm16(
 
     if response.input_mode.as_deref() == Some("memory") {
         state.set_inline_audio_transport(Some(true));
-        return Ok(server_response_to_transcription_result(state, response));
+        return Ok(server_response_to_transcription_result(
+            state, response, options,
+        ));
     }
 
     if response_indicates_inline_unsupported(&response) {
         log::info!("当前 FunASR 运行时不支持内存音频，回退到临时 WAV 文件");
         state.set_inline_audio_transport(Some(false));
-        return transcribe_pcm16_via_path(state, samples, sample_rate, hot_words, app_handle).await;
+        return transcribe_pcm16_via_path(
+            state,
+            samples,
+            sample_rate,
+            hot_words,
+            app_handle,
+            options,
+        )
+        .await;
     }
 
     state.set_inline_audio_transport(Some(true));
-    Ok(server_response_to_transcription_result(state, response))
+    Ok(server_response_to_transcription_result(
+        state, response, options,
+    ))
 }
 
 pub(super) fn profile_hot_words(state: &AppState) -> Option<Vec<String>> {
@@ -150,14 +208,57 @@ pub(super) fn response_indicates_inline_unsupported(response: &ServerResponse) -
     })
 }
 
+/// Applies the final text steps shared by every path that produces a transcript.
+///
+/// The server response and the finalize path that reuses an interim result both
+/// call this, so a reused transcript is cleaned exactly like a fresh one.
+pub fn finish_text(
+    state: &AppState,
+    text: &str,
+    language: Option<&str>,
+    options: TranscribeOptions,
+) -> String {
+    let corrected =
+        crate::services::qwen_hotword_service::apply_profile_hotword_corrections(state, text);
+    if !options.final_pass {
+        return corrected;
+    }
+    apply_filler_removal(state, &corrected, language)
+}
+
+/// Removes fillers from text that already went through corrections.
+///
+/// The finalize path reuses an interim transcript that was corrected when it was
+/// produced, so it must not correct it a second time.
+pub fn apply_filler_removal(state: &AppState, text: &str, language: Option<&str>) -> String {
+    if !crate::services::filler_words::should_remove_fillers(language, paths::read_remove_fillers())
+    {
+        return text.to_string();
+    }
+    // Every dictionary entry is protected, not just the ones sent as recognition
+    // hints, so a word the user added on purpose survives even when it looks
+    // like a filler.
+    let protected = state.with_profile(|profile| {
+        profile
+            .hot_words
+            .iter()
+            .map(|word| word.text.clone())
+            .collect::<Vec<_>>()
+    });
+    crate::services::filler_words::remove_fillers(text, &protected)
+}
+
 pub(super) fn server_response_to_transcription_result(
     state: &AppState,
     response: ServerResponse,
+    options: TranscribeOptions,
 ) -> TranscriptionResult {
     if response.success == Some(true) {
-        let text = crate::services::qwen_hotword_service::apply_profile_hotword_corrections(
+        let text = finish_text(
             state,
             response.text.as_deref().unwrap_or_default(),
+            response.language.as_deref(),
+            options,
         );
 
         TranscriptionResult {
@@ -186,6 +287,7 @@ pub(super) async fn transcribe_wav_bytes_via_path(
     audio_data: Vec<u8>,
     hot_words: Option<Vec<String>>,
     app_handle: &tauri::AppHandle,
+    options: TranscribeOptions,
 ) -> Result<TranscriptionResult, AppError> {
     let temp_file = create_temp_audio_path();
 
@@ -202,13 +304,14 @@ pub(super) async fn transcribe_wav_bytes_via_path(
             audio_format: None,
             sample_rate: None,
             hot_words,
+            filter_silence: Some(paths::read_silence_filter()),
         },
         Some(app_handle),
     )
     .await;
 
     let _ = tokio::fs::remove_file(&temp_file).await;
-    response.map(|response| server_response_to_transcription_result(state, response))
+    response.map(|response| server_response_to_transcription_result(state, response, options))
 }
 
 pub(super) async fn transcribe_pcm16_via_path(
@@ -217,7 +320,8 @@ pub(super) async fn transcribe_pcm16_via_path(
     sample_rate: u32,
     hot_words: Option<Vec<String>>,
     app_handle: &tauri::AppHandle,
+    options: TranscribeOptions,
 ) -> Result<TranscriptionResult, AppError> {
     let wav_bytes = encode_wav_bytes(samples, sample_rate)?;
-    transcribe_wav_bytes_via_path(state, wav_bytes, hot_words, app_handle).await
+    transcribe_wav_bytes_via_path(state, wav_bytes, hot_words, app_handle, options).await
 }
