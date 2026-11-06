@@ -35,6 +35,12 @@
     "commands::funasr::set_remove_fillers": [
       "engine"
     ],
+    "commands::funasr::set_asr_language": [
+      "engine"
+    ],
+    "commands::funasr::set_translate_to_english": [
+      "engine"
+    ],
     "commands::funasr::get_model_dirs": [
       "engine"
     ],
@@ -2186,6 +2192,8 @@
     "commands::funasr::get_voice_processing": "src-tauri/src/commands/funasr.rs#fn get_voice_processing(",
     "commands::funasr::set_silence_filter": "src-tauri/src/commands/funasr.rs#fn set_silence_filter(",
     "commands::funasr::set_remove_fillers": "src-tauri/src/commands/funasr.rs#fn set_remove_fillers(",
+    "commands::funasr::set_asr_language": "src-tauri/src/commands/funasr.rs#fn set_asr_language(",
+    "commands::funasr::set_translate_to_english": "src-tauri/src/commands/funasr.rs#fn set_translate_to_english(",
     "commands::funasr::get_model_dirs": "src-tauri/src/commands/funasr.rs#fn get_model_dirs(",
     "commands::funasr::set_model_dirs": "src-tauri/src/commands/funasr.rs#fn set_model_dirs(",
     "commands::funasr::set_online_asr_endpoint": "src-tauri/src/commands/funasr.rs#fn set_online_asr_endpoint(",

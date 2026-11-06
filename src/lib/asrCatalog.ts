@@ -14,6 +14,10 @@ export interface CatalogModel {
   recommended: boolean;
   /** The model can translate speech natively. */
   translation: boolean;
+  /** The model can detect the spoken language itself. */
+  language_detection: boolean;
+  /** Whisper: broad language coverage, mostly experimental accuracy. */
+  long_tail: boolean;
   languages: string[];
   /** Conditions recognition on Smart Vocabulary; otherwise correction only. */
   vocabulary: boolean;
@@ -77,4 +81,29 @@ export function languageName(code: string): string {
   } catch {
     return code;
   }
+}
+
+/**
+ * The language a model can actually produce for a requested language. Mirrors
+ * `resolve_language` in `src-tauri/src/utils/asr_catalog.rs`: a single-language
+ * model wins, a listed request wins, then detection, then English.
+ */
+export function resolveLanguage(
+  model: CatalogModel | null,
+  requested: string | null,
+): string {
+  if (!model) return "auto";
+  if (model.languages.length === 1) return model.languages[0];
+  if (requested && requested !== "auto" && model.languages.includes(requested)) {
+    return requested;
+  }
+  if (model.language_detection) return "auto";
+  return model.languages.includes("en") ? "en" : (model.languages[0] ?? "auto");
+}
+
+/** Model languages sorted by their English display name. */
+export function modelLanguageOptions(model: CatalogModel): { code: string; name: string }[] {
+  return [...model.languages]
+    .map((code) => ({ code, name: languageName(code) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }

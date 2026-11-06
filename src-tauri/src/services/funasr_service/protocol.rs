@@ -57,6 +57,12 @@ pub enum ServerCommand {
         /// 热词列表（可选）
         #[serde(skip_serializing_if = "Option::is_none")]
         hot_words: Option<Vec<String>>,
+        /// 识别语言（可选）。缺省表示让模型自动检测。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        language: Option<String>,
+        /// 让支持翻译的模型直接输出英文。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        translate_to_english: Option<bool>,
         /// 是否先用 VAD 过滤静音（缺省由服务器按开启处理）
         #[serde(skip_serializing_if = "Option::is_none")]
         filter_silence: Option<bool>,

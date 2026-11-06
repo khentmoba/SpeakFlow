@@ -19,6 +19,8 @@ import {
   getVoiceProcessing,
   setSilenceFilter,
   setRemoveFillers,
+  setAsrLanguage,
+  setTranslateToEnglish,
   getModelDirs,
   setModelDirs,
   pickFolder,
@@ -38,7 +40,9 @@ import DictationToolsSettingsSection from "@/components/settings/DictationToolsS
 import GpuIdleUnloadControl from "@/components/settings/GpuIdleUnloadControl";
 import { SettingsReveal } from "@/components/settings/SettingsReveal";
 import R2T2SettingsSection from "@/components/settings/R2T2SettingsSection";
+import LanguageSettingsSection from "@/components/settings/LanguageSettingsSection";
 import { ModelBrowser } from "@/components/settings/ModelBrowser";
+import { findCatalogModel } from "@/lib/asrCatalog";
 import { prefersReducedMotion } from "@/lib/motion";
 import { INPUT_METHOD_KEY, DEFAULT_HOTKEY, SOUND_ENABLED_KEY, RECORDING_MODE_KEY } from "@/lib/constants";
 import { formatAsrEngineDescription, getAsrEngineCapability } from "@/lib/asrEngineCapabilities";
@@ -219,6 +223,9 @@ export default function SettingsPage({
   const [installedModels, setInstalledModels] = useState<ReadonlySet<string>>(() => new Set());
   const [silenceFilter, setSilenceFilterState] = useState(true);
   const [removeFillers, setRemoveFillersState] = useState(true);
+  const [asrLanguage, setAsrLanguageState] = useState<string | null>(null);
+  const [translateToEnglish, setTranslateToEnglishState] = useState(false);
+  const [languageSaving, setLanguageSaving] = useState(false);
   const [modelDirs, setModelDirsState] = useState<string[]>([]);
   const [testRunning, setTestRunning] = useState(false);
   const [testText, setTestText] = useState<string | null>(null);
@@ -323,6 +330,8 @@ export default function SettingsPage({
         if (disposed || !settings) return;
         setSilenceFilterState(settings.silenceFilter !== false);
         setRemoveFillersState(settings.removeFillers !== false);
+        setAsrLanguageState(settings.language ?? null);
+        setTranslateToEnglishState(settings.translateToEnglish === true);
       })
       .catch(() => {});
     getModelDirs()
@@ -347,6 +356,32 @@ export default function SettingsPage({
       await setRemoveFillers(enabled);
     } catch {
       setRemoveFillersState(!enabled);
+      toast.error(t("toast.settingSaveFailed"));
+    }
+  }, [t]);
+
+  const handleLanguageChange = useCallback(async (language: string | null) => {
+    if (languageSaving) return;
+    setLanguageSaving(true);
+    const previous = asrLanguage;
+    setAsrLanguageState(language);
+    try {
+      const saved = await setAsrLanguage(language);
+      setAsrLanguageState(saved);
+    } catch {
+      setAsrLanguageState(previous);
+      toast.error(t("toast.settingSaveFailed"));
+    } finally {
+      setLanguageSaving(false);
+    }
+  }, [asrLanguage, languageSaving, t]);
+
+  const handleTranslateToEnglishToggle = useCallback(async (enabled: boolean) => {
+    setTranslateToEnglishState(enabled);
+    try {
+      await setTranslateToEnglish(enabled);
+    } catch {
+      setTranslateToEnglishState(!enabled);
       toast.error(t("toast.settingSaveFailed"));
     }
   }, [t]);
@@ -644,6 +679,14 @@ export default function SettingsPage({
                 </div>
               );
             })()}
+            <LanguageSettingsSection
+              model={findCatalogModel(engine) ?? null}
+              language={asrLanguage}
+              translateToEnglish={translateToEnglish}
+              disabled={engineLoading || languageSaving}
+              onLanguageChange={(value) => { void handleLanguageChange(value); }}
+              onTranslateChange={(value) => { void handleTranslateToEnglishToggle(value); }}
+            />
             <GpuIdleUnloadControl />
             <SettingsReveal open={engine === "confucius4-r2t2" && !!profile} gap={10}>
               {profile && <R2T2SettingsSection profile={profile} onSaved={() => { void refreshProfile(); }} />}

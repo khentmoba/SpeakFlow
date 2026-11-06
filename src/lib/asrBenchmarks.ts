@@ -43,6 +43,22 @@ export function gradeScore(grade: string): number {
   return GRADE_SCORES[grade] ?? -2;
 }
 
+/**
+ * How much to trust a published grade. The model browser and the language
+ * picker use this instead of raw grades so a D or F language is never shown as
+ * a normal choice.
+ */
+export type LanguageQuality = "excellent" | "good" | "experimental" | "poor" | "unknown";
+
+export function languageQuality(grade: string | null | undefined): LanguageQuality {
+  if (!grade) return "unknown";
+  const score = gradeScore(grade);
+  if (score >= 9) return "excellent";
+  if (score >= 4) return "good";
+  if (score >= 0) return "experimental";
+  return "poor";
+}
+
 export function formatModelSpeed(secondsPer30s: number | null): string | null {
   return secondsPer30s === null ? null : `${secondsPer30s.toFixed(2)} s`;
 }

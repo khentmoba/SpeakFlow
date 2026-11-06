@@ -2207,6 +2207,39 @@ select:disabled { cursor: not-allowed; opacity: 0.6; }
   line-height: 1.2;
 }
 
+.settings-hint.language-quality-excellent { color: var(--color-success); }
+.settings-hint.language-quality-good { color: var(--color-text-secondary); }
+.settings-hint.language-quality-experimental { color: var(--color-warning); }
+.settings-hint.language-quality-poor { color: var(--color-error); }
+
+.model-quality {
+  display: inline-flex;
+  align-items: center;
+  min-height: 16px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: var(--text-2xs);
+  line-height: 1.2;
+  border: 1px solid var(--color-border-subtle);
+}
+
+.model-quality-excellent {
+  color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 35%, transparent);
+}
+
+.model-quality-good { color: var(--color-text-secondary); }
+
+.model-quality-experimental {
+  color: var(--color-warning);
+  border-color: color-mix(in srgb, var(--color-warning) 35%, transparent);
+}
+
+.model-quality-poor {
+  color: var(--color-error);
+  border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
+}
+
 .settings-test-result {
   margin: 0;
   padding: 6px 8px;

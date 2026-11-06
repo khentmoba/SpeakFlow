@@ -453,6 +453,8 @@ class Qwen3ASRServer(BaseASRServer):
         audio_format=None,
         sample_rate=None,
         filter_silence=True,
+        language=None,
+        translate_to_english=False,
     ):
         if not self.initialized:
             init_result = self.initialize()
@@ -500,8 +502,23 @@ class Qwen3ASRServer(BaseASRServer):
                     "inference_ms": 0.0,
                 }
 
+            # Catalog flags can drift from the runtime. A hard-failing
+            # translate task would lose the recording, so fall back to a
+            # plain transcript when the loaded model cannot translate.
+            if translate_to_english:
+                capabilities = getattr(self.model, "capabilities", None)
+                if not getattr(capabilities, "supports_translate", False):
+                    translate_to_english = False
+
             run_options = {"timestamps": "none"}
-            if hot_words and self.model.supports("vocabulary"):
+            if language:
+                run_options["language"] = language
+            if translate_to_english:
+                run_options["task"] = "translate"
+                run_options["target_language"] = "en"
+            # Custom terms condition recognition, which a translation run does
+            # not use. Keep them for spelling correction only.
+            if hot_words and self.model.supports("vocabulary") and not translate_to_english:
                 run_options["vocabulary"] = hot_words
             pieces = self._split_audio(audio, self._max_input_samples())
             started = time.perf_counter()
@@ -532,6 +549,11 @@ class Qwen3ASRServer(BaseASRServer):
 
             text = self._join_pieces(r.text for r in results)
             language = results[0].language or "unknown"
+            # A translated transcript is English text, so the final text
+            # pipeline (filler removal, history language) sees English even
+            # when the model reported the spoken language.
+            if translate_to_english:
+                language = "en"
             self._maybe_cleanup(duration)
             return {
                 "success": True,

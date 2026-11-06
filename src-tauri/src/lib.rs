@@ -278,6 +278,8 @@ pub fn run() {
             commands::dictation_tools::get_dictation_tools,
             commands::dictation_tools::set_dictation_tools,
             commands::file_transcription::transcribe_audio_file,
+            commands::funasr::set_asr_language,
+            commands::funasr::set_translate_to_english,
             commands::funasr::get_model_dirs,
             commands::funasr::set_model_dirs,
             commands::funasr::download_models,

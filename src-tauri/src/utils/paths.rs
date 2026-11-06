@@ -467,6 +467,45 @@ pub fn write_remove_fillers(enabled: bool) -> Result<(), std::io::Error> {
     update_engine_json(|obj| obj["remove_fillers"] = serde_json::Value::Bool(enabled))
 }
 
+/// Recognition language saved for the local transcribe.cpp models.
+///
+/// `None` and `"auto"` both mean "let the model detect it". The saved value is
+/// not tied to one model: the backend resolves it against the selected model's
+/// language list at transcription time.
+pub fn read_asr_language() -> Option<String> {
+    read_engine_json()
+        .get("asr_language")
+        .and_then(|value| value.as_str())
+        .and_then(normalize_language_setting)
+}
+
+fn normalize_language_setting(value: &str) -> Option<String> {
+    let value = value.trim().to_lowercase();
+    (!value.is_empty() && value != "auto").then_some(value)
+}
+
+pub fn write_asr_language(language: Option<&str>) -> Result<(), std::io::Error> {
+    let normalized = language.and_then(normalize_language_setting);
+    update_engine_json(|obj| match normalized {
+        Some(value) => obj["asr_language"] = serde_json::Value::String(value),
+        None => {
+            if let Some(map) = obj.as_object_mut() {
+                map.remove("asr_language");
+            }
+        }
+    })
+}
+
+/// Ask a translation-capable model to write English from any spoken language.
+/// Off by default; the backend also checks the selected model supports it.
+pub fn read_translate_to_english() -> bool {
+    read_bool_setting("translate_to_english", false)
+}
+
+pub fn write_translate_to_english(enabled: bool) -> Result<(), std::io::Error> {
+    update_engine_json(|obj| obj["translate_to_english"] = serde_json::Value::Bool(enabled))
+}
+
 fn read_bool_setting(key: &str, default: bool) -> bool {
     read_engine_json()
         .get(key)
@@ -732,6 +771,13 @@ mod tests {
         assert!(super::read_bool_setting("silence_filter", true));
         assert!(super::read_bool_setting("remove_fillers", true));
         assert!(!super::read_bool_setting("missing_key", false));
+    }
+
+    #[test]
+    fn language_setting_trims_and_treats_auto_as_unset() {
+        assert_eq!(super::normalize_language_setting(" FR "), Some("fr".into()));
+        assert_eq!(super::normalize_language_setting("auto"), None);
+        assert_eq!(super::normalize_language_setting("  "), None);
     }
 
     #[test]

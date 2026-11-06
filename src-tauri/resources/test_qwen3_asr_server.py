@@ -105,6 +105,70 @@ class Qwen3ASRServerTests(unittest.TestCase):
                 ] if supported else [{"timestamps": "none"}] * 3
                 self.assertEqual(server.session.options, expected)
 
+    def test_language_and_translation_reach_the_model(self):
+        with mock.patch.object(qwen3_asr_server.Qwen3ASRServer, "_detect_device", return_value="cpu"):
+            server = qwen3_asr_server.Qwen3ASRServer(engine="whisper-large-v3")
+            server.initialized = True
+            server.model = mock.Mock()
+            server.model.supports.return_value = False
+            server.session = FakeSession()
+            server.vad_model = FakeVad([{"start": 0, "end": 16_000}])
+            payload = base64.b64encode(np.zeros(16_000, dtype="<i2").tobytes()).decode("ascii")
+            result = server.transcribe_audio(
+                None, hot_words=["SpeakFlow"], audio_base64=payload,
+                audio_format="pcm_s16le", sample_rate=16_000,
+                language="ca", translate_to_english=True,
+            )
+        self.assertTrue(result["success"], result)
+        self.assertEqual(server.session.options, [{
+            "timestamps": "none",
+            "language": "ca",
+            "task": "translate",
+            "target_language": "en",
+        }])
+        # A translated transcript is English text, whatever the model detected.
+        self.assertEqual(result["language"], "en")
+
+    def test_translation_is_dropped_when_the_runtime_does_not_support_it(self):
+        with mock.patch.object(qwen3_asr_server.Qwen3ASRServer, "_detect_device", return_value="cpu"):
+            server = qwen3_asr_server.Qwen3ASRServer(engine="whisper-large-v3")
+            server.initialized = True
+            server.model = mock.Mock()
+            server.model.capabilities.supports_translate = False
+            server.model.supports.return_value = False
+            server.session = FakeSession()
+            server.vad_model = FakeVad([{"start": 0, "end": 16_000}])
+            payload = base64.b64encode(np.zeros(16_000, dtype="<i2").tobytes()).decode("ascii")
+            result = server.transcribe_audio(
+                None, audio_base64=payload, audio_format="pcm_s16le",
+                sample_rate=16_000, language="ca", translate_to_english=True,
+            )
+        self.assertTrue(result["success"], result)
+        self.assertNotIn("task", server.session.options[0])
+        self.assertEqual(server.session.options[0]["language"], "ca")
+
+    def test_translation_drops_vocabulary_but_plain_runs_keep_it(self):
+        with mock.patch.object(qwen3_asr_server.Qwen3ASRServer, "_detect_device", return_value="cpu"):
+            server = qwen3_asr_server.Qwen3ASRServer(engine="qwen3-asr-0.6b")
+            server.initialized = True
+            server.model = mock.Mock()
+            server.model.supports.return_value = True
+            server.session = FakeSession()
+            server.vad_model = FakeVad([{"start": 0, "end": 16_000}])
+            payload = base64.b64encode(np.zeros(16_000, dtype="<i2").tobytes()).decode("ascii")
+            server.transcribe_audio(
+                None, hot_words=["SpeakFlow"], audio_base64=payload,
+                audio_format="pcm_s16le", sample_rate=16_000,
+                language="fr", translate_to_english=True,
+            )
+            server.transcribe_audio(
+                None, hot_words=["SpeakFlow"], audio_base64=payload,
+                audio_format="pcm_s16le", sample_rate=16_000,
+                language="fr", translate_to_english=False,
+            )
+        self.assertNotIn("vocabulary", server.session.options[0])
+        self.assertEqual(server.session.options[1]["vocabulary"], ["SpeakFlow"])
+
     def test_backend_preferences_are_scoped_to_the_selected_model(self):
         with (
             mock.patch.object(qwen3_asr_server.Qwen3ASRServer, "_detect_device", return_value="cuda"),

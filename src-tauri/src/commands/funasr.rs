@@ -187,6 +187,11 @@ pub struct VoiceProcessingSettings {
     pub silence_filter: bool,
     /// Remove spoken filler words from the finished transcript.
     pub remove_fillers: bool,
+    /// Saved recognition language for local transcribe.cpp models. `None`
+    /// means auto-detect.
+    pub language: Option<String>,
+    /// Ask a translation-capable model to write English from any language.
+    pub translate_to_english: bool,
 }
 
 #[tauri::command]
@@ -194,6 +199,8 @@ pub async fn get_voice_processing() -> Result<VoiceProcessingSettings, AppError>
     Ok(VoiceProcessingSettings {
         silence_filter: paths::read_silence_filter(),
         remove_fillers: paths::read_remove_fillers(),
+        language: paths::read_asr_language(),
+        translate_to_english: paths::read_translate_to_english(),
     })
 }
 
@@ -213,6 +220,25 @@ pub async fn set_remove_fillers(enabled: bool) -> Result<bool, AppError> {
         AppError::Other(format!(
             "Failed to save the filler removal setting: {error}"
         ))
+    })?;
+    Ok(enabled)
+}
+
+/// Saves the recognition language for local transcribe.cpp models. `None` and
+/// `"auto"` both mean "let the model detect it". The selection is validated
+/// against the selected model when a recording starts, so switching models
+/// never leaves an unusable language behind.
+#[tauri::command]
+pub async fn set_asr_language(language: Option<String>) -> Result<Option<String>, AppError> {
+    paths::write_asr_language(language.as_deref())
+        .map_err(|error| AppError::Other(format!("Failed to save the language: {error}")))?;
+    Ok(paths::read_asr_language())
+}
+
+#[tauri::command]
+pub async fn set_translate_to_english(enabled: bool) -> Result<bool, AppError> {
+    paths::write_translate_to_english(enabled).map_err(|error| {
+        AppError::Other(format!("Failed to save the translation setting: {error}"))
     })?;
     Ok(enabled)
 }

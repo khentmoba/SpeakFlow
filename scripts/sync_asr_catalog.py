@@ -64,11 +64,11 @@ LICENSE_OVERRIDES = {
     "medasr": "health-ai-developer-foundations",
 }
 
-# Model families SpeakFlow does not offer. Whisper and SenseVoice were retired
-# here before the catalog existed, and `src-tauri/tests/retired_*_contract.rs`
-# keeps them out. Their GGUF ports would run on transcribe.cpp, but the product
-# decision stands until it is deliberately reversed.
-EXCLUDED_PREFIXES = ("whisper", "sensevoicesmall")
+# Model families SpeakFlow does not offer. SenseVoice was retired here before
+# the catalog existed, and `src-tauri/tests/retired_sensevoice_contract.rs`
+# keeps it out. Whisper is offered again as a labelled long-tail family: it is
+# the only source of the 61 languages the rest of the catalog does not cover.
+EXCLUDED_PREFIXES = ("sensevoicesmall",)
 
 _KEY_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
@@ -97,6 +97,11 @@ def convert(source):
             excluded.add(key)
             continue
         pin = LEGACY_PINS.get(key)
+        is_whisper = key.startswith("whisper")
+        # "Long tail" means broad language coverage, not "is Whisper". The
+        # English-only Whisper variants do not add a language and must not
+        # claim the family's coverage warning.
+        long_tail = is_whisper and len(item["languages"]) > 1
         model = {
             "key": key,
             "name": item["name"],
@@ -107,8 +112,13 @@ def convert(source):
             "size": item["size"],
             "sha256": item["sha256"],
             "license": LICENSE_OVERRIDES.get(key, item["license"]),
-            "recommended": bool(item["recommended"]),
+            # Whisper is the long-tail family: broad, but its own benchmark
+            # grades most of those languages D or F. Never recommend it as a
+            # default, whatever the upstream catalog says.
+            "recommended": bool(item["recommended"]) and not is_whisper,
             "translation": bool(item["supportsTranslation"]),
+            "language_detection": bool(item["supportsLanguageDetection"]),
+            "long_tail": long_tail,
             "languages": list(item["languages"]),
             "vocabulary": False,
         }

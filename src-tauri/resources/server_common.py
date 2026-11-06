@@ -337,6 +337,9 @@ class BaseASRServer:
         audio_base64: Optional[str] = None,
         audio_format: Optional[str] = None,
         sample_rate: Optional[int] = None,
+        filter_silence: bool = True,
+        language: Optional[str] = None,
+        translate_to_english: bool = False,
     ) -> dict:
         raise NotImplementedError
 
@@ -483,6 +486,8 @@ class BaseASRServer:
                 audio_format=command.get("audio_format"),
                 sample_rate=command.get("sample_rate"),
                 filter_silence=command.get("filter_silence", True) is not False,
+                language=command.get("language"),
+                translate_to_english=command.get("translate_to_english") is True,
             )
         if action == "status":
             return self._with_gpu_suspend_flag(self.check_status())

@@ -443,11 +443,14 @@ class R2T2ASRServer(BaseASRServer):
         audio_format=None,
         sample_rate=None,
         filter_silence=True,
+        language=None,
+        translate_to_english=False,
     ):
         # R2T2 segments speech with its own detector to keep the native stream
-        # bounded, so the silence switch does not apply to this engine. The
-        # argument is accepted because the shared dispatcher always sends it.
-        del filter_silence
+        # bounded, so the silence switch does not apply to this engine. Its
+        # language and translation choices travel in `options`; the shared
+        # dispatcher always sends the extra arguments.
+        del filter_silence, language, translate_to_english
         if not getattr(self, "initialized", False):
             init_result = self.initialize()
             if not init_result.get("success"):

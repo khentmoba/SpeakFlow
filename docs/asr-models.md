@@ -115,12 +115,35 @@ The browser shows each model's grade and error percentage for the selected
 language, plus its speed per 30 seconds of audio. These come from Handy's
 published benchmark, not from SpeakFlow. The interface says so under the list.
 
+## Language coverage
+
+The catalog covers 103 language codes across 58 models. The 28-, 30- and
+31-language models (Nemotron, Qwen3-ASR, Fun-ASR) carry most of the useful
+coverage. The multilingual Whisper variants fill the remaining 61 codes and are
+marked `long_tail` in the catalog: they are never recommended, and the UI labels
+them as experimental because Whisper's own benchmark grades most of those
+languages D or F. The four English-only Whisper variants are offered too, but
+they add no language and are not marked `long_tail`.
+
+The selected language is saved once and resolved against the selected model at
+transcription time (`resolve_language` in `src-tauri/src/utils/asr_catalog.rs`):
+
+- a single-language model always uses that language;
+- a language the model lists is used as requested;
+- otherwise a model that supports language detection uses `auto`;
+- otherwise English is used, then the model's first language.
+
+Models with `translation: true` can also write English from any spoken language.
+The Settings toggle only appears for those models, and the engine sends
+`task: translate` with `target_language: en`.
+
 ## Retired families
 
-Whisper and SenseVoice are not offered. `EXCLUDED_PREFIXES` in the sync script
-drops them, and `src-tauri/tests/retired_*_contract.rs` fails if either returns.
-Their GGUF ports would run on transcribe.cpp, so removing them from that list is
-a product decision, not a technical one.
+SenseVoice is not offered. `EXCLUDED_PREFIXES` in the sync script drops it, and
+`src-tauri/tests/retired_sensevoice_contract.rs` fails if it returns. Whisper was
+retired before the catalog existed and is now offered again as the labelled
+long-tail family; `src-tauri/tests/whisper_long_tail_contract.rs` keeps it out of
+the recommended picks and out of a dedicated runtime.
 
 ## Licenses
 

@@ -35,6 +35,8 @@ fn server_command_serializes_flat_optional_audio_fields() {
         audio_format: Some("pcm_s16le".to_string()),
         sample_rate: Some(16_000),
         hot_words: Some(vec!["speak-flow".to_string()]),
+        language: Some("ca".to_string()),
+        translate_to_english: Some(true),
         filter_silence: Some(false),
     })
     .unwrap();
@@ -46,6 +48,8 @@ fn server_command_serializes_flat_optional_audio_fields() {
     assert_eq!(inline["audio_format"], serde_json::json!("pcm_s16le"));
     assert_eq!(inline["sample_rate"], serde_json::json!(16_000));
     assert_eq!(inline["hot_words"], serde_json::json!(["speak-flow"]));
+    assert_eq!(inline["language"], serde_json::json!("ca"));
+    assert_eq!(inline["translate_to_english"], serde_json::json!(true));
     assert_eq!(inline["filter_silence"], serde_json::json!(false));
     assert!(inline.get("audio_path").is_none());
 
@@ -62,6 +66,8 @@ fn server_command_serializes_flat_optional_audio_fields() {
         audio_format: None,
         sample_rate: None,
         hot_words: None,
+        language: None,
+        translate_to_english: None,
         filter_silence: None,
     })
     .unwrap();
@@ -74,6 +80,8 @@ fn server_command_serializes_flat_optional_audio_fields() {
     assert!(path.get("filter_silence").is_none());
     assert!(path.get("sample_rate").is_none());
     assert!(path.get("hot_words").is_none());
+    assert!(path.get("language").is_none());
+    assert!(path.get("translate_to_english").is_none());
 }
 
 #[test]

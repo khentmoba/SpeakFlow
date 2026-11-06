@@ -136,6 +136,8 @@ export const listInstalledModels = createNoArgCommand<string[]>("list_installed_
 export interface VoiceProcessingSettings {
   silenceFilter: boolean;
   removeFillers: boolean;
+  language: string | null;
+  translateToEnglish: boolean;
 }
 
 export const getVoiceProcessing = createNoArgCommand<VoiceProcessingSettings>("get_voice_processing");
@@ -146,6 +148,14 @@ export function setSilenceFilter(enabled: boolean): Promise<boolean> {
 
 export function setRemoveFillers(enabled: boolean): Promise<boolean> {
   return invokeCommand<boolean>("set_remove_fillers", { enabled });
+}
+
+export function setAsrLanguage(language: string | null): Promise<string | null> {
+  return invokeCommand<string | null>("set_asr_language", { language });
+}
+
+export function setTranslateToEnglish(enabled: boolean): Promise<boolean> {
+  return invokeCommand<boolean>("set_translate_to_english", { enabled });
 }
 
 export interface TestTranscriptionResult {

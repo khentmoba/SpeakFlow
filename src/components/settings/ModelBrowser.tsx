@@ -15,6 +15,8 @@ import {
   filterCatalogModels,
   formatModelSpeed,
   gradeScore,
+  languageQuality,
+  type LanguageQuality,
 } from "@/lib/asrBenchmarks";
 
 interface ModelBrowserProps {
@@ -34,12 +36,21 @@ function gradeTone(grade: string): "good" | "fair" | "poor" {
   return "poor";
 }
 
+const QUALITY_LABEL: Record<LanguageQuality, string> = {
+  excellent: "settings.modelQualityExcellent",
+  good: "settings.modelQualityGood",
+  experimental: "settings.modelQualityExperimental",
+  poor: "settings.modelQualityPoor",
+  unknown: "",
+};
+
 function ModelRow({
   model,
   language,
   selected,
   installed,
   disabled,
+  bestForLanguage,
   onSelect,
 }: {
   model: CatalogModel;
@@ -47,10 +58,12 @@ function ModelRow({
   selected: boolean;
   installed: boolean;
   disabled: boolean;
+  bestForLanguage: boolean;
   onSelect: (engine: string) => void;
 }) {
   const { t } = useTranslation();
   const accuracy = accuracyFor(model, language);
+  const quality = languageQuality(accuracy?.grade);
   const speed = formatModelSpeed(benchmarkFor(model.key)?.speed ?? null);
   return (
     <button
@@ -65,11 +78,20 @@ function ModelRow({
       <span className="model-browser-row-head">
         <strong>{model.name}</strong>
         <span className="model-badges">
+          {bestForLanguage && (
+            <span className="model-badge model-badge-recommended">
+              <Star size={10} strokeWidth={2} aria-hidden="true" />
+              {t("settings.modelBestForLanguage", { language: languageName(language) })}
+            </span>
+          )}
           {model.recommended && (
             <span className="model-badge model-badge-recommended">
               <Star size={10} strokeWidth={2} aria-hidden="true" />
               {t("settings.modelRecommended")}
             </span>
+          )}
+          {model.long_tail && (
+            <span className="model-badge">{t("settings.modelLongTail")}</span>
           )}
           {model.translation && (
             <span className="model-badge">
@@ -88,6 +110,11 @@ function ModelRow({
               {accuracy.grade}
             </span>
             <span>{t("settings.modelErrorRate", { percent: accuracy.errorPercent })}</span>
+            {quality !== "unknown" && (
+              <span className={`model-quality model-quality-${quality}`}>
+                {t(QUALITY_LABEL[quality])}
+              </span>
+            )}
           </span>
         )}
         {speed && (
@@ -177,6 +204,15 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
     () => filterCatalogModels({ language, query }, CATALOG_MODELS),
     [language, query],
   );
+  // The first row of the unfiltered language ranking is the best model for
+  // that language. Search must not change who gets the badge.
+  const bestForLanguage = useMemo(() => {
+    if (language === "all") return null;
+    const top = filterCatalogModels({ language, query: "" }, CATALOG_MODELS)[0];
+    if (!top) return null;
+    const quality = languageQuality(accuracyFor(top, language)?.grade);
+    return quality === "unknown" || quality === "poor" ? null : top.key;
+  }, [language]);
   // A short first view: what is installed, plus a few recommendations. Search
   // and "Show all" reveal the rest.
   const searching = query.trim().length > 0;
@@ -192,12 +228,16 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
       ...(recommended.length > 0 ? recommended : fallback).slice(0, SHORT_LIST_RECOMMENDATIONS),
     ];
     // The selected model stays visible even when it is neither installed nor
-    // recommended, so the list never hides the current choice.
+    // recommended, so the list never hides the current choice. The best model
+    // for the chosen language also stays visible, so its badge is not hidden
+    // behind "Show all".
     const selected = models.find((model) => model.key === engine);
     if (selected) short.push(selected);
+    const best = models.find((model) => model.key === bestForLanguage);
+    if (best) short.push(best);
     // Keep the ranked order rather than the grouping above.
     return models.filter((model) => short.includes(model));
-  }, [engine, installed, models, searching]);
+  }, [bestForLanguage, engine, installed, models, searching]);
   const folded = showAll || searching ? models : collapsed;
   const hiddenCount = models.length - collapsed.length;
   // R2T2 and the cloud services are not catalog models, so the language rail
@@ -225,7 +265,12 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
           />
         </label>
         <span className="model-browser-count">
-          {t("settings.modelCount", { count: models.length })}
+          {language === "all" && !searching
+            ? t("settings.modelCoverage", {
+                models: CATALOG_MODELS.length,
+                languages: languages.length,
+              })
+            : t("settings.modelCount", { count: models.length })}
         </span>
       </div>
       <div className="model-browser-body">
@@ -265,6 +310,7 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
                     selected={engine === model.key}
                     installed={installed.has(model.key)}
                     disabled={disabled}
+                    bestForLanguage={bestForLanguage === model.key}
                     onSelect={onSelect}
                   />
                 ))}
