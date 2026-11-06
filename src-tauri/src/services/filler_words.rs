@@ -141,15 +141,19 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
     // Set after a removal until the next visible token is written.
     let mut seam = false;
     let mut capitalize_next = false;
+    // Whether a straight double quote is currently open. Without this, a closing
+    // quote would be mistaken for an opening one.
+    let mut straight_quote_open = false;
     let mut index = 0;
 
     while index < tokens.len() {
         let token = &tokens[index];
         if token.kind != Kind::Word || !is_filler(&token.text, &protected) {
             if token.kind == Kind::Space && seam {
-                // Whitespace at the seam is rebuilt below; keep line breaks.
+                // Keep a line break and the indentation after it; collapse only
+                // horizontal space at the seam.
                 if token.text.contains('\n') {
-                    out.push('\n');
+                    out.push_str(&token.text);
                     seam = false;
                     capitalize_next = false;
                 }
@@ -157,26 +161,42 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
                 continue;
             }
             if seam {
-                let text = write_seam(&mut out, token, &mut capitalize_next);
+                let text = write_seam(&mut out, token, &mut capitalize_next, straight_quote_open);
                 seam = false;
                 out.push_str(&text);
+                track_quote(&text, &mut straight_quote_open);
                 index += 1;
                 continue;
             }
-            out.push_str(&token.text);
+            if capitalize_next && token.kind == Kind::Word {
+                let text = capitalize_word(&token.text);
+                out.push_str(&text);
+                capitalize_next = false;
+            } else {
+                out.push_str(&token.text);
+            }
+            track_quote(&token.text, &mut straight_quote_open);
             index += 1;
             continue;
         }
 
         removed = true;
-        // The filler occupied the whitespace before it.
-        let cut = out.trim_end().len();
+        // The filler occupied the horizontal whitespace before it; line breaks
+        // and indentation before it stay.
+        let cut = out.trim_end_matches([' ', '\t']).len();
         out.truncate(cut);
         let before = out.clone();
-        let opener = before.chars().last().filter(|c| is_opening_delimiter(*c));
+        let opener = before
+            .chars()
+            .last()
+            .filter(|c| is_opening_delimiter(*c) && (*c != '"' || straight_quote_open));
         // An opener at the start of the text still begins a sentence: `"Um, hi"`.
         let mut head = before.as_str();
-        while let Some(last) = head.chars().last().filter(|c| is_opening_delimiter(*c)) {
+        while let Some(last) = head
+            .chars()
+            .last()
+            .filter(|c| is_opening_delimiter(*c) && (*c != '"' || straight_quote_open))
+        {
             head = &head[..head.len() - last.len_utf8()];
         }
         let at_sentence_start = head.trim_end().is_empty()
@@ -229,8 +249,9 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
             .position(|t| t.kind != Kind::Space)
             .map(|offset| next + offset)
         {
-            let is_dash_token = tokens[position].kind == Kind::Punct
-                && first_char(&tokens[position]).is_some_and(is_dash);
+            let dash_text = tokens[position].text.as_str();
+            let is_dash_token = first_char(&tokens[position]).is_some_and(is_dash)
+                && (tokens[position].kind == Kind::Punct || dash_text == "-");
             if is_dash_token && out.trim_end().chars().last().is_some_and(is_dash) {
                 next = position + 1;
             }
@@ -244,16 +265,33 @@ pub fn remove_fillers(text: &str, protected: &[String]) -> String {
     if !removed {
         return text.to_string();
     }
-    out.trim_end().to_string()
+    out
+}
+
+/// Tracks straight double quotes so a closing quote is not read as an opener.
+fn track_quote(text: &str, open: &mut bool) {
+    for c in text.chars() {
+        if c == '"' {
+            *open = !*open;
+        }
+    }
 }
 
 /// Writes the first visible token after a removal, rebuilding the spacing that
 /// the filler and its punctuation occupied.
-fn write_seam(out: &mut String, token: &Token, capitalize_next: &mut bool) -> String {
+fn write_seam(
+    out: &mut String,
+    token: &Token,
+    capitalize_next: &mut bool,
+    straight_quote_open: bool,
+) -> String {
     let Some(first) = first_char(token) else {
         return String::new();
     };
-    let after_opener = out.chars().last().is_some_and(is_opening_delimiter);
+    let after_opener = out
+        .chars()
+        .last()
+        .is_some_and(|c| is_opening_delimiter(c) && (c != '"' || straight_quote_open));
     let before_closer = token.kind == Kind::Punct
         && (is_terminator(first)
             || is_separator(first)
@@ -271,16 +309,24 @@ fn write_seam(out: &mut String, token: &Token, capitalize_next: &mut bool) -> St
     {
         out.push(' ');
     }
+    // An opener keeps capitalization pending for the word inside it.
+    if token.kind == Kind::Punct && is_opening_delimiter(first) {
+        return token.text.clone();
+    }
     let capitalize = *capitalize_next && token.kind == Kind::Word;
     *capitalize_next = false;
     if capitalize {
-        let mut chars = token.text.chars();
-        return match chars.next() {
-            Some(head) => head.to_uppercase().collect::<String>() + chars.as_str(),
-            None => String::new(),
-        };
+        return capitalize_word(&token.text);
     }
     token.text.clone()
+}
+
+fn capitalize_word(word: &str) -> String {
+    let mut chars = word.chars();
+    match chars.next() {
+        Some(head) => head.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
 }
 
 /// Chinese, Japanese kana and Thai are written without spaces between words.
@@ -372,6 +418,37 @@ mod tests {
             "I think \u{2014} yes"
         );
         assert_eq!(clean("Um, line one\nline two"), "Line one\nline two");
+    }
+
+    #[test]
+    fn a_closing_quote_is_not_an_opener() {
+        assert_eq!(
+            clean("He said \"hello\" um there."),
+            "He said \"hello\" there."
+        );
+        assert_eq!(clean("He said \"hello\" um."), "He said \"hello\".");
+    }
+
+    #[test]
+    fn keeps_newlines_and_indentation() {
+        assert_eq!(clean("Hello.\num, world"), "Hello.\nWorld");
+        assert_eq!(clean("Um, hello.\n\n"), "Hello.\n\n");
+        assert_eq!(clean("Um, one\n  two"), "One\n  two");
+    }
+
+    #[test]
+    fn capitalizes_the_word_inside_an_opener() {
+        assert_eq!(clean("Um, (hello)."), "(Hello).");
+        assert_eq!(clean("Um, \"hello\"."), "\"Hello\".");
+    }
+
+    #[test]
+    fn collapses_ascii_dashes_around_a_filler() {
+        assert_eq!(clean("I think - um - yes"), "I think - yes");
+        assert_eq!(
+            clean("I think \u{2014} um \u{2014} yes"),
+            "I think \u{2014} yes"
+        );
     }
 
     #[test]

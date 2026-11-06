@@ -220,13 +220,20 @@ pub fn finish_text(
 ) -> String {
     let corrected =
         crate::services::qwen_hotword_service::apply_profile_hotword_corrections(state, text);
-    if !options.final_pass
-        || !crate::services::filler_words::should_remove_fillers(
-            language,
-            paths::read_remove_fillers(),
-        )
-    {
+    if !options.final_pass {
         return corrected;
+    }
+    apply_filler_removal(state, &corrected, language)
+}
+
+/// Removes fillers from text that already went through corrections.
+///
+/// The finalize path reuses an interim transcript that was corrected when it was
+/// produced, so it must not correct it a second time.
+pub fn apply_filler_removal(state: &AppState, text: &str, language: Option<&str>) -> String {
+    if !crate::services::filler_words::should_remove_fillers(language, paths::read_remove_fillers())
+    {
+        return text.to_string();
     }
     // Every dictionary entry is protected, not just the ones sent as recognition
     // hints, so a word the user added on purpose survives even when it looks
@@ -238,7 +245,7 @@ pub fn finish_text(
             .map(|word| word.text.clone())
             .collect::<Vec<_>>()
     });
-    crate::services::filler_words::remove_fillers(&corrected, &protected)
+    crate::services::filler_words::remove_fillers(text, &protected)
 }
 
 pub(super) fn server_response_to_transcription_result(

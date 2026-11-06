@@ -404,12 +404,13 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
                         "Reusing interim cache (tail gap {:.0}ms)",
                         (final_count - c.sample_count) as f64 * 1000.0 / sample_rate as f64
                     );
+                    // The cached text was corrected when the interim ran, so
+                    // only the final-only step is applied here.
                     (
-                        Ok(funasr_service::finish_text(
+                        Ok(funasr_service::apply_filler_removal(
                             state.inner(),
                             &c.text,
                             c.language.as_deref(),
-                            funasr_service::TranscribeOptions { final_pass: true },
                         )),
                         c.language.clone(),
                     )

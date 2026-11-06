@@ -250,7 +250,28 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
             stdout: stdout_reader,
         });
         starting_guard.release_child();
+        drop(process_guard);
         log::info!("FunASR 服务器初始化成功！");
+        // A folder saved while the process was starting is not in its
+        // environment. This must succeed before the server is announced ready:
+        // otherwise the UI stops polling and dictation fails with no recovery.
+        if paths::read_model_dirs() != model_dirs_at_spawn {
+            if let Err(error) = super::push_model_dirs(state).await {
+                log::error!("同步模型文件夹失败，启动中止: {error}");
+                let _ = super::stop_server(state).await;
+                state.set_funasr_ready(false);
+                let _ = app_handle.emit(
+                    "funasr-status",
+                    serde_json::json!({
+                        "status": "error",
+                        "message": format!("Could not apply the model folders: {error}")
+                    }),
+                );
+                return Err(AppError::Asr(format!(
+                    "Could not apply the model folders: {error}"
+                )));
+            }
+        }
         state.set_funasr_ready(true);
         let _ = app_handle.emit("funasr-status", ready_status);
     } else {
@@ -284,13 +305,7 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
                 log::warn!("同步 GPU 空闲卸载设置失败: {error}");
             }
         }
-        // A folder saved while the process was starting is not in its
-        // environment, so send the current list once it is registered.
-        if paths::read_model_dirs() != model_dirs_at_spawn {
-            if let Err(error) = push_model_dirs(state).await {
-                log::warn!("同步模型文件夹失败: {error}");
-            }
-        }
+
         Ok(())
     } else {
         Err(AppError::Asr(error_message))
