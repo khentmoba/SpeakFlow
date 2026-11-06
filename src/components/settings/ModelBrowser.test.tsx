@@ -27,7 +27,8 @@ describe("ModelBrowser", () => {
     expect(row).toHaveTextContent("A-");
     expect(row).toHaveTextContent("3.99% error");
     expect(row).toHaveTextContent("1.19 s / 30 s");
-    expect(row).toHaveTextContent("1 languages");
+    expect(row).toHaveTextContent("1 language");
+    expect(row).not.toHaveTextContent("1 languages");
     expect(row).toHaveTextContent("731 MB");
     expect(row).toHaveTextContent("nvidia-open-model-license");
   });
