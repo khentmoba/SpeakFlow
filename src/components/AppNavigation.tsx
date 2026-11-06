@@ -14,6 +14,8 @@ export default function AppNavigation({ view, onNavigate, updateAvailable = fals
   updateAvailable?: boolean;
   updateInstalling?: boolean;
 }) {
+  const updateStatus = updateInstalling ? "Update in progress" : "New release available";
+
   return (
     <nav className="app-navigation" aria-label="Main navigation">
       {destinations.map(({ view: destination, label, icon: Icon }) => (
@@ -22,16 +24,14 @@ export default function AppNavigation({ view, onNavigate, updateAvailable = fals
           type="button"
           className="app-nav-item"
           data-destination={destination}
-          aria-label={destination === "updates" && updateAvailable
-            ? `${label}, ${updateInstalling ? "Update in progress" : "New release available"}`
-            : label}
+          aria-label={destination === "updates" && updateAvailable ? `${label}, ${updateStatus}` : label}
           aria-current={view === destination ? "page" : undefined}
           onClick={() => onNavigate(destination)}
         >
           <Icon size={12} strokeWidth={1.9} aria-hidden="true" className={destination === "updates" && updateInstalling ? "update-spinner" : undefined} />
           <span>{label}</span>
           {destination === "updates" && updateAvailable && (
-            <span className="update-nav-dot" role="img" aria-label={updateInstalling ? "Update in progress" : "New release available"} />
+            <span className="update-nav-dot" role="img" aria-label={updateStatus} />
           )}
         </button>
       ))}
