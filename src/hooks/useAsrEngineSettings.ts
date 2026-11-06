@@ -7,12 +7,14 @@ import {
   getOnlineAsrApiKey,
   getOnlineAsrEndpoint,
   listAlibabaAsrModels,
+  listInstalledModels,
   setAlibabaAsrModel,
   setEngine,
   setOnlineAsrApiKey,
   setOnlineAsrEndpoint,
 } from "@/api/tauri";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
+import { findCatalogModel, formatModelSize, needsDownloadConfirmation } from "@/lib/asrCatalog";
 
 interface UseAsrEngineSettingsOptions {
   engineLabel: (engine: string) => string;
@@ -116,6 +118,25 @@ export function useAsrEngineSettings({
     void refreshAlibabaModels();
   }, [alibabaHasKey, engine, onlineAsrRegion, refreshAlibabaModels]);
 
+  /**
+   * Large models ask before they are selected, because selecting one starts its
+   * download. Declining leaves the current engine untouched.
+   */
+  const confirmLargeDownload = useCallback(async (newEngine: string) => {
+    const model = findCatalogModel(newEngine);
+    if (!model || !needsDownloadConfirmation(model)) return true;
+    try {
+      const installed = await listInstalledModels();
+      if (installed.includes(newEngine)) return true;
+    } catch {
+      // An unreadable model folder is not a reason to skip the warning.
+    }
+    return window.confirm(t("settings.confirmLargeDownload", {
+      name: model.name,
+      size: formatModelSize(model.size),
+    }));
+  }, [t]);
+
   const handleEngineSwitch = useCallback(async (newEngine: string) => {
     if (transitioning.current || engineLoading || newEngine === engine) return;
     transitioning.current = true;
@@ -127,6 +148,7 @@ export function useAsrEngineSettings({
       } catch {
         return;
       }
+      if (!(await confirmLargeDownload(newEngine))) return;
       await setEngine(newEngine);
       configVersion.current += 1;
       modelsRequestId.current += 1;
@@ -156,7 +178,7 @@ export function useAsrEngineSettings({
       transitioning.current = false;
       setEngineLoading(false);
     }
-  }, [engine, engineLabel, engineLoading, onlineAsrKeySave, retryModel, t]);
+  }, [confirmLargeDownload, engine, engineLabel, engineLoading, onlineAsrKeySave, retryModel, t]);
 
   const handleOnlineAsrRegionChange = useCallback(async (region: string) => {
     if (transitioning.current || engineLoading || onlineAsrRegionLoading || onlineAsrRegion === region) return;

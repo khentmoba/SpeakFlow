@@ -47,7 +47,8 @@ that app build; a custom download URL cannot bypass this check. Installed releas
 builds use the packaged runtime, never system Python. Engine downloads stop after
 30 seconds without network progress and can be cancelled while waiting for data.
 
-Optional local-model prefetch:
+Local models come from one generated catalog; see [Local ASR models](asr-models.md)
+before adding or renaming one. Optional local-model prefetch:
 
 ```bash
 uv run python src-tauri/resources/download_models.py --engine qwen3-asr-0.6b

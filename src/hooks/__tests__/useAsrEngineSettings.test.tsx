@@ -2,11 +2,16 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAsrEngineSettings } from "../useAsrEngineSettings";
 
-const api = vi.hoisted(() => ({ getEngine: vi.fn(), getOnlineAsrApiKey: vi.fn(), getOnlineAsrEndpoint: vi.fn(), getAlibabaAsrConfig: vi.fn(), listAlibabaAsrModels: vi.fn(), setAlibabaAsrModel: vi.fn(), setEngine: vi.fn(), setOnlineAsrApiKey: vi.fn(), setOnlineAsrEndpoint: vi.fn() }));
+const api = vi.hoisted(() => ({ getEngine: vi.fn(), getOnlineAsrApiKey: vi.fn(), getOnlineAsrEndpoint: vi.fn(), getAlibabaAsrConfig: vi.fn(), listAlibabaAsrModels: vi.fn(), listInstalledModels: vi.fn(), setAlibabaAsrModel: vi.fn(), setEngine: vi.fn(), setOnlineAsrApiKey: vi.fn(), setOnlineAsrEndpoint: vi.fn() }));
 const errorToast = vi.hoisted(() => vi.fn());
 vi.mock("@/api/tauri", () => api);
 vi.mock("sonner", () => ({ toast: { error: errorToast, success: vi.fn() } }));
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, unknown>) =>
+      options ? `${key} ${JSON.stringify(options)}` : key,
+  }),
+}));
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
@@ -26,6 +31,7 @@ beforeEach(() => {
   api.listAlibabaAsrModels.mockResolvedValue({ models: [], source: "fallback" });
   api.setEngine.mockResolvedValue(undefined);
   api.setOnlineAsrEndpoint.mockResolvedValue({ region: "domestic", url: "https://new.example" });
+  api.listInstalledModels.mockResolvedValue([]);
 });
 describe("online ASR credential ownership", () => {
   it("keeps a newer selected model when the initial config read arrives late", async () => {
@@ -164,4 +170,55 @@ describe("online ASR credential ownership", () => {
     unmount();
   });
 
+});
+
+describe("large model downloads", () => {
+  it("asks before selecting a model that is not installed", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { result } = await setup("qwen3-asr-0.6b");
+
+    await act(async () => { await result.current.handleEngineSwitch("voxtral-small-24b-2507"); });
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0][0]).toContain("Voxtral Small 24B");
+    expect(confirm.mock.calls[0][0]).toContain("25.81 GB");
+    expect(api.setEngine).toHaveBeenCalledWith("voxtral-small-24b-2507");
+    expect(result.current.engine).toBe("voxtral-small-24b-2507");
+    confirm.mockRestore();
+  });
+
+  it("keeps the current engine when the download is declined", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { result } = await setup("qwen3-asr-0.6b");
+
+    await act(async () => { await result.current.handleEngineSwitch("voxtral-small-24b-2507"); });
+
+    expect(api.setEngine).not.toHaveBeenCalled();
+    expect(result.current.engine).toBe("qwen3-asr-0.6b");
+    expect(result.current.engineLoading).toBe(false);
+    confirm.mockRestore();
+  });
+
+  it("does not ask for a large model that is already downloaded", async () => {
+    api.listInstalledModels.mockResolvedValue(["voxtral-small-24b-2507"]);
+    const confirm = vi.spyOn(window, "confirm");
+    const { result } = await setup("qwen3-asr-0.6b");
+
+    await act(async () => { await result.current.handleEngineSwitch("voxtral-small-24b-2507"); });
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(api.setEngine).toHaveBeenCalledWith("voxtral-small-24b-2507");
+    confirm.mockRestore();
+  });
+
+  it("switches a small model without asking", async () => {
+    const confirm = vi.spyOn(window, "confirm");
+    const { result } = await setup("qwen3-asr-0.6b");
+
+    await act(async () => { await result.current.handleEngineSwitch("moonshine-tiny"); });
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(api.setEngine).toHaveBeenCalledWith("moonshine-tiny");
+    confirm.mockRestore();
+  });
 });

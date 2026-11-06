@@ -19,16 +19,24 @@ fn sensevoice_is_not_a_selectable_or_runnable_engine() {
     let engine_options = read(root.join("src/lib/asrEngineOptions.ts"));
     let engine_entry = read(root.join("src-tauri/resources/engine.py"));
     let rust_paths = read(root.join("src-tauri/src/utils/paths.rs"));
+    let catalog = read(root.join("src-tauri/resources/asr_catalog.json"));
 
     assert!(!settings.contains("key: \"sensevoice\""));
     assert!(!engine_options.contains("key: \"sensevoice\""));
     assert!(!engine_entry.contains("\"sensevoice\""));
     assert!(!rust_paths.contains("\"sensevoice\""));
-    // String allocation moved outside the engine selection match. Default
-    // selection is exercised by the paths module's configuration tests.
-    assert!(settings.contains("import { engineOptions, engineOptionLabel }"));
-    assert!(engine_options.contains("key: \"qwen3-asr-0.6b\""));
-    assert!(engine_entry.contains("\"qwen3-asr-0.6b\""));
+    // The retired FunASR runtime stays out. The catalog offers a SenseVoice
+    // Small GGUF through transcribe.cpp, which is a different engine; it must
+    // not resurrect the old "sensevoice" key.
+    assert!(!catalog.contains("\"key\":\"sensevoice\""));
+    assert!(!catalog.contains("\"key\":\"sensevoicesmall\""));
+    assert!(!catalog.to_ascii_lowercase().contains("sensevoice"));
+    // Engine lists are generated, so the UI can only offer catalog models.
+    // Default selection is exercised by the paths module's configuration tests.
+    assert!(settings.contains("from \"@/lib/asrEngineOptions\""));
+    assert!(engine_options.contains("CATALOG_MODELS.map((model)"));
+    assert!(engine_entry.contains("engine_choices = sorted(LOCAL_ASR_MODELS)"));
+    assert!(catalog.contains("\"key\":\"qwen3-asr-0.6b\""));
 }
 
 #[test]

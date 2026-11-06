@@ -486,5 +486,120 @@ class TranscribeCppEngineTests(unittest.TestCase):
             qwen3_asr_server.Qwen3ASRServer(engine="whisper")
 
 
+class LongClipTests(unittest.TestCase):
+    """Models with an input ceiling get split instead of failing the request."""
+
+    def _server(self, engine="moonshine-streaming-tiny"):
+        with mock.patch.object(qwen3_asr_server.Qwen3ASRServer, "_detect_device", return_value="cpu"):
+            server = qwen3_asr_server.Qwen3ASRServer(engine=engine)
+        server.model = mock.Mock()
+        server.model.supports.return_value = False
+        server.session = FakeSession()
+        server.vad_model = FakeVad([{"start": 0, "end": 10**9}])
+        server.initialized = True
+        return server
+
+    def test_short_clip_is_sent_once(self):
+        audio = np.zeros(16_000 * 5, dtype=np.float32)
+        self.assertEqual(len(qwen3_asr_server.Qwen3ASRServer._split_audio(audio, 16_000 * 10)), 1)
+        self.assertEqual(len(qwen3_asr_server.Qwen3ASRServer._split_audio(audio, 0)), 1)
+
+    def test_long_clip_is_cut_into_complete_pieces(self):
+        audio = np.zeros(16_000 * 25, dtype=np.float32)
+        pieces = qwen3_asr_server.Qwen3ASRServer._split_audio(audio, 16_000 * 10)
+        self.assertEqual(len(pieces), 3)
+        self.assertTrue(all(len(piece) <= 16_000 * 10 for piece in pieces))
+        self.assertEqual(sum(len(piece) for piece in pieces), len(audio))
+
+    def test_cut_lands_on_the_quietest_frame_near_the_limit(self):
+        limit = 16_000 * 10
+        audio = np.full(16_000 * 25, 0.4, dtype=np.float32)
+        # A pause just before the limit should win over the loud audio after it.
+        audio[limit - 8000:limit - 4000] = 0.0
+        pieces = qwen3_asr_server.Qwen3ASRServer._split_audio(audio, limit)
+        self.assertLessEqual(len(pieces[0]), limit)
+        self.assertLess(abs(len(pieces[0]) - (limit - 6000)), 4000)
+
+    def test_pieces_join_without_spaces_between_unspaced_scripts(self):
+        join = qwen3_asr_server.Qwen3ASRServer._join_pieces
+        self.assertEqual(join(["Hello", "world"]), "Hello world")
+        self.assertEqual(join(["你好", "世界"]), "你好世界")
+        self.assertEqual(join(["こんにちは", "世界"]), "こんにちは世界")
+        self.assertEqual(join(["Hello", "世界"]), "Hello 世界")
+        self.assertEqual(join(["", "  "]), "")
+
+    def test_session_options_follow_the_catalog_kv_pin(self):
+        pinned = self._server("qwen3-asr-0.6b")
+        self.assertEqual(pinned._session_options(), {"kv_type": "f16", "n_ctx": 32_768})
+        default = self._server("moonshine-tiny")
+        self.assertEqual(default._session_options(), {})
+
+    def test_long_clip_transcribes_every_piece(self):
+        server = self._server()
+        server.session.limits = types.SimpleNamespace(effective_max_audio_ms=10_000)
+        payload = base64.b64encode(np.zeros(16_000 * 25, dtype="<i2").tobytes()).decode("ascii")
+        result = server.transcribe_audio(
+            None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,
+        )
+        self.assertTrue(result["success"], result)
+        self.assertEqual(server.session.calls, 3)
+        self.assertEqual(result["text"], "测试文本测试文本测试文本")
+
+    def test_truncated_decode_keeps_the_partial_transcript(self):
+        class OutputTruncated(Exception):
+            pass
+
+        class RepeatingSession(FakeSession):
+            def run(self, audio, **kwargs):
+                self.calls += 1
+                if self.calls == 2:
+                    error = OutputTruncated("output repetition")
+                    error.partial_result = types.SimpleNamespace(text="partial tail", language="en")
+                    raise error
+                return types.SimpleNamespace(text="first piece", language="en")
+
+        server = self._server()
+        server.session = RepeatingSession()
+        server.session.limits = types.SimpleNamespace(effective_max_audio_ms=10_000)
+        server._truncated_errors = (OutputTruncated,)
+        payload = base64.b64encode(np.zeros(16_000 * 25, dtype="<i2").tobytes()).decode("ascii")
+        result = server.transcribe_audio(
+            None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,
+        )
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["text"], "first piece partial tail first piece")
+
+    def test_empty_partial_transcript_still_fails(self):
+        class OutputTruncated(Exception):
+            pass
+
+        class EmptySession(FakeSession):
+            def run(self, audio, **kwargs):
+                error = OutputTruncated("output repetition")
+                error.partial_result = types.SimpleNamespace(text="   ", language="en")
+                raise error
+
+        server = self._server()
+        server.session = EmptySession()
+        server.session.limits = types.SimpleNamespace(effective_max_audio_ms=0)
+        server._truncated_errors = (OutputTruncated,)
+        payload = base64.b64encode(np.zeros(16_000, dtype="<i2").tobytes()).decode("ascii")
+        result = server.transcribe_audio(
+            None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,
+        )
+        self.assertFalse(result["success"])
+        self.assertEqual(result["type"], "transcription_error")
+
+    def test_input_ceiling_of_zero_sends_the_whole_clip(self):
+        server = self._server("moonshine-tiny")
+        server.session.limits = types.SimpleNamespace(effective_max_audio_ms=0)
+        payload = base64.b64encode(np.zeros(16_000 * 45, dtype="<i2").tobytes()).decode("ascii")
+        result = server.transcribe_audio(
+            None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,
+        )
+        self.assertTrue(result["success"], result)
+        self.assertEqual(server.session.calls, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

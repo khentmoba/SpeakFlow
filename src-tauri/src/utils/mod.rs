@@ -1,3 +1,4 @@
+pub mod asr_catalog;
 pub mod error;
 pub mod foreground;
 pub mod paths;

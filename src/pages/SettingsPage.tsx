@@ -17,6 +17,7 @@ import {
   setRecordingMode,
   hideMainWindow,
   detectMagpie,
+  listInstalledModels,
 } from "@/api/tauri";
 import type { MagpieStatus } from "@/api/tauri";
 import type { UserProfile } from "@/types";
@@ -32,6 +33,7 @@ import HistorySettingsSection from "@/components/settings/HistorySettingsSection
 import GpuIdleUnloadControl from "@/components/settings/GpuIdleUnloadControl";
 import { SettingsReveal } from "@/components/settings/SettingsReveal";
 import R2T2SettingsSection from "@/components/settings/R2T2SettingsSection";
+import { ModelBrowser } from "@/components/settings/ModelBrowser";
 import { prefersReducedMotion } from "@/lib/motion";
 import { PADDING, INPUT_METHOD_KEY, DEFAULT_HOTKEY, SOUND_ENABLED_KEY, RECORDING_MODE_KEY } from "@/lib/constants";
 import { formatAsrEngineDescription, getAsrEngineCapability } from "@/lib/asrEngineCapabilities";
@@ -42,7 +44,7 @@ import {
 import { readLocalStorage, writeLocalStorage } from "@/lib/storage";
 import { useTranslation } from "react-i18next";
 
-import { engineOptions, engineOptionLabel } from "@/lib/asrEngineOptions";
+import { engineDisplayDescription, engineDisplayLabel } from "@/lib/asrEngineOptions";
 import { isOnlineEngineKey, asrCapabilityTagKeys, inputOptions, recordingModeOptions, sourceLabels, sourceColors, findRecordingModeOption } from "@/pages/settings/settingsOptions";
 
 const CorrectionRulesModal = lazy(() => import("@/components/settings/CorrectionRulesModal"));
@@ -183,7 +185,7 @@ export default function SettingsPage({
   }, [activeNavSection, active, t, settingsReady]);
 
   // --- Picker group (mutually exclusive dropdowns) ---
-  type PickerId = "recordingMode" | "microphone" | "alibabaModel" | "engine";
+  type PickerId = "recordingMode" | "microphone" | "alibabaModel";
   const picker = useExclusivePicker<PickerId>();
 
   // --- Hotkey capture ---
@@ -201,6 +203,8 @@ export default function SettingsPage({
   });
   const [soundEnabled, setSoundEnabledState] = useState(() => readLocalStorage(SOUND_ENABLED_KEY) !== "false");
   const [newHotWord, setNewHotWord] = useState("");
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [installedModels, setInstalledModels] = useState<ReadonlySet<string>>(() => new Set());
   // --- Correction validation ---
   const [validationEnabled, setValidationEnabled] = useState(false);
   const [validationUseSeparateModel, setValidationUseSeparateModel] = useState(false);
@@ -251,10 +255,10 @@ export default function SettingsPage({
     lastExportPath,
   } = useSystemSettings({ inputMethod, profile, refreshProfile });
 
-  const engineLabel = useCallback((engineValue: string) => {
-    const option = engineOptions.find((item) => item.key === engineValue);
-    return option ? engineOptionLabel(option, t) : engineValue;
-  }, [t]);
+  const engineLabel = useCallback(
+    (engineValue: string) => engineDisplayLabel(engineValue, t),
+    [t],
+  );
 
   const {
     alibabaAsrModel,
@@ -283,6 +287,16 @@ export default function SettingsPage({
     modelsDirMigrating,
     modelsMigrateMsg,
   } = useModelDirectorySettings({ retryModel });
+
+  // Which catalog models are already on disk. Refreshed when the engine changes,
+  // because a finished download or a models-directory switch changes the answer.
+  useEffect(() => {
+    let disposed = false;
+    listInstalledModels()
+      .then((keys) => { if (!disposed) setInstalledModels(new Set(keys)); })
+      .catch(() => { if (!disposed) setInstalledModels(new Set()); });
+    return () => { disposed = true; };
+  }, [engine, modelsDir]);
 
   const {
     deviceListLoading,
@@ -467,7 +481,7 @@ export default function SettingsPage({
             data-nav-id="engine"
             style={{
               position: "relative",
-              zIndex: (picker.isOpen("engine") || picker.isOpen("alibabaModel")) ? 8 : "auto",
+              zIndex: picker.isOpen("alibabaModel") ? 8 : "auto",
             }}
           >
             <div className="settings-section-header">
@@ -475,32 +489,27 @@ export default function SettingsPage({
               <h2 className="settings-section-title">{t("settings.engine")}</h2>
             </div>
             {(() => {
-              const currentOption = engineOptions.find((o) => o.key === engine) ?? engineOptions[0];
-              const CurrentIcon = currentOption.icon;
-              const currentLabel = engineOptionLabel(currentOption, t);
-              const currentDescription = formatAsrEngineDescription(
-                currentOption.key,
-                t(currentOption.descKey),
-              );
-              const currentCapabilityTags = asrCapabilityTagKeys(currentOption.key);
+              const currentLabel = engineDisplayLabel(engine, t);
+              const currentDescription = engineDisplayDescription(engine, t);
+              const currentCapabilityTags = asrCapabilityTagKeys(engine);
               return (
-                <div ref={picker.setRef("engine")} style={{ position: "relative" }}>
+                <div className="settings-column" style={{ gap: 8 }}>
                   <button
                     type="button"
                     className="picker-trigger"
-                    data-open={picker.isOpen("engine")}
-                    aria-haspopup="listbox"
-                      aria-expanded={picker.isExpanded("engine")}
+                    data-open={browserOpen}
+                    aria-expanded={browserOpen}
+                    aria-controls="asr-model-browser"
                     aria-label={t("settings.engine")}
                     disabled={engineLoading || onlineAsrRegionLoading}
-                    onClick={() => picker.toggle("engine")}
+                    onClick={() => setBrowserOpen((open) => !open)}
                   >
                     <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                      <CurrentIcon size={18} strokeWidth={1.5} style={{ flexShrink: 0, color: "var(--color-accent)" }} />
+                      <AudioLines size={18} strokeWidth={1.5} style={{ flexShrink: 0, color: "var(--color-accent)" }} />
                       <span className="picker-trigger-copy">
                         <strong>{currentLabel}</strong>
                         <span>
-                          {currentDescription}
+                          {formatAsrEngineDescription(engine, currentDescription)}
                           {currentCapabilityTags.length > 0 && (
                             <span className="asr-capability-tags">
                               {currentCapabilityTags.map((tagKey) => (
@@ -513,47 +522,16 @@ export default function SettingsPage({
                     </span>
                     <ChevronsUpDown size={14} className="icon-tertiary" style={{ flexShrink: 0 }} />
                   </button>
-                  {picker.isOpen("engine") && (
-                    <div className={picker.popoverClass("engine")}>
-                      <div className="picker-list" role="listbox">
-                        {engineOptions.map((option) => {
-                          const { key, icon: Icon, descKey } = option;
-                          const displayLabel = engineOptionLabel(option, t);
-                          const displayDescription = formatAsrEngineDescription(key, t(descKey));
-                          const selected = engine === key;
-                          const capabilityTags = asrCapabilityTagKeys(key);
-                          return (
-                            <button
-                              key={key}
-                              type="button"
-                              className="picker-option"
-                              data-active={selected}
-                              disabled={engineLoading || onlineAsrRegionLoading}
-                              onClick={() => {
-                                picker.close();
-                                void handleEngineSwitch(key);
-                              }}
-                            >
-                              <span style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
-                                <Icon size={16} strokeWidth={1.5} style={{ flexShrink: 0 }} />
-                                <span className="picker-option-copy">
-                                  <strong>{displayLabel}</strong>
-                                  <span>{displayDescription}</span>
-                                  {capabilityTags.length > 0 && (
-                                    <span className="asr-capability-tags">
-                                      {capabilityTags.map((tagKey) => (
-                                        <span key={tagKey} className="asr-capability-tag">{t(tagKey)}</span>
-                                      ))}
-                                    </span>
-                                  )}
-                                </span>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
+                  <SettingsReveal open={browserOpen} gap={8}>
+                    <div id="asr-model-browser">
+                      <ModelBrowser
+                        engine={engine}
+                        onSelect={(key) => { void handleEngineSwitch(key); }}
+                        disabled={engineLoading || onlineAsrRegionLoading}
+                        installed={installedModels}
+                      />
                     </div>
-                  )}
+                  </SettingsReveal>
                 </div>
               );
             })()}
@@ -1001,7 +979,7 @@ export default function SettingsPage({
               {getAsrEngineCapability(engine)?.vocabulary === false && (
                 <p className="settings-hint">
                   {t("settings.vocabularyAfterRecognitionHint", {
-                    engine: engineOptionLabel(engineOptions.find((o) => o.key === engine) ?? engineOptions[0], t),
+                    engine: engineDisplayLabel(engine, t),
                   })}
                 </p>
               )}

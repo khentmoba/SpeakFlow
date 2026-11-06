@@ -112,6 +112,14 @@ pub async fn check_model_files() -> Result<funasr_service::ModelCheckResult, App
     funasr_service::check_model_files().await
 }
 
+/// Catalog engines whose model file is already downloaded.
+#[tauri::command]
+pub async fn list_installed_models() -> Result<Vec<String>, AppError> {
+    tokio::task::spawn_blocking(funasr_service::installed_catalog_engines)
+        .await
+        .map_err(|error| AppError::Other(format!("Listing installed models failed: {error}")))
+}
+
 #[tauri::command]
 pub async fn download_models(
     app_handle: tauri::AppHandle,
@@ -240,8 +248,9 @@ pub async fn set_engine(
         return Err(AppError::Other(format!(
             "Unsupported engine type: {}. Valid values: {}",
             engine,
-            [paths::LOCAL_ASR_ENGINES, paths::ONLINE_ASR_ENGINES]
-                .concat()
+            paths::local_asr_engines()
+                .chain(paths::ONLINE_ASR_ENGINES.iter().copied())
+                .collect::<Vec<_>>()
                 .join(", ")
         )));
     }

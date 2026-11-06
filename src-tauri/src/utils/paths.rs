@@ -68,18 +68,18 @@ pub fn get_engine_config_path() -> PathBuf {
 /// Engine used when engine.json is missing or names an unknown engine.
 pub const DEFAULT_ENGINE: &str = "qwen3-asr-1.7b";
 
-/// Local engines with a downloadable model. Keep in sync with
-/// `src/lib/asrEngineOptions.ts` and `TRANSCRIBE_CPP_ASR_MODELS`/`LOCAL_ASR_MODELS`
-/// in `src-tauri/resources/hf_cache_utils.py`.
-pub const LOCAL_ASR_ENGINES: &[&str] = &[
-    "qwen3-asr-0.6b",
-    "qwen3-asr-1.7b",
-    "parakeet-unified-en-0.6b",
-    "parakeet-tdt-0.6b-v2",
-    "canary-qwen-2.5b",
-    "cohere-transcribe-03-2026",
-    "confucius4-r2t2",
-];
+/// The one local engine that is not a catalog model.
+pub const R2T2_ENGINE: &str = "confucius4-r2t2";
+
+/// Every local engine: the catalog models plus R2T2. The catalog is
+/// `src-tauri/resources/asr_catalog.json`, shared with Python and TypeScript.
+pub fn local_asr_engines() -> impl Iterator<Item = &'static str> {
+    super::asr_catalog::catalog_engines().chain(std::iter::once(R2T2_ENGINE))
+}
+
+pub fn is_local_engine(engine: &str) -> bool {
+    engine == R2T2_ENGINE || super::asr_catalog::is_catalog_engine(engine)
+}
 
 pub const ONLINE_ASR_ENGINES: &[&str] = &["glm-asr", "alibaba-asr"];
 
@@ -95,20 +95,12 @@ fn configured_engine(engine: Option<&str>) -> &str {
 }
 
 pub fn is_supported_engine(engine: &str) -> bool {
-    LOCAL_ASR_ENGINES.contains(&engine) || ONLINE_ASR_ENGINES.contains(&engine)
+    is_local_engine(engine) || ONLINE_ASR_ENGINES.contains(&engine)
 }
 
 /// Local engines served by `qwen3_asr_server.py` (transcribe.cpp GGUF models).
 pub fn is_transcribe_cpp_engine(engine: &str) -> bool {
-    matches!(
-        engine,
-        "qwen3-asr-0.6b"
-            | "qwen3-asr-1.7b"
-            | "parakeet-unified-en-0.6b"
-            | "parakeet-tdt-0.6b-v2"
-            | "canary-qwen-2.5b"
-            | "cohere-transcribe-03-2026"
-    )
+    super::asr_catalog::is_catalog_engine(engine)
 }
 
 pub fn is_online_engine(engine: &str) -> bool {
@@ -116,13 +108,12 @@ pub fn is_online_engine(engine: &str) -> bool {
 }
 
 /// Engines that condition recognition on Smart Vocabulary. The others only get
-/// local spelling correction after recognition. Keep in sync with
-/// `vocabulary` in `src/lib/asrEngineCapabilities.ts`.
+/// local spelling correction after recognition. Catalog models carry this in
+/// `asr_catalog.json`; keep the rest in sync with `vocabulary` in
+/// `src/lib/asrEngineCapabilities.ts`.
 pub fn engine_receives_vocabulary(engine: &str) -> bool {
-    matches!(
-        engine,
-        "qwen3-asr-0.6b" | "qwen3-asr-1.7b" | "confucius4-r2t2" | "glm-asr" | "alibaba-asr"
-    )
+    super::asr_catalog::receives_vocabulary(engine)
+        || matches!(engine, "confucius4-r2t2" | "glm-asr" | "alibaba-asr")
 }
 
 const GLM_ENDPOINT_INTERNATIONAL: &str = "https://api.z.ai";
@@ -569,11 +560,7 @@ mod tests {
 
     #[test]
     fn engine_selection_keeps_every_supported_engine() {
-        for engine in super::LOCAL_ASR_ENGINES
-            .iter()
-            .chain(super::ONLINE_ASR_ENGINES.iter())
-            .copied()
-        {
+        for engine in super::local_asr_engines().chain(super::ONLINE_ASR_ENGINES.iter().copied()) {
             assert_eq!(super::configured_engine(Some(engine)), engine);
         }
         assert_eq!(super::configured_engine(None), "qwen3-asr-1.7b");

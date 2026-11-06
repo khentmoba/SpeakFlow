@@ -47,16 +47,10 @@ def main():
     parser = argparse.ArgumentParser(prog="engine")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    from hf_cache_utils import LOCAL_ASR_MODELS
+
     serve_p = sub.add_parser("serve")
-    engine_choices = [
-        "qwen3-asr-0.6b",
-        "qwen3-asr-1.7b",
-        "parakeet-unified-en-0.6b",
-        "parakeet-tdt-0.6b-v2",
-        "canary-qwen-2.5b",
-        "cohere-transcribe-03-2026",
-        "confucius4-r2t2",
-    ]
+    engine_choices = sorted(LOCAL_ASR_MODELS)
     serve_p.add_argument("--engine", required=True, choices=engine_choices)
 
     dl_p = sub.add_parser("download")
