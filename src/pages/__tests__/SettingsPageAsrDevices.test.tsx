@@ -40,6 +40,7 @@ const tauriMock = vi.hoisted(() => ({
   isAutostartEnabled: vi.fn(),
   listAiModels: vi.fn(),
   listAlibabaAsrModels: vi.fn(),
+  listInstalledModels: vi.fn(),
   listInputDevices: vi.fn(),
   loginGrokBuildOauth: vi.fn(),
   loginOpenaiCodexOauth: vi.fn(),
@@ -159,6 +160,23 @@ const labels: Record<string, string> = {
   "settings.followSystemMic": "Use system default microphone",
   "settings.glmApiKeyPlaceholder": "GLM API Key",
   "settings.glmAsrDesc": "GLM cloud speech recognition",
+  "settings.browseModels": "Browse models",
+  "settings.allLanguages": "All languages",
+  "settings.filterByLanguage": "Filter by language",
+  "settings.searchModels": "Search models",
+  "settings.searchModelsPlaceholder": "Search by name or description",
+  "settings.modelCount": "{{count}} models",
+  "settings.modelRecommended": "Recommended",
+  "settings.modelTranslate": "Translate",
+  "settings.modelSelected": "Selected",
+  "settings.modelUse": "Use",
+  "settings.modelDownload": "Download",
+  "settings.modelErrorRate": "({{percent}}% error)",
+  "settings.modelSpeed": "Speed: {{seconds}} / 30 s",
+  "settings.modelLanguageCount": "{{count}} languages",
+  "settings.modelNoResults": "No model matches this language and search.",
+  "settings.modelBrowserHint": "Benchmarks come from Handy.",
+  "settings.otherEngines": "Other engines",
   "settings.engine": "ASR Engine",
   "settings.currentDefault": "System default: {{name}}",
   "settings.micLevelMonitor": "Microphone Level Monitor",
@@ -280,6 +298,7 @@ function resetMocks(profile: UserProfile = baseProfile) {
     models: ["qwen3-asr-flash"],
     source: "fallback",
   });
+  tauriMock.listInstalledModels.mockResolvedValue([]);
   tauriMock.listInputDevices.mockResolvedValue({ devices: [], selectedDeviceName: null });
   tauriMock.pickFolder.mockResolvedValue(null);
   tauriMock.setOnlineAsrEndpoint.mockResolvedValue({
@@ -402,7 +421,7 @@ describe("SettingsPage ASR and device settings", () => {
     const engineTrigger = within(engineSection!).getByRole("button", { name: "ASR Engine" });
     await waitFor(() => expect(engineTrigger).not.toBeDisabled());
     fireEvent.click(engineTrigger);
-    const engineList = screen.getByRole("listbox");
+    const engineList = await screen.findByRole("listbox", { name: "Browse models" });
     fireEvent.click(within(engineList).getByRole("option", { name: /GLM-ASR/ }));
 
     await waitFor(() => {
@@ -427,12 +446,12 @@ describe("SettingsPage ASR and device settings", () => {
     const engineTrigger = within(engineSection!).getByRole("button", { name: "ASR Engine" });
     await waitFor(() => expect(engineTrigger).not.toBeDisabled());
     fireEvent.click(engineTrigger);
-    const engineList = screen.getByRole("listbox");
+    const engineList = await screen.findByRole("listbox", { name: "Browse models" });
     fireEvent.click(within(engineList).getByRole("option", { name: /Confucius4-R2T2 Q8/ }));
 
     await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("Failed to switch engine"));
     expect(tauriMock.setEngine).toHaveBeenCalledWith("confucius4-r2t2");
-    expect(engineTrigger).toHaveTextContent("Qwen3-ASR 0.6B Q8");
+    expect(engineTrigger).toHaveTextContent("Qwen3-ASR 0.6B");
     expect(recordingContextMock.retryModel).not.toHaveBeenCalled();
   });
 

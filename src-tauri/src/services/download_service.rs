@@ -165,7 +165,7 @@ pub async fn run_download(
     // 启动下载脚本（逐行读取 stdout 以转发进度）
     // 模型从 HuggingFace 下载，使用 HF 默认缓存目录
     let engine = paths::read_engine_config();
-    let engine_arg = if paths::LOCAL_ASR_ENGINES.contains(&engine.as_str()) {
+    let engine_arg = if paths::is_local_engine(&engine) {
         engine.as_str()
     } else {
         paths::DEFAULT_ENGINE

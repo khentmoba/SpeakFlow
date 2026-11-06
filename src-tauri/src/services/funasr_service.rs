@@ -169,68 +169,37 @@ pub struct ModelCheckResult {
     pub corrupt_models: Vec<String>,
 }
 
-/// Downloadable Q8 model for one local engine. Mirrors `LOCAL_ASR_MODELS` in
-/// `src-tauri/resources/hf_cache_utils.py`, which pins the revision and checksum.
+/// Downloadable model file for one local engine. Catalog models come from
+/// `src-tauri/resources/asr_catalog.json`, which pins the revision and checksum
+/// for `hf_cache_utils.py`; R2T2 is the only entry defined here.
 struct LocalModelFile {
     engine: &'static str,
     repo_id: &'static str,
     filename: &'static str,
-    description: &'static str,
+    description: String,
 }
 
-const QWEN3_ASR_06_MODEL: LocalModelFile = LocalModelFile {
-    engine: "qwen3-asr-0.6b",
-    repo_id: "handy-computer/Qwen3-ASR-0.6B-gguf",
-    filename: "Qwen3-ASR-0.6B-Q8_0.gguf",
-    description: "Qwen3-ASR 0.6B Q8 model",
-};
-
-const LOCAL_MODEL_FILES: &[LocalModelFile] = &[
-    QWEN3_ASR_06_MODEL,
-    LocalModelFile {
-        engine: "qwen3-asr-1.7b",
-        repo_id: "handy-computer/Qwen3-ASR-1.7B-gguf",
-        filename: "Qwen3-ASR-1.7B-Q8_0.gguf",
-        description: "Qwen3-ASR 1.7B Q8 model",
-    },
-    LocalModelFile {
-        engine: "parakeet-unified-en-0.6b",
-        repo_id: "handy-computer/parakeet-unified-en-0.6b-gguf",
-        filename: "parakeet-unified-en-0.6b-Q8_0.gguf",
-        description: "Parakeet Unified EN 0.6B Q8 model",
-    },
-    LocalModelFile {
-        engine: "parakeet-tdt-0.6b-v2",
-        repo_id: "handy-computer/parakeet-tdt-0.6b-v2-gguf",
-        filename: "parakeet-tdt-0.6b-v2-Q8_0.gguf",
-        description: "Parakeet TDT 0.6B v2 Q8 model",
-    },
-    LocalModelFile {
-        engine: "canary-qwen-2.5b",
-        repo_id: "handy-computer/canary-qwen-2.5b-gguf",
-        filename: "canary-qwen-2.5b-Q8_0.gguf",
-        description: "Canary-Qwen 2.5B Q8 model",
-    },
-    LocalModelFile {
-        engine: "cohere-transcribe-03-2026",
-        repo_id: "handy-computer/cohere-transcribe-03-2026-gguf",
-        filename: "cohere-transcribe-03-2026-Q8_0.gguf",
-        description: "Cohere Transcribe Q8 model",
-    },
-    LocalModelFile {
-        engine: "confucius4-r2t2",
-        repo_id: "davidxifeng/Confucius4-R2T2-gguf",
-        filename: "r2t2-q8_0.gguf",
-        description: "Confucius4-R2T2 Q8 model",
-    },
-];
+const R2T2_MODEL: (&str, &str) = ("davidxifeng/Confucius4-R2T2-gguf", "r2t2-q8_0.gguf");
 
 /// Model for a local engine. Unknown or legacy values fall back to the default engine.
-fn local_model_file(engine: &str) -> &'static LocalModelFile {
-    let find = |key: &str| LOCAL_MODEL_FILES.iter().find(|model| model.engine == key);
-    find(engine)
-        .or_else(|| find(paths::DEFAULT_ENGINE))
-        .unwrap_or(&QWEN3_ASR_06_MODEL)
+fn local_model_file(engine: &str) -> LocalModelFile {
+    if engine == paths::R2T2_ENGINE {
+        return LocalModelFile {
+            engine: paths::R2T2_ENGINE,
+            repo_id: R2T2_MODEL.0,
+            filename: R2T2_MODEL.1,
+            description: "Confucius4-R2T2 Q8 model".to_string(),
+        };
+    }
+    let model = crate::utils::asr_catalog::find(engine)
+        .or_else(|| crate::utils::asr_catalog::find(paths::DEFAULT_ENGINE))
+        .expect("the default engine is in the catalog");
+    LocalModelFile {
+        engine: model.key.as_str(),
+        repo_id: model.repo_id.as_str(),
+        filename: model.filename.as_str(),
+        description: format!("{} Q8 model", model.name),
+    }
 }
 
 const HF_COMPLETE_MANIFEST_NAME: &str = ".speak_flow_complete.json";

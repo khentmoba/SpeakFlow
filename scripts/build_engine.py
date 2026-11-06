@@ -66,6 +66,7 @@ ADD_DATA_FILES = [
     "server_common.py",
     "gpu_idle.py",
     "hf_cache_utils.py",
+    "asr_catalog.json",
 ]
 
 HIDDEN_IMPORTS = [
@@ -461,7 +462,7 @@ def verify_archive_sources(archive: Path) -> None:
     """Reject stale bundled Python code before building an installer."""
     expected = {
         f"_internal/{name}": (RESOURCES_DIR / name).read_bytes().replace(b"\r\n", b"\n")
-        for name in ADD_DATA_FILES if name.endswith(".py")
+        for name in ADD_DATA_FILES if name.endswith(".py") or name == "asr_catalog.json"
     }
     seen = set()
     native_paths = {

@@ -102,6 +102,7 @@
       "resources/R2T2-MODEL-LICENSE.txt": "resources/R2T2-MODEL-LICENSE.txt",
       "resources/download_models.py": "resources/download_models.py",
       "resources/hf_cache_utils.py": "resources/hf_cache_utils.py",
+      "resources/asr_catalog.json": "resources/asr_catalog.json",
       "resources/server_common.py": "resources/server_common.py",
       "resources/gpu_idle.py": "resources/gpu_idle.py",
       "icons/icon.ico": "SpeakFlow.ico",

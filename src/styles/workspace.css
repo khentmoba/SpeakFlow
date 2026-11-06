@@ -121,6 +121,8 @@
 .dictation-model-selector { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .dictation-model-selector label { font-size: 11px; color: var(--color-text-secondary); }
 .dictation-model-selector select { width: 100%; min-width: 0; min-height: 38px; border: 1px solid var(--color-border); border-radius: 7px; padding: 8px 10px; background: var(--color-bg-secondary); color: var(--color-text-primary); font: inherit; font-size: 12px; text-overflow: ellipsis; }
+.dictation-model-browse { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--color-accent); font: inherit; font-size: 11px; cursor: pointer; }
+.dictation-model-browse:hover { text-decoration: underline; }
 .dictation-model-selector select:disabled { opacity: 0.6; cursor: not-allowed; }
 .recording-dock-status { margin-top: 10px; min-width: 0; }
 .main-page .chip-container { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }

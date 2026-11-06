@@ -140,7 +140,7 @@ fn local_engine_responses_use_manual_vocabulary_with_a_full_learned_list() {
         });
     });
 
-    for &engine in crate::utils::paths::LOCAL_ASR_ENGINES {
+    for engine in crate::utils::paths::local_asr_engines() {
         let response: ServerResponse = serde_json::from_value(serde_json::json!({
             "success": true,
             "text": "请用 get hub 打开 open cloud。 Ask josé to use c++ and c#.",

@@ -3,7 +3,7 @@ import { ArrowUpRight, AudioLines, FileText, Keyboard, Minus, Settings, X } from
 import { toast } from "sonner";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useRecordingContext } from "@/contexts/RecordingContext";
-import { copyToClipboard, hideMainWindow, submitUserCorrection } from "@/api/tauri";
+import { copyToClipboard, hideMainWindow, listInstalledModels, submitUserCorrection } from "@/api/tauri";
 import TitleBar from "@/components/TitleBar";
 import RecordingButton from "@/components/RecordingButton";
 import StatusIndicator from "@/components/StatusIndicator";
@@ -39,11 +39,21 @@ export default function MainPage({ onNavigate, animClass = "" }: {
     engine, engineLoading, handleEngineSwitch,
     alibabaAsrModel, alibabaAsrModelSaving, alibabaAsrModels, alibabaAsrModelsLoading, handleAlibabaAsrModelSelect,
   } = useAsrEngineSettings({ engineLabel, retryModel });
+  // Groups the model list so the current download is easy to find.
+  useEffect(() => {
+    let disposed = false;
+    listInstalledModels()
+      .then((keys) => { if (!disposed) setInstalledEngines(new Set(keys)); })
+      .catch(() => { if (!disposed) setInstalledEngines(new Set()); });
+    return () => { disposed = true; };
+  }, [engine, modelReady]);
+
   const isReady = modelReady && !engineLoading && !alibabaAsrModelSaving;
   const stage = engineLoading || alibabaAsrModelSaving ? "checking" : modelStage;
   const modelSelectionDisabled = engineLoading || alibabaAsrModelSaving || isStarting || isRecording || isProcessing || isDownloading;
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [installedEngines, setInstalledEngines] = useState<ReadonlySet<string>>(() => new Set());
   const [errorDismissed, setErrorDismissed] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => readLocalStorage(ONBOARDING_DISMISSED_KEY) === "true");
   const isToggleMode = readLocalStorage(RECORDING_MODE_KEY) === "toggle";
@@ -222,11 +232,26 @@ export default function MainPage({ onNavigate, animClass = "" }: {
               disabled={modelSelectionDisabled}
               onChange={(event) => { void handleEngineSwitch(event.target.value); }}
             >
-              {engineOptions.map((option) => (
-                <option key={option.key} value={option.key}>{engineOptionLabel(option, t)}</option>
+              {([
+                ["main.modelGroupInstalled", engineOptions.filter((option) => installedEngines.has(option.key))],
+                ["main.modelGroupRecommended", engineOptions.filter((option) => !installedEngines.has(option.key) && option.recommended)],
+                ["main.modelGroupOther", engineOptions.filter((option) => !installedEngines.has(option.key) && !option.recommended)],
+              ] as const).map(([labelKey, options]) => options.length === 0 ? null : (
+                <optgroup key={labelKey} label={t(labelKey)}>
+                  {options.map((option) => (
+                    <option key={option.key} value={option.key}>{engineOptionLabel(option, t)}</option>
+                  ))}
+                </optgroup>
               ))}
               {!engineOptions.some((option) => option.key === engine) && <option value={engine}>{engine}</option>}
             </select>
+            <button
+              type="button"
+              className="dictation-model-browse"
+              onClick={() => onNavigate("settings")}
+            >
+              {t("main.browseModels")}
+            </button>
             {engine === "alibaba-asr" && (
               <>
                 <label htmlFor="dictation-cloud-model">{t("main.cloudModelLabel")}</label>

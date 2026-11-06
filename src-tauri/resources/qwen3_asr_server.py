@@ -3,8 +3,8 @@
 
 """Low-latency local GGUF ASR server backed by transcribe.cpp.
 
-Serves the Qwen3-ASR, Parakeet, Canary-Qwen and Cohere Transcribe engines. All
-run through the same transcribe.cpp session, FireRedVAD front end and offline transcription path.
+Serves every model in asr_catalog.json. All run through the same transcribe.cpp
+session, FireRedVAD front end and offline transcription path.
 """
 
 import importlib.metadata
@@ -32,14 +32,23 @@ from hf_cache_utils import TRANSCRIBE_CPP_ASR_MODELS, find_hf_snapshot_file
 
 QWEN3_ASR_N_CTX = 32_768
 QWEN3_VAD_SAMPLE_RATE = 16_000
-ENGINE_DISPLAY_NAMES = {
-    "qwen3-asr-0.6b": "Qwen3-ASR 0.6B",
-    "qwen3-asr-1.7b": "Qwen3-ASR 1.7B",
-    "parakeet-unified-en-0.6b": "Parakeet Unified EN 0.6B",
-    "parakeet-tdt-0.6b-v2": "Parakeet TDT 0.6B v2",
-    "canary-qwen-2.5b": "Canary-Qwen 2.5B",
-    "cohere-transcribe-03-2026": "Cohere Transcribe",
-}
+# Clips longer than a model's input ceiling are cut near this quiet-search window.
+SPLIT_SEARCH_SECONDS = 3.0
+SPLIT_FRAME_SECONDS = 0.05
+ENGINE_DISPLAY_NAMES = {key: model["name"] for key, model in TRANSCRIBE_CPP_ASR_MODELS.items()}
+
+
+def _is_unspaced_script(char):
+    """Chinese, Japanese kana and Thai are written without spaces between words."""
+    code = ord(char)
+    return (
+        0x3040 <= code <= 0x30FF
+        or 0x3400 <= code <= 0x9FFF
+        or 0xF900 <= code <= 0xFAFF
+        or 0xFF00 <= code <= 0xFFEF
+        or 0x0E00 <= code <= 0x0E7F
+        or 0x3000 <= code <= 0x303F
+    )
 
 
 class Qwen3ASRServer(BaseASRServer):
@@ -61,6 +70,8 @@ class Qwen3ASRServer(BaseASRServer):
         self.vad_model = None
         self.backend = "cuda" if self.device == "cuda" else "auto"
         self._last_load_error = None
+        # Filled in once the runtime is loaded; empty means "catch nothing".
+        self._truncated_errors = ()
         self._total_inference_ms = 0.0
         self._total_vad_ms = 0.0
         self._vad_calls = 0
@@ -157,13 +168,22 @@ class Qwen3ASRServer(BaseASRServer):
     def _load_runtime(self, model_path):
         import transcribe_cpp
 
+        # A truncated decode keeps the text it produced; callers prefer that
+        # over losing the whole recording. OutputRepetition is a subclass, but
+        # both names are read so a renamed base still matches.
+        self._truncated_errors = tuple(
+            error
+            for name in ("OutputTruncated", "OutputRepetition")
+            if (error := getattr(transcribe_cpp, name, None)) is not None
+        )
+
         preferred = self._preferred_backends()
         errors = []
         for backend in preferred:
             try:
                 with self.stdout_suppressor.suppress():
                     self.model = transcribe_cpp.Model(model_path, backend=backend)
-                    self.session = self.model.session(kv_type="f16", n_ctx=QWEN3_ASR_N_CTX)
+                    self.session = self.model.session(**self._session_options())
                 self.backend = backend
                 self.device = "cuda" if backend == "cuda" else backend
                 return
@@ -172,6 +192,72 @@ class Qwen3ASRServer(BaseASRServer):
                 self._close_runtime()
                 logger.warning("%s %s backend failed to load: %s", self.display_name, backend, exc)
         raise RuntimeError("; ".join(errors))
+
+    def _session_options(self):
+        """Models shipped before the catalog keep their validated f16 KV cache.
+
+        Others use the library defaults: Moonshine Tiny aborts the process
+        under f16, and a lowered n_ctx narrows no model that needs it.
+        """
+        if self.model_config.get("kv_type") == "f16":
+            return {"kv_type": "f16", "n_ctx": QWEN3_ASR_N_CTX}
+        return {}
+
+    def _max_input_samples(self):
+        """Longest clip the loaded session accepts, or 0 when it states none."""
+        try:
+            milliseconds = int(self.session.limits.effective_max_audio_ms)
+        except Exception:
+            return 0
+        if milliseconds <= 0:
+            return 0
+        return milliseconds * QWEN3_VAD_SAMPLE_RATE // 1000
+
+    @staticmethod
+    def _split_audio(audio, max_samples):
+        """Cut a long clip into pieces no longer than max_samples.
+
+        Each cut lands on the quietest short frame near the limit so words are
+        not split in the middle when the speaker pauses.
+        """
+        import numpy as np
+
+        if max_samples <= 0 or len(audio) <= max_samples:
+            return [audio]
+        frame = max(1, int(SPLIT_FRAME_SECONDS * QWEN3_VAD_SAMPLE_RATE))
+        search = min(max_samples // 2, int(SPLIT_SEARCH_SECONDS * QWEN3_VAD_SAMPLE_RATE))
+        pieces = []
+        start = 0
+        while len(audio) - start > max_samples:
+            limit = start + max_samples
+            lo = max(start + frame, limit - search)
+            cut = limit
+            best = None
+            for frame_start in range(lo, limit - frame + 1, frame):
+                energy = float(np.mean(np.square(audio[frame_start:frame_start + frame])))
+                if best is None or energy <= best:
+                    best = energy
+                    cut = frame_start + frame // 2
+            pieces.append(np.ascontiguousarray(audio[start:cut]))
+            start = cut
+        pieces.append(np.ascontiguousarray(audio[start:]))
+        return pieces
+
+    @staticmethod
+    def _join_pieces(texts):
+        """Join piece transcripts, adding a space only between spaced scripts."""
+        joined = ""
+        for text in (t.strip() for t in texts):
+            if not text:
+                continue
+            if joined:
+                # Chinese and Japanese are written without spaces; Latin next to
+                # them keeps one, as usual in mixed-script text.
+                spaced = not (_is_unspaced_script(joined[-1]) and _is_unspaced_script(text[0]))
+                joined += (" " if spaced else "") + text
+            else:
+                joined = text
+        return joined
 
     def _warmup_inference(self):
         try:
@@ -366,17 +452,31 @@ class Qwen3ASRServer(BaseASRServer):
             run_options = {"timestamps": "none"}
             if hot_words and self.model.supports("vocabulary"):
                 run_options["vocabulary"] = hot_words
+            pieces = self._split_audio(audio, self._max_input_samples())
             started = time.perf_counter()
+            results = []
             with self.stdout_suppressor.suppress():
                 # These models do not advertise speculative decoding. Keeping a
                 # persistent KV session is the supported low-latency path.
-                result = self.session.run(audio, **run_options)
+                for piece in pieces:
+                    try:
+                        results.append(self.session.run(piece, **run_options))
+                    except self._truncated_errors as exc:
+                        partial = getattr(exc, "partial_result", None)
+                        if partial is None or not (partial.text or "").strip():
+                            raise
+                        logger.warning(
+                            "%s stopped early (%s); keeping the partial transcript",
+                            self.display_name,
+                            type(exc).__name__,
+                        )
+                        results.append(partial)
             inference_ms = (time.perf_counter() - started) * 1000
             self._total_inference_ms += inference_ms
             self.transcription_count += 1
 
-            text = result.text.strip()
-            language = result.language or "unknown"
+            text = self._join_pieces(r.text for r in results)
+            language = results[0].language or "unknown"
             self._maybe_cleanup(duration)
             return {
                 "success": True,

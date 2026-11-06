@@ -6,7 +6,7 @@ import MainPage from "../MainPage";
 const api = vi.hoisted(() => ({
   getEngine: vi.fn(), setEngine: vi.fn(),
   getOnlineAsrApiKey: vi.fn(), getOnlineAsrEndpoint: vi.fn(), getAlibabaAsrConfig: vi.fn(),
-  listAlibabaAsrModels: vi.fn(), setAlibabaAsrModel: vi.fn(),
+  listAlibabaAsrModels: vi.fn(), setAlibabaAsrModel: vi.fn(), listInstalledModels: vi.fn(),
   setOnlineAsrApiKey: vi.fn(), setOnlineAsrEndpoint: vi.fn(),
 }));
 const recording = vi.hoisted(() => ({
@@ -32,6 +32,7 @@ beforeEach(() => {
   api.getOnlineAsrEndpoint.mockResolvedValue({ region: "international", url: "" });
   api.getAlibabaAsrConfig.mockResolvedValue({ model: "qwen3-asr-flash", models: ["qwen3-asr-flash", "qwen3-asr-flash-realtime"] });
   api.setAlibabaAsrModel.mockResolvedValue(undefined);
+  api.listInstalledModels.mockResolvedValue([]);
 });
 
 async function setup() {

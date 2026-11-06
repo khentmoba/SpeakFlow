@@ -20,6 +20,9 @@
     "commands::funasr::check_model_files": [
       "engine"
     ],
+    "commands::funasr::list_installed_models": [
+      "engine"
+    ],
     "commands::funasr::set_online_asr_endpoint": [
       "engine"
     ],
@@ -2151,6 +2154,7 @@
     "commands::funasr::set_engine": "src-tauri/src/commands/funasr.rs#fn set_engine(",
     "commands::funasr::check_funasr_status": "src-tauri/src/commands/funasr.rs#fn check_funasr_status(",
     "commands::funasr::check_model_files": "src-tauri/src/commands/funasr.rs#fn check_model_files(",
+    "commands::funasr::list_installed_models": "src-tauri/src/commands/funasr.rs#fn list_installed_models(",
     "commands::funasr::set_online_asr_endpoint": "src-tauri/src/commands/funasr.rs#fn set_online_asr_endpoint(",
     "commands::funasr::get_online_asr_endpoint": "src-tauri/src/commands/funasr.rs#fn get_online_asr_endpoint(",
     "commands::funasr::get_alibaba_asr_config": "src-tauri/src/commands/funasr.rs#fn get_alibaba_asr_config(",

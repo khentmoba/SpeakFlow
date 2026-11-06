@@ -129,6 +129,7 @@ export function openAppReleasePage(url?: string | null): Promise<string> {
 
 export const checkFunASRStatus = createNoArgCommand<FunASRStatus>("check_funasr_status");
 export const checkModelFiles = createNoArgCommand<ModelCheckResult>("check_model_files");
+export const listInstalledModels = createNoArgCommand<string[]>("list_installed_models");
 export const downloadModels = createNoArgCommand<string>("download_models");
 export const cancelModelDownload = createNoArgCommand<string>("cancel_model_download");
 export const restartFunASR = createNoArgCommand<string>("restart_funasr");

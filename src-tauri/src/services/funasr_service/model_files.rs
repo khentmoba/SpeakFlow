@@ -236,6 +236,33 @@ pub(super) fn snapshot_matches_legacy_weight_check(snapshot_path: &std::path::Pa
     ready
 }
 
+/// True when any snapshot of `repo_dir` holds `filename` at exactly `size` bytes.
+///
+/// A size match is enough for the model browser's "Installed" label. It does not
+/// hash the file; the selected engine still gets the full readiness check.
+pub(super) fn repo_dir_has_file(repo_dir: &std::path::Path, filename: &str, size: u64) -> bool {
+    let Ok(snapshots) = std::fs::read_dir(repo_dir.join("snapshots")) else {
+        return false;
+    };
+    snapshots.filter_map(Result::ok).any(|snapshot| {
+        std::fs::metadata(snapshot.path().join(filename))
+            .is_ok_and(|meta| meta.is_file() && meta.len() == size)
+    })
+}
+
+/// Catalog engines whose model file is present in the models directory.
+pub fn installed_catalog_engines() -> Vec<String> {
+    let cache_root = get_hf_cache_root();
+    crate::utils::asr_catalog::models()
+        .iter()
+        .filter(|model| {
+            let repo_dir = cache_root.join(format!("models--{}", model.repo_id.replace('/', "--")));
+            repo_dir_has_file(&repo_dir, &model.filename, model.size)
+        })
+        .map(|model| model.key.clone())
+        .collect()
+}
+
 /// 检查当前 ASR 引擎的模型文件是否已下载。
 pub(super) fn inspect_model_files_for_engine(engine: &str) -> ModelCheckResult {
     if paths::is_online_engine(engine) {
@@ -258,7 +285,8 @@ pub(super) fn inspect_model_files_for_engine(engine: &str) -> ModelCheckResult {
     // 旧版或损坏的本地引擎值统一迁移到默认的 Qwen3-ASR 0.6B。
     let model = local_model_file(engine);
     let normalized_engine = model.engine;
-    let (repo_id, filename, description) = (model.repo_id, model.filename, model.description);
+    let (repo_id, filename, description) =
+        (model.repo_id, model.filename, model.description.as_str());
     let mut missing_models = Vec::new();
     let mut corrupt_models = Vec::new();
     let model_state = report_model_repo_file_state(
