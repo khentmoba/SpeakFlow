@@ -978,7 +978,14 @@ async fn do_final_asr(
             _ => glm_asr_service::transcribe(state, wav).await,
         }
     } else {
-        funasr_service::transcribe_pcm16(state, &asr_audio, asr_sample_rate, app_handle).await
+        funasr_service::transcribe_pcm16(
+            state,
+            &asr_audio,
+            asr_sample_rate,
+            app_handle,
+            funasr_service::TranscribeOptions { final_pass: true },
+        )
+        .await
     };
 
     match result {

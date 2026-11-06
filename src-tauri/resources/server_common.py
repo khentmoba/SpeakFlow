@@ -469,6 +469,7 @@ class BaseASRServer:
                 audio_base64=command.get("audio_base64"),
                 audio_format=command.get("audio_format"),
                 sample_rate=command.get("sample_rate"),
+                filter_silence=command.get("filter_silence", True) is not False,
             )
         if action == "status":
             return self._with_gpu_suspend_flag(self.check_status())

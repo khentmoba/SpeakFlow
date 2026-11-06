@@ -35,6 +35,7 @@ fn server_command_serializes_flat_optional_audio_fields() {
         audio_format: Some("pcm_s16le".to_string()),
         sample_rate: Some(16_000),
         hot_words: Some(vec!["speak-flow".to_string()]),
+        filter_silence: Some(false),
     })
     .unwrap();
 
@@ -45,6 +46,7 @@ fn server_command_serializes_flat_optional_audio_fields() {
     assert_eq!(inline["audio_format"], serde_json::json!("pcm_s16le"));
     assert_eq!(inline["sample_rate"], serde_json::json!(16_000));
     assert_eq!(inline["hot_words"], serde_json::json!(["speak-flow"]));
+    assert_eq!(inline["filter_silence"], serde_json::json!(false));
     assert!(inline.get("audio_path").is_none());
 
     let idle = serde_json::to_value(ServerCommand::SetGpuIdle { seconds: 0 }).unwrap();
@@ -60,6 +62,7 @@ fn server_command_serializes_flat_optional_audio_fields() {
         audio_format: None,
         sample_rate: None,
         hot_words: None,
+        filter_silence: None,
     })
     .unwrap();
 
@@ -68,6 +71,7 @@ fn server_command_serializes_flat_optional_audio_fields() {
     assert_eq!(path["audio_path"], serde_json::json!("C:/tmp/clip.wav"));
     assert!(path.get("audio_base64").is_none());
     assert!(path.get("audio_format").is_none());
+    assert!(path.get("filter_silence").is_none());
     assert!(path.get("sample_rate").is_none());
     assert!(path.get("hot_words").is_none());
 }
@@ -147,7 +151,11 @@ fn local_engine_responses_use_manual_vocabulary_with_a_full_learned_list() {
             "engine": engine
         }))
         .unwrap();
-        let result = server_response_to_transcription_result(&state, response);
+        let result = server_response_to_transcription_result(
+            &state,
+            response,
+            crate::services::funasr_service::TranscribeOptions { final_pass: true },
+        );
         assert_eq!(
             result.text,
             "请用 github 打开 openclaw。 Ask José to use C++ and C#."

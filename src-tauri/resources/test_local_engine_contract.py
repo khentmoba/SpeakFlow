@@ -118,7 +118,8 @@ class AsrCatalogTests(unittest.TestCase):
 
     def test_rust_readiness_keeps_only_the_r2t2_pin(self):
         source = FUNASR_RS.read_text(encoding="utf-8")
-        self.assertIn('("davidxifeng/Confucius4-R2T2-gguf", "r2t2-q8_0.gguf")', source)
+        self.assertIn('"davidxifeng/Confucius4-R2T2-gguf"', source)
+        self.assertIn('"r2t2-q8_0.gguf"', source)
         self.assertIn("crate::utils::asr_catalog::find(engine)", source)
 
     def test_catalog_ships_with_the_app_and_the_engine(self):

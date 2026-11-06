@@ -117,6 +117,9 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
         .env("SPEAK_FLOW_DATA_DIR", &data_dir)
         .env("SPEAK_FLOW_ASR_ENGINE", &ticket.engine)
         .env("HF_HUB_CACHE", &models_dir)
+        // Read-only folders the user added. The engine looks there only when the
+        // cache has no complete copy, and never writes to them.
+        .env("SPEAK_FLOW_MODEL_DIRS", paths::read_model_dirs().join(";"))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr({

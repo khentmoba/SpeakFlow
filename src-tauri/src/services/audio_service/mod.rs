@@ -24,7 +24,8 @@ pub(crate) const EMPTY_RESULT_HIDE_DELAY_MS: u64 = 360;
 /// Brief result-preview delay; target-window checks, not timing, protect paste focus.
 pub(crate) const PASTE_DELAY_MS: u64 = 60;
 pub(crate) const AUDIO_CAPTURE_INIT_TIMEOUT_SECS: u64 = 8;
-pub(crate) const MICROPHONE_LEVEL_EMIT_INTERVAL_MS: u64 = 70;
+/// 20 Hz, matching the dictation meter cadence in the web and desktop clients.
+pub(crate) const MICROPHONE_LEVEL_EMIT_INTERVAL_MS: u64 = 50;
 /// finalize 阶段等待并行抓取选中文本的最大时长。超时就按普通听写处理。
 pub(crate) const EDIT_GRAB_WAIT_MS: u64 = 650;
 
@@ -99,7 +100,8 @@ pub(crate) use finalize::flush_pending_paste;
 pub use finalize::{discard_recording, finalize_recording};
 pub use interim::spawn_interim_loop;
 pub use monitor::{
-    start_microphone_level_monitor, stop_microphone_level_monitor, test_microphone_sync,
+    record_test_clip_sync, start_microphone_level_monitor, stop_microphone_level_monitor,
+    test_microphone_sync,
 };
 pub(crate) use native_recording::spawn_native_recording;
 pub use native_recording::NativeRecording;

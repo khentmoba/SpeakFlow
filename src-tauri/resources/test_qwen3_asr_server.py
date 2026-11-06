@@ -1,5 +1,6 @@
 import base64
 import os
+import tempfile
 import subprocess
 import sys
 import types
@@ -599,6 +600,111 @@ class LongClipTests(unittest.TestCase):
         )
         self.assertTrue(result["success"], result)
         self.assertEqual(server.session.calls, 1)
+
+
+class SpeechProcessingTests(unittest.TestCase):
+    """Silence filtering, shared model folders and CPU recovery."""
+
+    def _server(self, engine="moonshine-tiny"):
+        with mock.patch.object(qwen3_asr_server.Qwen3ASRServer, "_detect_device", return_value="cpu"):
+            server = qwen3_asr_server.Qwen3ASRServer(engine=engine)
+        server.model = mock.Mock()
+        server.model.supports.return_value = False
+        server.session = FakeSession()
+        server.vad_model = FakeVad([{"start": 0, "end": 16_000}])
+        server.initialized = True
+        return server
+
+    def test_silence_filter_off_sends_every_sample(self):
+        server = self._server()
+        payload = base64.b64encode(np.zeros(16_000 * 3, dtype="<i2").tobytes()).decode("ascii")
+        result = server.transcribe_audio(
+            None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,
+            filter_silence=False,
+        )
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["vad_segments"], 1)
+        self.assertEqual(len(server.session.inputs[0]), 16_000 * 3)
+
+    def test_silence_filter_on_trims_to_speech(self):
+        server = self._server()
+        server.vad_model = FakeVad([{"start": 1600, "end": 4800}])
+        payload = base64.b64encode(np.zeros(16_000 * 3, dtype="<i2").tobytes()).decode("ascii")
+        result = server.transcribe_audio(
+            None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,
+        )
+        self.assertTrue(result["success"], result)
+        self.assertEqual(len(server.session.inputs[0]), 3200)
+
+    def test_silence_filter_off_still_rejects_empty_audio(self):
+        server = self._server()
+        server.vad_model = FakeVad([])
+        payload = base64.b64encode(np.zeros(16_000 * 3, dtype="<i2").tobytes()).decode("ascii")
+        result = server.transcribe_audio(
+            None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,
+            filter_silence=False,
+        )
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["text"], "测试文本")
+
+    def test_gpu_decode_failure_retries_once_on_cpu(self):
+        server = self._server()
+        server.backend = "cuda"
+        server.device = "cuda"
+        server.model_path = "model.gguf"
+        calls = {"run": 0}
+
+        class FlakySession(FakeSession):
+            def run(self, audio, **kwargs):
+                calls["run"] += 1
+                if calls["run"] == 1:
+                    raise RuntimeError("device lost")
+                return types.SimpleNamespace(text="recovered", language="en")
+
+        server.session = FlakySession()
+        fake_module = types.SimpleNamespace(Model=FakeModel)
+        with mock.patch.dict(sys.modules, {"transcribe_cpp": fake_module}):
+            payload = base64.b64encode(np.zeros(16_000, dtype="<i2").tobytes()).decode("ascii")
+            result = server.transcribe_audio(
+                None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,
+            )
+        self.assertTrue(result["success"], result)
+        # The retry runs on the freshly loaded CPU session.
+        self.assertEqual(result["text"], "测试文本")
+        self.assertEqual(result["backend"], "cpu")
+        self.assertEqual(calls["run"], 1)
+        self.assertEqual(FakeModel.instances[-1].backend, "cpu")
+        self.assertTrue(server._cpu_recovery_used)
+
+    def test_cpu_failure_is_not_retried(self):
+        server = self._server()
+        server.backend = "cpu"
+
+        class BrokenSession(FakeSession):
+            def run(self, audio, **kwargs):
+                raise RuntimeError("decode failed")
+
+        server.session = BrokenSession()
+        payload = base64.b64encode(np.zeros(16_000, dtype="<i2").tobytes()).decode("ascii")
+        result = server.transcribe_audio(
+            None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,
+        )
+        self.assertFalse(result["success"])
+        self.assertEqual(result["type"], "transcription_error")
+
+    def test_shared_model_folder_is_used_when_the_cache_is_empty(self):
+        import hf_cache_utils
+
+        with mock.patch.dict(os.environ, {"SPEAK_FLOW_MODEL_DIRS": ""}):
+            self.assertIsNone(hf_cache_utils.find_shared_model_file("missing.gguf"))
+        with tempfile.TemporaryDirectory() as directory:
+            shared = os.path.join(directory, "model-Q8_0.gguf")
+            with open(shared, "wb") as handle:
+                handle.write(b"0" * 1_000_001)
+            with mock.patch.dict(os.environ, {"SPEAK_FLOW_MODEL_DIRS": directory}):
+                self.assertEqual(hf_cache_utils.find_shared_model_file("model-Q8_0.gguf"), shared)
+                # A different file name is not a match.
+                self.assertIsNone(hf_cache_utils.find_shared_model_file("other.gguf"))
 
 
 if __name__ == "__main__":

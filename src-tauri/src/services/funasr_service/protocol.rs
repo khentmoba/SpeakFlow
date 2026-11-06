@@ -57,6 +57,9 @@ pub enum ServerCommand {
         /// 热词列表（可选）
         #[serde(skip_serializing_if = "Option::is_none")]
         hot_words: Option<Vec<String>>,
+        /// 是否先用 VAD 过滤静音（缺省由服务器按开启处理）
+        #[serde(skip_serializing_if = "Option::is_none")]
+        filter_silence: Option<bool>,
     },
     /// 查询服务器状态
     Status,

@@ -158,6 +158,7 @@ pub fn spawn_interim_loop(
                 interim_samples,
                 interim_sample_rate,
                 &app_handle,
+                funasr_service::TranscribeOptions::default(),
             )
             .await;
             // The request consumed this recording checkpoint even if the backend

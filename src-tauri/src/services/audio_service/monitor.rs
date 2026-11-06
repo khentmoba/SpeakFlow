@@ -5,7 +5,10 @@ use std::sync::{
 
 use tauri::Emitter;
 
-use super::capture::{load_best_input_config, resolve_input_device};
+use super::capture::{
+    load_best_input_config, mix_to_mono_capped_f32, mix_to_mono_capped_i16, mix_to_mono_capped_u16,
+    resolve_input_device,
+};
 use super::resample::{f32_to_i16, u16_to_i16};
 use super::MICROPHONE_LEVEL_EMIT_INTERVAL_MS;
 use crate::state::{AppState, MicrophoneLevelMonitor};
@@ -240,6 +243,75 @@ pub fn start_microphone_level_monitor(
         handle: Some(handle),
     });
     Ok(device_name)
+}
+
+/// Records `seconds` of mono audio at 16 kHz from the selected microphone.
+///
+/// Used by the model test in Settings: it captures a short clip and returns it,
+/// without touching the recording pipeline, history or the active application.
+pub fn record_test_clip_sync(
+    selected_device_name: Option<String>,
+    seconds: u32,
+) -> Result<Vec<i16>, AppError> {
+    use cpal::traits::StreamTrait;
+    use std::sync::Mutex;
+
+    let seconds = seconds.clamp(1, 15);
+    let (device, _name) = resolve_input_device(selected_device_name.as_deref())?;
+    let config = load_best_input_config(&device)?;
+    let input_rate = config.sample_rate().0;
+    let channels = config.channels() as usize;
+    let fmt = config.sample_format();
+    let captured: Arc<Mutex<Vec<i16>>> = Arc::new(Mutex::new(Vec::new()));
+    // Hard cap: the longest clip the test can ask for, at the highest rate cpal offers.
+    let cap = 48_000usize * 15 * 2;
+
+    let err_cb = |e: cpal::StreamError| log::warn!("Model test stream error: {}", e);
+
+    let c1 = captured.clone();
+    let c2 = captured.clone();
+    let c3 = captured.clone();
+    let stream = build_input_stream_dispatch!(
+        device,
+        config,
+        fmt,
+        err_cb,
+        move |data: &[i16], _: &cpal::InputCallbackInfo| {
+            if let Ok(mut buffer) = c1.lock() {
+                mix_to_mono_capped_i16(data, channels, &mut buffer, cap);
+            }
+        },
+        move |data: &[f32], _: &cpal::InputCallbackInfo| {
+            if let Ok(mut buffer) = c2.lock() {
+                mix_to_mono_capped_f32(data, channels, &mut buffer, cap);
+            }
+        },
+        move |data: &[u16], _: &cpal::InputCallbackInfo| {
+            if let Ok(mut buffer) = c3.lock() {
+                mix_to_mono_capped_u16(data, channels, &mut buffer, cap);
+            }
+        }
+    )
+    .map_err(|e| AppError::Audio(format!("Failed to create audio stream: {}", e)))?;
+
+    stream
+        .play()
+        .map_err(|e| AppError::Audio(format!("Failed to start audio stream: {}", e)))?;
+    std::thread::sleep(std::time::Duration::from_secs(seconds as u64));
+    drop(stream);
+
+    let samples = captured
+        .lock()
+        .map(|guard| guard.clone())
+        .unwrap_or_default();
+    if samples.is_empty() {
+        return Err(AppError::Audio(
+            "No audio was captured from the microphone".into(),
+        ));
+    }
+    let resampled = super::resample::resample_to_16k(&samples, input_rate)
+        .map_err(|error| AppError::Audio(format!("Failed to resample the test clip: {error}")))?;
+    Ok(resampled.into_owned())
 }
 
 pub fn test_microphone_sync(selected_device_name: Option<String>) -> Result<String, AppError> {
