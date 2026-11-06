@@ -26,12 +26,41 @@ describe("ModelBrowser", () => {
     const row = within(listbox()).getByRole("option", { name: /Parakeet Unified EN 0.6B/ });
     expect(row).toHaveTextContent("Recommended");
     expect(row).toHaveTextContent("A-");
+    expect(row).toHaveTextContent("Excellent");
     expect(row).toHaveTextContent("3.99% error");
     expect(row).toHaveTextContent("1.19 s / 30 s");
     expect(row).toHaveTextContent("1 language");
     expect(row).not.toHaveTextContent("1 languages");
     expect(row).toHaveTextContent("731 MB");
     expect(row).toHaveTextContent("nvidia-open-model-license");
+  });
+
+  it("shows the catalog's language coverage", () => {
+    setup();
+    expect(screen.getByText("58 models · 103 languages")).toBeInTheDocument();
+    const search = screen.getByRole("searchbox", { name: "Search models" });
+    fireEvent.change(search, { target: { value: "moonshine" } });
+    expect(screen.getByText("5 models")).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: /^French/ }));
+    expect(screen.getByText("26 models")).toBeInTheDocument();
+  });
+
+  it("keeps the best-for-language badge on the real winner during a search", () => {
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: /^French/ }));
+    // The best French model is not recommended, so it must be in the folded list.
+    const best = within(listbox()).getByRole("option", { name: /Voxtral Small 24B/ });
+    expect(best).toHaveTextContent("Best for French");
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search models" }), {
+      target: { value: "whisper" },
+    });
+    const whisper = within(listbox())
+      .getAllByRole("option")
+      .find((option) => /Whisper Large v3/.test(option.textContent ?? "")
+        && !/Turbo/.test(option.textContent ?? ""))!;
+    expect(whisper).not.toHaveTextContent("Best for French");
   });
 
   it("marks the current engine and offers the others", () => {
@@ -60,6 +89,41 @@ describe("ModelBrowser", () => {
     expect(options.some((option) => option.textContent?.includes("Parakeet Unified"))).toBe(false);
     expect(options[0]).toHaveTextContent("French");
     expect(options[0]).toHaveTextContent("error");
+    expect(options[0]).toHaveTextContent("Best for French");
+  });
+
+  it("labels Whisper as long tail and never as recommended", () => {
+    setup();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search models" }), {
+      target: { value: "whisper-large-v3" },
+    });
+    const row = within(listbox())
+      .getAllByRole("option")
+      .find((option) => /Whisper Large v3/.test(option.textContent ?? "")
+        && !/Turbo/.test(option.textContent ?? ""))!;
+    expect(row).toHaveTextContent("Long tail");
+    expect(row).not.toHaveTextContent("Recommended");
+    expect(row).toHaveTextContent("100 languages");
+  });
+
+  it("does not call an English-only Whisper model long tail", () => {
+    setup();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search models" }), {
+      target: { value: "whisper-tiny.en" },
+    });
+    const row = within(listbox()).getByRole("option", { name: /Whisper Tiny English/ });
+    expect(row).not.toHaveTextContent("Long tail");
+    expect(row).toHaveTextContent("1 language");
+  });
+
+  it("marks a poor language as experimental instead of recommending it", () => {
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: /Yoruba/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Show all/ }));
+    const options = within(listbox()).getAllByRole("option");
+    expect(options[0]).toHaveTextContent("Yoruba");
+    expect(options[0]).toHaveTextContent("Poor");
+    expect(options[0]).not.toHaveTextContent("Best for Yoruba");
   });
 
   it("keeps the other engines out of a language filter", () => {
@@ -99,7 +163,7 @@ describe("ModelBrowser", () => {
     expect(within(listbox()).getByRole("option", { name: /^Qwen3-ASR 0\.6B/ })).toBeInTheDocument();
     expect(within(listbox()).queryByRole("option", { name: /^Moonshine Tiny/ })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Show all 46 models" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show all 58 models" }));
     expect(catalogRows().length).toBeGreaterThan(40);
 
     fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));

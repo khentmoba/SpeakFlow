@@ -78,6 +78,24 @@ class AsrCatalogTests(unittest.TestCase):
                 self.assertRegex(grade, r"^[A-F][+-]?$")
                 self.assertGreaterEqual(error, 0)
 
+    def test_whisper_is_the_labelled_long_tail_family(self):
+        whisper = [model for model in ASR_CATALOG["models"] if model["key"].startswith("whisper")]
+        self.assertEqual(len(whisper), 12)
+        self.assertTrue(all(not model["recommended"] for model in whisper))
+        # "Long tail" means broad coverage; the English-only variants do not
+        # add a language and must not claim it.
+        long_tail = [model for model in whisper if model["long_tail"]]
+        self.assertEqual(len(long_tail), 8)
+        self.assertTrue(all(len(model["languages"]) > 1 for model in long_tail))
+        self.assertIn("whisper-large-v3", {model["key"] for model in long_tail})
+        self.assertFalse(any("sensevoice" in model["key"] for model in ASR_CATALOG["models"]))
+        languages = {
+            language
+            for model in ASR_CATALOG["models"]
+            for language in model["languages"]
+        }
+        self.assertEqual(len(languages), 103)
+
     def test_shipped_engines_keep_their_identity(self):
         shipped = {
             "qwen3-asr-0.6b": ("handy-computer/Qwen3-ASR-0.6B-gguf", "Qwen3-ASR-0.6B-Q8_0.gguf"),

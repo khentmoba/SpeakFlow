@@ -6,6 +6,8 @@ import {
   findCatalogModel,
   formatModelSize,
   languageName,
+  modelLanguageOptions,
+  resolveLanguage,
 } from "@/lib/asrCatalog";
 import {
   accuracyFor,
@@ -19,9 +21,15 @@ import {
 describe("ASR catalog", () => {
   it("carries the generated Handy catalog with unique keys", () => {
     expect(ASR_CATALOG.engine_version).toBe("0.4.1");
-    expect(CATALOG_MODELS.length).toBeGreaterThan(40);
-    // Retired families stay out; see src-tauri/tests/retired_*_contract.rs.
-    expect(CATALOG_MODELS.some((model) => /whisper|sensevoice/i.test(model.key))).toBe(false);
+    expect(CATALOG_MODELS.length).toBeGreaterThan(50);
+    // Whisper is back as the labelled long-tail family; SenseVoice stays out.
+    expect(CATALOG_MODELS.some((model) => /sensevoice/i.test(model.key))).toBe(false);
+    const whisper = CATALOG_MODELS.filter((model) => model.long_tail);
+    expect(whisper.length).toBe(8);
+    expect(whisper.every((model) => !model.recommended)).toBe(true);
+    const englishOnlyWhisper = CATALOG_MODELS.filter((model) => /^whisper-.*\.en$/.test(model.key));
+    expect(englishOnlyWhisper.length).toBe(4);
+    expect(englishOnlyWhisper.every((model) => !model.long_tail && !model.recommended)).toBe(true);
     const keys = CATALOG_MODELS.map((model) => model.key);
     expect(new Set(keys).size).toBe(keys.length);
     for (const model of CATALOG_MODELS) {
@@ -29,6 +37,7 @@ describe("ASR catalog", () => {
       expect(model.size).toBeGreaterThan(1_000_000);
       expect(model.languages.length).toBeGreaterThan(0);
       expect(model.license).not.toBe("other");
+      expect(typeof model.language_detection).toBe("boolean");
     }
   });
 
@@ -87,6 +96,29 @@ describe("ASR catalog", () => {
     expect(english.modelCount).toBeGreaterThan(40);
     expect(languageName("en")).toBe("English");
     expect(languageName("zh")).toBe("Chinese");
+    // Whisper fills the long tail: the catalog now covers T3's 103 codes.
+    expect(languages.length).toBe(103);
+    expect(languages.some((entry) => entry.code === "ca")).toBe(true);
+    expect(languages.some((entry) => entry.code === "yo")).toBe(true);
+  });
+
+  it("resolves a language against the selected model", () => {
+    const parakeet = findCatalogModel("parakeet-unified-en-0.6b")!;
+    const qwen = findCatalogModel("qwen3-asr-0.6b")!;
+    const nemotron = findCatalogModel("nemotron-3.5-asr-streaming-0.6b")!;
+    const canary = findCatalogModel("canary-180m-flash")!;
+    expect(resolveLanguage(parakeet, "fr")).toBe("en");
+    expect(resolveLanguage(qwen, "fr")).toBe("fr");
+    expect(resolveLanguage(nemotron, "ga")).toBe("auto");
+    expect(resolveLanguage(canary, "ja")).toBe("en");
+    expect(resolveLanguage(null, "fr")).toBe("auto");
+  });
+
+  it("sorts a model's languages by display name", () => {
+    const model = findCatalogModel("canary-180m-flash")!;
+    expect(modelLanguageOptions(model).map((entry) => entry.code)).toEqual([
+      "en", "fr", "de", "es",
+    ]);
   });
 
   it("ranks a language filter by that language's grade", () => {

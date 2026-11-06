@@ -104,6 +104,7 @@ pub async fn transcribe_pcm16_owned(
         .await;
     }
 
+    let (language, translate_to_english) = transcription_options();
     let response = send_command_to_server(
         state,
         &ServerCommand::Transcribe {
@@ -113,6 +114,8 @@ pub async fn transcribe_pcm16_owned(
             audio_format: Some(INLINE_AUDIO_FORMAT_PCM_S16LE.to_string()),
             sample_rate: Some(sample_rate),
             hot_words: hot_words.clone(),
+            language,
+            translate_to_english,
             filter_silence: Some(paths::read_silence_filter()),
         },
         Some(app_handle),
@@ -149,6 +152,27 @@ pub async fn transcribe_pcm16_owned(
 pub(super) fn profile_hot_words(state: &AppState) -> Option<Vec<String>> {
     let words = state.with_profile(|p| p.get_hot_word_texts(100));
     (!words.is_empty()).then_some(words)
+}
+
+/// Recognition language and translation for the local transcribe.cpp models.
+///
+/// R2T2 carries its language in `options`, and online engines never reach this
+/// command. The saved language is resolved once against the selected model, so
+/// a switch to an English-only model never sends an unusable code.
+fn transcription_options() -> (Option<String>, Option<bool>) {
+    let engine = paths::read_engine_config();
+    if engine == paths::R2T2_ENGINE || paths::is_online_engine(&engine) {
+        return (None, None);
+    }
+    let language =
+        crate::utils::asr_catalog::resolve_language(&engine, paths::read_asr_language().as_deref());
+    let translate = paths::read_translate_to_english()
+        && crate::utils::asr_catalog::supports_translation(&engine)
+        && language != "en";
+    (
+        (language != "auto").then_some(language),
+        translate.then_some(true),
+    )
 }
 
 pub(super) fn profile_r2t2_options(
@@ -295,6 +319,7 @@ pub(super) async fn transcribe_wav_bytes_via_path(
         .await
         .map_err(|e| AppError::Asr(format!("Failed to write temporary audio file: {}", e)))?;
 
+    let (language, translate_to_english) = transcription_options();
     let response = send_command_to_server(
         state,
         &ServerCommand::Transcribe {
@@ -304,6 +329,8 @@ pub(super) async fn transcribe_wav_bytes_via_path(
             audio_format: None,
             sample_rate: None,
             hot_words,
+            language,
+            translate_to_english,
             filter_silence: Some(paths::read_silence_filter()),
         },
         Some(app_handle),
