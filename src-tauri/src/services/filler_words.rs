@@ -6,6 +6,10 @@
 //!   word "a" in Portuguese, and `er` means "he" in German.
 //! - Any word that appears inside a dictionary entry is never removed, so a
 //!   person or company whose name contains a filler keeps it.
+//!
+//! Removal is surgical: every token outside the seam where a filler stood is
+//! copied through untouched, so quotes, brackets, newlines and spacing elsewhere
+//! in the transcript survive.
 
 /// Single-token fillers. Matching is case-insensitive and whole-word only.
 ///
@@ -15,70 +19,101 @@ const FILLERS: &[&str] = &[
     "ah", "ahh", "eh", "erm", "hm", "hmm", "hmmm", "uh", "uhh", "uhm", "um", "umm", "ummm",
 ];
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Word,
+    Space,
+    Punct,
+}
+
+struct Token {
+    kind: Kind,
+    text: String,
+}
+
 fn is_word_char(c: char) -> bool {
     c.is_alphanumeric() || c == '\'' || c == '\u{2019}' || c == '-'
 }
 
-/// Punctuation that only existed because of the filler that followed it.
-fn is_sentence_punctuation(token: &str) -> bool {
-    !token.is_empty()
-        && token.chars().all(|c| {
-            matches!(
-                c,
-                '.' | '?' | '!' | ',' | ';' | ':' | '\u{2026}' | '\u{2014}'
-            )
-        })
-}
-
-/// Opening delimiters keep the space before them: `say "hello"` must not become
-/// `say"hello"`.
-fn is_opening_delimiter(c: char) -> bool {
-    matches!(c, '"' | '\u{201C}' | '(' | '[' | '{' | '\'' | '\u{2018}')
-}
-
-fn matching_opener(c: char) -> Option<char> {
-    match c {
-        ')' => Some('('),
-        ']' => Some('['),
-        '}' => Some('{'),
-        '\u{201D}' => Some('\u{201C}'),
-        // A straight quote can open or close; an empty pair is removed either way.
-        '"' => Some('"'),
-        '\'' => Some('\''),
-        _ => None,
-    }
-}
-
-fn is_space(token: &str) -> bool {
-    !token.is_empty() && token.chars().all(char::is_whitespace)
-}
-
-/// Character class used to group runs: 0 word, 1 whitespace, 2 punctuation.
-fn class_of(c: char) -> u8 {
+fn class_of(c: char) -> Kind {
     if is_word_char(c) {
-        0
+        Kind::Word
     } else if c.is_whitespace() {
-        1
+        Kind::Space
     } else {
-        2
+        Kind::Punct
     }
 }
 
-/// Splits text into word, whitespace and punctuation runs, keeping every character.
-fn tokenize(text: &str) -> Vec<(bool, String)> {
-    let mut tokens: Vec<(bool, String)> = Vec::new();
-    let mut last_class: Option<u8> = None;
+/// Splits text into word, whitespace and punctuation runs, keeping every
+/// character. Each punctuation mark is its own token so a closing bracket is not
+/// glued to the sentence mark before it.
+fn tokenize(text: &str) -> Vec<Token> {
+    let mut tokens: Vec<Token> = Vec::new();
+    let mut last: Option<Kind> = None;
     for c in text.chars() {
-        let class = class_of(c);
-        // Each punctuation mark is its own token, so a closing bracket is not
-        // glued to the sentence mark before it.
+        let kind = class_of(c);
         match tokens.last_mut() {
-            Some((_, buffer)) if last_class == Some(class) && class != 2 => buffer.push(c),
-            _ => tokens.push((class == 0, c.to_string())),
+            Some(token) if last == Some(kind) && kind != Kind::Punct => token.text.push(c),
+            _ => tokens.push(Token {
+                kind,
+                text: c.to_string(),
+            }),
         }
-        last_class = Some(class);
+        last = Some(kind);
     }
     tokens
+}
+
+/// Every lowercase word that appears inside a dictionary entry.
+///
+/// Protecting the whole phrase would need phrase matching; protecting its words
+/// is what the interface promises ("Words in your dictionary are never removed")
+/// and covers entries such as "Um Corp".
+fn protected_words(protected: &[String]) -> std::collections::HashSet<String> {
+    protected
+        .iter()
+        .flat_map(|entry| tokenize(entry))
+        .filter(|token| token.kind == Kind::Word)
+        .map(|token| token.text.to_lowercase())
+        .collect()
+}
+
+fn is_filler(word: &str, protected: &std::collections::HashSet<String>) -> bool {
+    let lower = word.to_lowercase();
+    FILLERS.contains(&lower.as_str()) && !protected.contains(&lower)
+}
+
+fn first_char(token: &Token) -> Option<char> {
+    token.text.chars().next()
+}
+
+fn is_separator(c: char) -> bool {
+    matches!(c, ',' | ';' | ':')
+}
+
+fn is_terminator(c: char) -> bool {
+    matches!(c, '.' | '?' | '!' | '\u{2026}')
+}
+
+fn is_dash(c: char) -> bool {
+    matches!(c, '\u{2014}' | '\u{2013}' | '-')
+}
+
+fn is_opening_delimiter(c: char) -> bool {
+    matches!(c, '"' | '\u{201C}' | '(' | '[' | '{' | '\u{2018}')
+}
+
+fn closing_for(c: char) -> Option<char> {
+    match c {
+        '(' => Some(')'),
+        '[' => Some(']'),
+        '{' => Some('}'),
+        '\u{201C}' => Some('\u{201D}'),
+        '\u{2018}' => Some('\u{2019}'),
+        '"' => Some('"'),
+        _ => None,
+    }
 }
 
 /// Filler removal is English-only: `um` is the article "a" in Portuguese and
@@ -95,71 +130,157 @@ pub fn should_remove_fillers(language: Option<&str>, enabled: bool) -> bool {
     })
 }
 
-/// Every lowercase word that appears inside a dictionary entry.
-///
-/// Protecting the whole phrase would need phrase matching; protecting its words
-/// is what the interface promises ("Words in your dictionary are never removed")
-/// and covers entries such as "Um Corp".
-fn protected_words(protected: &[String]) -> std::collections::HashSet<String> {
-    protected
-        .iter()
-        .flat_map(|entry| tokenize(entry))
-        .filter(|(is_word, _)| *is_word)
-        .map(|(_, word)| word.to_lowercase())
-        .collect()
-}
-
 /// Removes filler words and the punctuation that only existed around them.
 ///
-/// Text with no filler is returned unchanged, so line breaks and spacing survive.
+/// Text with no filler is returned unchanged.
 pub fn remove_fillers(text: &str, protected: &[String]) -> String {
     let protected = protected_words(protected);
     let tokens = tokenize(text);
-    let mut kept: Vec<(bool, String)> = Vec::with_capacity(tokens.len());
+    let mut out = String::with_capacity(text.len());
     let mut removed = false;
-    let mut removed_at_start = false;
+    // Set after a removal until the next visible token is written.
+    let mut seam = false;
+    let mut capitalize_next = false;
     let mut index = 0;
 
     while index < tokens.len() {
-        let (is_word, ref token) = tokens[index];
-        let is_filler = is_word
-            && FILLERS.contains(&token.to_lowercase().as_str())
-            && !protected.contains(&token.to_lowercase());
-        if !is_filler {
-            kept.push((is_word, token.clone()));
+        let token = &tokens[index];
+        if token.kind != Kind::Word || !is_filler(&token.text, &protected) {
+            if token.kind == Kind::Space && seam {
+                // Whitespace at the seam is rebuilt below; keep line breaks.
+                if token.text.contains('\n') {
+                    out.push('\n');
+                    seam = false;
+                    capitalize_next = false;
+                }
+                index += 1;
+                continue;
+            }
+            if seam {
+                let text = write_seam(&mut out, token, &mut capitalize_next);
+                seam = false;
+                out.push_str(&text);
+                index += 1;
+                continue;
+            }
+            out.push_str(&token.text);
             index += 1;
             continue;
         }
 
         removed = true;
-        if kept.iter().all(|(_, value)| is_space(value)) {
-            removed_at_start = true;
+        // The filler occupied the whitespace before it.
+        let cut = out.trim_end().len();
+        out.truncate(cut);
+        let before = out.clone();
+        let opener = before.chars().last().filter(|c| is_opening_delimiter(*c));
+        // An opener at the start of the text still begins a sentence: `"Um, hi"`.
+        let mut head = before.as_str();
+        while let Some(last) = head.chars().last().filter(|c| is_opening_delimiter(*c)) {
+            head = &head[..head.len() - last.len_utf8()];
         }
-        index += 1;
-        // The punctuation right after a filler belonged to it: "Um. Hello."
-        // must not become ". Hello.", and "Uh... so" must not become "... so".
-        while index < tokens.len() {
-            let (next_word, ref next) = tokens[index];
-            if next_word || !is_sentence_punctuation(next) {
+        let at_sentence_start = head.trim_end().is_empty()
+            || head
+                .trim_end()
+                .chars()
+                .last()
+                .is_some_and(|c| is_terminator(c) || c == '\n');
+
+        // Punctuation that belonged to the filler.
+        let mut next = index + 1;
+        while next < tokens.len() {
+            let candidate = &tokens[next];
+            if candidate.kind != Kind::Punct {
                 break;
             }
-            index += 1;
+            let Some(c) = first_char(candidate) else {
+                break;
+            };
+            let closes_empty_pair = opener.and_then(closing_for) == Some(c);
+            let belongs_to_filler = is_separator(c)
+                || (opener.is_some() && is_terminator(c))
+                || (at_sentence_start && is_terminator(c))
+                || closes_empty_pair;
+            if !belongs_to_filler {
+                break;
+            }
+            if closes_empty_pair {
+                // "(um)" leaves nothing behind, not "()".
+                if let Some(opener) = opener {
+                    let trimmed = out.trim_end().len();
+                    if let Some(keep) = trimmed.checked_sub(opener.len_utf8()) {
+                        out.truncate(keep);
+                    }
+                }
+            }
+            next += 1;
         }
+
+        // "Hello, um." keeps "Hello." rather than "Hello,.".
+        let next_visible = tokens[next..].iter().find(|t| t.kind != Kind::Space);
+        let ends_sentence = next_visible
+            .is_none_or(|t| t.kind == Kind::Punct && first_char(t).is_some_and(is_terminator));
+        if ends_sentence {
+            trim_trailing_separator(&mut out);
+        }
+        // "I think — um — yes" keeps one dash.
+        if let Some(position) = tokens[next..]
+            .iter()
+            .position(|t| t.kind != Kind::Space)
+            .map(|offset| next + offset)
+        {
+            let is_dash_token = tokens[position].kind == Kind::Punct
+                && first_char(&tokens[position]).is_some_and(is_dash);
+            if is_dash_token && out.trim_end().chars().last().is_some_and(is_dash) {
+                next = position + 1;
+            }
+        }
+
+        seam = true;
+        capitalize_next = at_sentence_start;
+        index = next;
     }
 
     if !removed {
         return text.to_string();
     }
-    let mut result = tidy(&kept);
-    // A separator left dangling at the end belonged to a trailing filler.
-    while result.ends_with(',') || result.ends_with(';') || result.ends_with(':') {
-        result.pop();
-        result = result.trim_end().to_string();
+    out.trim_end().to_string()
+}
+
+/// Writes the first visible token after a removal, rebuilding the spacing that
+/// the filler and its punctuation occupied.
+fn write_seam(out: &mut String, token: &Token, capitalize_next: &mut bool) -> String {
+    let Some(first) = first_char(token) else {
+        return String::new();
+    };
+    let after_opener = out.chars().last().is_some_and(is_opening_delimiter);
+    let before_closer = token.kind == Kind::Punct
+        && (is_terminator(first)
+            || is_separator(first)
+            || matches!(first, ')' | ']' | '}' | '\u{201D}' | '\u{2019}'));
+    // Chinese and Japanese are written without spaces between words.
+    let joins_unspaced = out
+        .chars()
+        .last()
+        .is_some_and(|left| unspaced_script(left) && unspaced_script(first));
+    if !out.is_empty()
+        && !out.ends_with(char::is_whitespace)
+        && !after_opener
+        && !before_closer
+        && !joins_unspaced
+    {
+        out.push(' ');
     }
-    if removed_at_start {
-        result = capitalize_first_word(&result);
+    let capitalize = *capitalize_next && token.kind == Kind::Word;
+    *capitalize_next = false;
+    if capitalize {
+        let mut chars = token.text.chars();
+        return match chars.next() {
+            Some(head) => head.to_uppercase().collect::<String>() + chars.as_str(),
+            None => String::new(),
+        };
     }
-    result
+    token.text.clone()
 }
 
 /// Chinese, Japanese kana and Thai are written without spaces between words.
@@ -173,68 +294,12 @@ fn unspaced_script(c: char) -> bool {
         || (0x3000..=0x303F).contains(&code)
 }
 
-/// Collapses the whitespace and doubled punctuation removal can leave behind.
-fn tidy(tokens: &[(bool, String)]) -> String {
-    let mut out = String::new();
-    let mut pending_space = false;
-    for (is_word, token) in tokens {
-        if !*is_word && is_space(token) {
-            pending_space = true;
-            continue;
-        }
-        let is_punctuation = !*is_word;
-        let had_space = pending_space;
-        if had_space && !out.is_empty() && !is_punctuation {
-            // Removing a filler between two Chinese words must not add a space.
-            let joins_unspaced = out
-                .chars()
-                .last()
-                .zip(token.chars().next())
-                .is_some_and(|(left, right)| unspaced_script(left) && unspaced_script(right));
-            if !joins_unspaced && !out.ends_with(' ') {
-                out.push(' ');
-            }
-        }
-        pending_space = false;
-        if is_punctuation {
-            // A comma right after a comma, or before any text, is a leftover
-            // separator from the removed filler.
-            if token.trim() == "," && (out.trim().is_empty() || out.trim_end().ends_with(',')) {
-                continue;
-            }
-            let first = token.chars().next().unwrap_or(' ');
-            // An empty pair left behind by the filler goes away entirely, so
-            // "(Um.)" becomes nothing rather than "(.)".
-            if let Some(opener) = matching_opener(first) {
-                let trimmed = out.trim_end();
-                if trimmed.ends_with(opener) {
-                    let keep = trimmed.len() - opener.len_utf8();
-                    out.truncate(keep);
-                    continue;
-                }
-            }
-            // Do not leave a space before punctuation, except before an opening
-            // delimiter, where the space separates real words.
-            if is_opening_delimiter(first) {
-                if had_space && !out.is_empty() && !out.ends_with(' ') {
-                    out.push(' ');
-                }
-            } else {
-                while out.ends_with(' ') {
-                    out.pop();
-                }
-            }
-        }
-        out.push_str(token);
-    }
-    out.trim().to_string()
-}
-
-fn capitalize_first_word(text: &str) -> String {
-    let mut chars = text.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        None => String::new(),
+fn trim_trailing_separator(out: &mut String) {
+    let trimmed_len = out.trim_end().len();
+    if out[..trimmed_len].ends_with([',', ';', ':']) {
+        out.truncate(trimmed_len - 1);
+        let cut = out.trim_end().len();
+        out.truncate(cut);
     }
 }
 
@@ -262,13 +327,21 @@ mod tests {
     fn capitalizes_after_a_leading_filler() {
         assert_eq!(clean("Um, hello."), "Hello.");
         assert_eq!(clean("uh, what?"), "What?");
+        assert_eq!(clean("Hello. Um, how are you?"), "Hello. How are you?");
     }
 
     #[test]
-    fn takes_the_punctuation_that_belonged_to_the_filler() {
+    fn keeps_the_period_that_ends_the_sentence() {
+        assert_eq!(clean("It works um. Ship it."), "It works. Ship it.");
+        assert_eq!(clean("Are you sure um? Yes."), "Are you sure? Yes.");
+        assert_eq!(clean("Hello, um."), "Hello.");
+        assert_eq!(clean("I think so, um."), "I think so.");
+    }
+
+    #[test]
+    fn takes_punctuation_that_belonged_to_the_filler() {
         assert_eq!(clean("Um. Hello."), "Hello.");
         assert_eq!(clean("Hello. Um. How are you?"), "Hello. How are you?");
-        assert_eq!(clean("I think so, um."), "I think so");
         assert_eq!(clean("Uh... so we go"), "So we go");
         assert_eq!(clean("Hmm? What?"), "What?");
     }
@@ -279,6 +352,26 @@ mod tests {
         assert_eq!(clean("(Um.) Hello."), "Hello.");
         assert_eq!(clean("He said (um) nothing."), "He said nothing.");
         assert_eq!(clean("[Um] Fine."), "Fine.");
+        assert_eq!(clean("Well (um, maybe) yes."), "Well (maybe) yes.");
+        assert_eq!(clean("She said, \"Um, okay.\""), "She said, \"okay.\"");
+        assert_eq!(clean("\u{201C}Um,\u{201D} he said."), "He said.");
+    }
+
+    #[test]
+    fn leaves_the_rest_of_the_text_alone() {
+        assert_eq!(
+            clean("Um, the options are \"yes\" \"no\"."),
+            "The options are \"yes\" \"no\"."
+        );
+        assert_eq!(clean("Um, call f() now"), "Call f() now");
+        assert_eq!(clean("Um, Tom & Jerry"), "Tom & Jerry");
+        assert_eq!(clean("Um, see #42"), "See #42");
+        assert_eq!(clean("Um, x = 5 + 3"), "X = 5 + 3");
+        assert_eq!(
+            clean("I think \u{2014} um \u{2014} yes"),
+            "I think \u{2014} yes"
+        );
+        assert_eq!(clean("Um, line one\nline two"), "Line one\nline two");
     }
 
     #[test]
@@ -313,17 +406,6 @@ mod tests {
     }
 
     #[test]
-    fn only_english_transcripts_are_cleaned() {
-        assert!(super::should_remove_fillers(Some("en"), true));
-        assert!(super::should_remove_fillers(Some("en-US"), true));
-        assert!(!super::should_remove_fillers(Some("de"), true));
-        assert!(!super::should_remove_fillers(Some("pt-BR"), true));
-        assert!(!super::should_remove_fillers(None, true));
-        assert!(!super::should_remove_fillers(Some("unknown"), true));
-        assert!(!super::should_remove_fillers(Some("en"), false));
-    }
-
-    #[test]
     fn keeps_dictionary_terms_including_multi_word_entries() {
         let protected = vec!["Um".to_string()];
         assert_eq!(
@@ -353,6 +435,17 @@ mod tests {
         assert_eq!(clean("um"), "");
         assert_eq!(clean("um uh um"), "");
         assert_eq!(clean("Um."), "");
+    }
+
+    #[test]
+    fn only_english_transcripts_are_cleaned() {
+        assert!(super::should_remove_fillers(Some("en"), true));
+        assert!(super::should_remove_fillers(Some("en-US"), true));
+        assert!(!super::should_remove_fillers(Some("de"), true));
+        assert!(!super::should_remove_fillers(Some("pt-BR"), true));
+        assert!(!super::should_remove_fillers(None, true));
+        assert!(!super::should_remove_fillers(Some("unknown"), true));
+        assert!(!super::should_remove_fillers(Some("en"), false));
     }
 
     #[test]

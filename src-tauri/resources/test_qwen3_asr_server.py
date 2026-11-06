@@ -710,7 +710,13 @@ class SpeechProcessingTests(unittest.TestCase):
 
         server.session = FlakySession()
         fake_module = types.SimpleNamespace(Model=FakeModel)
-        with mock.patch.dict(sys.modules, {"transcribe_cpp": fake_module}):
+        with (
+            mock.patch.dict(sys.modules, {"transcribe_cpp": fake_module}),
+            # Recovery resolves the file again, so the folder can have changed.
+            mock.patch.object(
+                qwen3_asr_server.Qwen3ASRServer, "_resolve_model_path", return_value="model.gguf"
+            ),
+        ):
             payload = base64.b64encode(np.zeros(16_000, dtype="<i2").tobytes()).decode("ascii")
             result = server.transcribe_audio(
                 None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000,

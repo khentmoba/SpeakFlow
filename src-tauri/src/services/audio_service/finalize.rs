@@ -404,7 +404,15 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
                         "Reusing interim cache (tail gap {:.0}ms)",
                         (final_count - c.sample_count) as f64 * 1000.0 / sample_rate as f64
                     );
-                    (Ok(c.text.clone()), c.language.clone())
+                    (
+                        Ok(funasr_service::finish_text(
+                            state.inner(),
+                            &c.text,
+                            c.language.as_deref(),
+                            funasr_service::TranscribeOptions { final_pass: true },
+                        )),
+                        c.language.clone(),
+                    )
                 }
                 _ => match do_final_asr(&app_handle, state.inner(), &samples, sample_rate).await {
                     Ok(r) => (Ok(r.text), r.language),

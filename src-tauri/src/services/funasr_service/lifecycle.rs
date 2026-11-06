@@ -71,6 +71,7 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
     let data_dir = paths::strip_win_prefix(paths::get_data_dir());
     // 仅在用户开启时传入。0/缺省不设置环境变量，启动路径与以前相同。
     let gpu_idle_at_spawn = paths::read_gpu_idle_seconds();
+    let model_dirs_at_spawn = paths::read_model_dirs();
     let mut cmd = match &runtime {
         EngineRuntime::Bundled { exe_path } => {
             log::info!("使用打包引擎: {} (engine={})", exe_path, ticket.engine);
@@ -119,7 +120,7 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
         .env("HF_HUB_CACHE", &models_dir)
         // Read-only folders the user added. The engine looks there only when the
         // cache has no complete copy, and never writes to them.
-        .env("SPEAK_FLOW_MODEL_DIRS", paths::read_model_dirs().join(";"))
+        .env("SPEAK_FLOW_MODEL_DIRS", model_dirs_at_spawn.join(";"))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr({
@@ -281,6 +282,13 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
         if gpu_idle_now != gpu_idle_at_spawn {
             if let Err(error) = push_gpu_idle_seconds(state, gpu_idle_now).await {
                 log::warn!("同步 GPU 空闲卸载设置失败: {error}");
+            }
+        }
+        // A folder saved while the process was starting is not in its
+        // environment, so send the current list once it is registered.
+        if paths::read_model_dirs() != model_dirs_at_spawn {
+            if let Err(error) = push_model_dirs(state).await {
+                log::warn!("同步模型文件夹失败: {error}");
             }
         }
         Ok(())

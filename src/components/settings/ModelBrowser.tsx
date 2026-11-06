@@ -286,7 +286,7 @@ export function ModelBrowser({ engine, onSelect, disabled, installed }: ModelBro
             </>
           )}
         </div>
-        {hiddenCount > 0 && (
+        {!showAll && hiddenCount > 0 && (
           <button
             type="button"
             className="model-browser-more"

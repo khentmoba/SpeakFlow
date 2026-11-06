@@ -208,35 +208,51 @@ pub(super) fn response_indicates_inline_unsupported(response: &ServerResponse) -
     })
 }
 
+/// Applies the final text steps shared by every path that produces a transcript.
+///
+/// The server response and the finalize path that reuses an interim result both
+/// call this, so a reused transcript is cleaned exactly like a fresh one.
+pub fn finish_text(
+    state: &AppState,
+    text: &str,
+    language: Option<&str>,
+    options: TranscribeOptions,
+) -> String {
+    let corrected =
+        crate::services::qwen_hotword_service::apply_profile_hotword_corrections(state, text);
+    if !options.final_pass
+        || !crate::services::filler_words::should_remove_fillers(
+            language,
+            paths::read_remove_fillers(),
+        )
+    {
+        return corrected;
+    }
+    // Every dictionary entry is protected, not just the ones sent as recognition
+    // hints, so a word the user added on purpose survives even when it looks
+    // like a filler.
+    let protected = state.with_profile(|profile| {
+        profile
+            .hot_words
+            .iter()
+            .map(|word| word.text.clone())
+            .collect::<Vec<_>>()
+    });
+    crate::services::filler_words::remove_fillers(&corrected, &protected)
+}
+
 pub(super) fn server_response_to_transcription_result(
     state: &AppState,
     response: ServerResponse,
     options: TranscribeOptions,
 ) -> TranscriptionResult {
     if response.success == Some(true) {
-        let corrected = crate::services::qwen_hotword_service::apply_profile_hotword_corrections(
+        let text = finish_text(
             state,
             response.text.as_deref().unwrap_or_default(),
+            response.language.as_deref(),
+            options,
         );
-        let text = if options.final_pass
-            && crate::services::filler_words::should_remove_fillers(
-                response.language.as_deref(),
-                paths::read_remove_fillers(),
-            ) {
-            // Every dictionary entry is protected, not just the ones sent as
-            // recognition hints, so a word the user added on purpose survives
-            // even when it looks like a filler.
-            let protected = state.with_profile(|profile| {
-                profile
-                    .hot_words
-                    .iter()
-                    .map(|word| word.text.clone())
-                    .collect::<Vec<_>>()
-            });
-            crate::services::filler_words::remove_fillers(&corrected, &protected)
-        } else {
-            corrected
-        };
 
         TranscriptionResult {
             text,

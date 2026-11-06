@@ -227,6 +227,7 @@ pub async fn get_model_dirs() -> Result<Vec<String>, AppError> {
 /// duplicate paths are dropped before saving.
 #[tauri::command]
 pub async fn set_model_dirs(
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     dirs: Vec<String>,
 ) -> Result<Vec<String>, AppError> {
@@ -234,8 +235,19 @@ pub async fn set_model_dirs(
     paths::write_model_dirs(&normalized)
         .map_err(|error| AppError::Other(format!("Failed to save model folders: {error}")))?;
     // A resident engine keeps the list it started with, so hand it the new one.
+    // If that fails, restart it: a stale list would load the wrong file or fail
+    // to find a model that is now in a different folder.
     if let Err(error) = funasr_service::push_model_dirs(state.inner()).await {
-        log::warn!("模型文件夹已保存，但未能通知正在运行的引擎: {error}");
+        log::warn!("模型文件夹已保存，但未能通知正在运行的引擎，改为重启: {error}");
+        if !state.engine.is_funasr_starting() {
+            let lifecycle_guard = state.engine.funasr_lifecycle_op.lock().await;
+            let asr_guard = lock_idle_asr(state.inner())?;
+            funasr_service::stop_server(state.inner()).await?;
+            drop(asr_guard);
+            drop(lifecycle_guard);
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            funasr_service::start_server(&app_handle, state.inner()).await?;
+        }
     }
     Ok(normalized)
 }

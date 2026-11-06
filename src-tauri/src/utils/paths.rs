@@ -504,6 +504,9 @@ pub fn normalize_model_dirs<'a>(dirs: impl Iterator<Item = &'a str>) -> Vec<Stri
     dirs.map(str::trim)
         .filter(|dir| !dir.is_empty())
         .filter(|dir| Path::new(dir).is_absolute())
+        // The engine receives the list joined by ';', which Windows allows in a
+        // folder name, so such a path could never round-trip.
+        .filter(|dir| !dir.contains(';'))
         .filter(|dir| seen.insert(dir.to_ascii_lowercase()))
         .map(str::to_string)
         .collect()
@@ -637,6 +640,7 @@ mod tests {
                 "",
                 "   ",
                 r"D:\hex\models",
+                r"E:\odd;name",
             ]
             .into_iter(),
         );

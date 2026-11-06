@@ -281,9 +281,14 @@ class Qwen3ASRServer(BaseASRServer):
             self.backend,
             error,
         )
+        # Resolve again: the folder the model came from may have been removed.
+        model_path = self._resolve_model_path()
+        if not model_path:
+            logger.error("%s CPU recovery skipped: the model file is no longer available", self.display_name)
+            return False
         try:
             self._close_runtime()
-            self.model = transcribe_cpp.Model(self.model_path, backend="cpu")
+            self.model = transcribe_cpp.Model(model_path, backend="cpu")
             self.session = self.model.session(**self._session_options())
             self.backend = "cpu"
             self.device = "cpu"
