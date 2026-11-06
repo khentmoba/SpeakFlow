@@ -61,7 +61,7 @@ sits at the bottom right, clear of the caret, with a black ring.
 
 Windows draws the notification area in the theme the user picked for Windows,
 which can differ from the app theme. The tray therefore ships two palettes:
-`tray_icon::system_uses_light_taskbar` reads
+`tray_icon::taskbar_is_light` reads
 `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize\SystemUsesLightTheme`
 and picks the set. The dark set keeps the white caret; the light set swaps it
 for ink `#0A0A0A` and darkens the waveform to `#A86200`, which holds both above
@@ -69,11 +69,24 @@ for ink `#0A0A0A` and darkens the waveform to `#A86200`, which holds both above
 recording state changes and every 60 seconds, because Windows does not report a
 taskbar theme change through Tauri's window theme.
 
-Known limit: an accent-coloured taskbar is not detected. Personalization → "Show
-accent color on Start and taskbar" paints the notification area in the accent
-colour, which can be dark while Windows itself is in light mode; the light set is
-then the wrong choice and the ink caret drops to about 1.3:1. Reading
-`ColorPrevalence` and the accent luminance would fix it.
+"Show accent color on Start and taskbar" (`ColorPrevalence`) replaces that
+background with the accent colour, but Windows only offers the setting in dark
+mode: in light mode it is grayed out and the taskbar keeps the light theme,
+whatever `ColorPrevalence` still says. So a light taskbar always takes the
+light set. In dark mode the accent decides, and `taskbar_is_light` follows its
+relative luminance, splitting at 0.3 — where the dark set's white caret reaches
+the 3:1 floor. A bright accent such as gold therefore takes the light set even
+though Windows is dark, because the white caret measured 1.7:1 on it. The
+accent is `DWM\ColorizationColor` (ARGB), with `DWM\AccentColor` (ABGR) as
+fallback.
+
+Known limit: the mark is two flat colours, so an accent in the middle of the
+luminance range leaves the waveform below 3:1 whichever set is chosen. The
+caret clears 3:1 against the accent itself, and it is the element that carries
+the mark; a single-colour mark would hold the whole silhouette, at the cost of
+the amber. The taskbar is also acrylic over the wallpaper, and the accent
+arrives with the transparency `ColorizationColor` carries, so the effective
+background is a blend the registry does not describe.
 
 ## Regenerating rasters
 

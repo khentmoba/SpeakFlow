@@ -656,7 +656,7 @@ fn refresh_tray_icon(app: &tauri::AppHandle, icon_size: u32) {
         .recording
         .snapshot()
         .is_some_and(|snapshot| snapshot.phase == state::RecordingPhase::Recording);
-    let light = tray_icon::system_uses_light_taskbar();
+    let light = tray_icon::taskbar_is_light();
     if let Some(tray) = app.tray_by_id("main-tray") {
         if let Err(error) = tray.set_icon(Some(tray_icon::image(icon_size, recording, light))) {
             log::warn!("更新托盘图标失败: {error}");
@@ -689,7 +689,7 @@ fn setup_system_tray(app_handle: &tauri::AppHandle) -> Result<(), Box<dyn std::e
         .icon(tray_icon::image(
             icon_size,
             false,
-            tray_icon::system_uses_light_taskbar(),
+            tray_icon::taskbar_is_light(),
         ))
         .tooltip("SpeakFlow - Voice to text")
         .menu(&menu)
@@ -721,16 +721,17 @@ fn setup_system_tray(app_handle: &tauri::AppHandle) -> Result<(), Box<dyn std::e
         refresh_tray_icon(&app, icon_size)
     });
 
-    // The taskbar theme can change while the app sits idle, and Windows does not
-    // report it through Tauri's window theme, so poll the setting and repaint.
+    // The taskbar theme, and the accent it can be painted in, change while the
+    // app sits idle, and Windows does not report either through Tauri's window
+    // theme, so poll the settings and repaint when the palette would change.
     #[cfg(windows)]
     {
         let watcher = app_handle.clone();
         tauri::async_runtime::spawn(async move {
-            let mut light = tray_icon::system_uses_light_taskbar();
+            let mut light = tray_icon::taskbar_is_light();
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-                let next = tray_icon::system_uses_light_taskbar();
+                let next = tray_icon::taskbar_is_light();
                 if next != light {
                     light = next;
                     refresh_tray_icon(&watcher, icon_size);
