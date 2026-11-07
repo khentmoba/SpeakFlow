@@ -97,7 +97,7 @@ announcement ships a release nobody hears about.
 - **Destination:** the **Felary** server (`1537573945992024125`), channel
   `#speakflow-releases` (`1562407200259837978`), posted by the
   **SpeakFlow Release Bot** webhook (`1562407289510436894`).
-- **Poster:** `~/.config/speakflow/post-release.mjs`. It reads the webhook ID and
+- **Poster:** `scripts/post_release_discord.mjs`. It reads the webhook ID and
   token from `~/.config/speakflow/discord-release-webhook.json`, so the token
   never reaches a command line or a transcript. It prints the payload and
   sends nothing until `--send` is passed.
@@ -110,7 +110,7 @@ concrete user-facing change per line is the unit. Keep the file outside the
 checkout: the release script rejects untracked files in the working tree.
 
 ```bash
-node ~/.config/speakflow/post-release.mjs --version <X.Y.Z> \
+node scripts/post_release_discord.mjs --version <X.Y.Z> \
   --notes <notes-file> \
   --link https://github.com/khentmoba/SpeakFlow/releases/download/<X.Y.Z>/SpeakFlow_<X.Y.Z>_x64-setup.exe \
   --configuration "Windows x64 (NSIS)"

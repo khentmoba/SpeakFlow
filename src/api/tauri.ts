@@ -39,6 +39,8 @@ import type {
   UserProfile,
   WebSearchProvider,
 } from "@/types";
+import { INPUT_DEVICE_STORAGE_KEY } from "@/lib/constants";
+import { writeLocalStorage } from "@/lib/storage";
 import type { RecordingSnapshot } from "@/types/generated/ipc";
 
 type InvokeArgs = Record<string, unknown>;
@@ -260,8 +262,10 @@ export const listInputDevices = createNoArgCommand<InputDeviceListPayload>("list
 export const startMicrophoneLevelMonitor = createNoArgCommand<string>("start_microphone_level_monitor");
 export const stopMicrophoneLevelMonitor = createNoArgCommand<void>("stop_microphone_level_monitor");
 
-export function setInputDevice(name?: string | null): Promise<void> {
-  return invokeCommand<void>("set_input_device", { name: name ?? null });
+export async function setInputDevice(name?: string | null): Promise<void> {
+  const normalized = name ?? null;
+  await invokeCommand<void>("set_input_device", { name: normalized });
+  writeLocalStorage(INPUT_DEVICE_STORAGE_KEY, normalized ?? "");
 }
 
 export function setInputMethodCommand(method: string): Promise<void> {

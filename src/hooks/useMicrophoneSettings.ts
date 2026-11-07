@@ -29,11 +29,12 @@ interface MicrophoneLevelPayload {
 
 interface UseMicrophoneSettingsOptions {
   active: boolean;
-  closePicker: () => void;
+  closePicker?: () => void;
   isRecording: boolean;
+  alwaysMonitor?: boolean;
 }
 
-// The native monitor is shared by every settings-page instance.
+// The native monitor is shared by every settings and setup-wizard instance.
 let monitorOwner: symbol | null = null;
 let monitorQueue = Promise.resolve();
 
@@ -41,6 +42,7 @@ export function useMicrophoneSettings({
   active,
   closePicker,
   isRecording,
+  alwaysMonitor = false,
 }: UseMicrophoneSettingsOptions) {
   const { t } = useTranslation();
   const tRef = useRef(t);
@@ -51,7 +53,7 @@ export function useMicrophoneSettings({
   const [micLevel, setMicLevel] = useState(0);
   const [micMonitorReady, setMicMonitorReady] = useState(false);
   const [micLevelMonitorEnabled, setMicLevelMonitorEnabled] = useState(
-    () => readLocalStorage(MIC_LEVEL_MONITOR_ENABLED_KEY) === "true",
+    () => alwaysMonitor || readLocalStorage(MIC_LEVEL_MONITOR_ENABLED_KEY) === "true",
   );
   const mountedRef = useRef(true);
   const intentRef = useRef({ active, isRecording, enabled: micLevelMonitorEnabled });
@@ -156,10 +158,12 @@ export function useMicrophoneSettings({
   }, [active, isRecording, micLevelMonitorEnabled, selectedInputDeviceName, reconcileMonitor]);
 
   const handleInputDeviceChange = useCallback(async (name: string) => {
-    closePicker();
+    closePicker?.();
     setDeviceListLoading(true);
     try {
       await setInputDevice(name || null);
+      // setInputDevice writes localStorage in production; keep this write for
+      // component tests that mock @/api/tauri.
       writeLocalStorage(INPUT_DEVICE_STORAGE_KEY, name || "");
       setSelectedInputDeviceName(name);
       await refreshInputDevices();

@@ -689,24 +689,29 @@ class TranscribeDispatchContractTests(unittest.TestCase):
         import inspect
 
         import r2t2_asr_server
+        import server_common
 
-        expected = (
-            "audio_path",
-            "options",
-            "hot_words",
-            "audio_base64",
-            "audio_format",
-            "sample_rate",
-            "filter_silence",
-        )
+        base_params = list(inspect.signature(server_common.BaseASRServer.transcribe_audio).parameters)
         for server_class in (qwen3_asr_server.Qwen3ASRServer, r2t2_asr_server.R2T2ASRServer):
-            parameters = inspect.signature(server_class.transcribe_audio).parameters
-            for name in expected:
-                self.assertIn(
-                    name,
-                    parameters,
-                    f"{server_class.__name__}.transcribe_audio is missing {name}",
-                )
+            sig = inspect.signature(server_class.transcribe_audio)
+            self.assertEqual(
+                list(sig.parameters),
+                base_params,
+                f"{server_class.__name__}.transcribe_audio parameters drifted from BaseASRServer",
+            )
+            bound_calls = []
+
+            class Probe:
+                def transcribe_audio(self_probe, *args, **kwargs):
+                    bound_calls.append(sig.bind(None, *args, **kwargs))
+                    return {"success": True}
+
+            server_common.BaseASRServer._execute_action(
+                Probe(),
+                {"action": "transcribe", "audio_path": "clip.wav"},
+                "transcribe",
+            )
+            self.assertEqual(len(bound_calls), 1)
 
 
 class SpeechProcessingTests(unittest.TestCase):

@@ -73,5 +73,23 @@ class OutputDrainWiring(unittest.TestCase):
                           body("src-tauri/src/services/audio_service/finalize.rs", name))
 
 
+class MicrophoneMonitorWiring(unittest.TestCase):
+    def test_microphone_monitor_commands_are_only_called_by_the_shared_hook(self):
+        allowed = {"src/api/tauri.ts", "src/hooks/useMicrophoneSettings.ts"}
+        callers = set()
+        for path in (ROOT / "src").rglob("*"):
+            rel = path.relative_to(ROOT).as_posix()
+            if path.suffix not in {".ts", ".tsx"} or "/__tests__/" in rel or re.search(r"\.(?:test|spec)\.(?:ts|tsx)$", rel):
+                continue
+            source = path.read_text(encoding="utf-8")
+            if "startMicrophoneLevelMonitor" in source or "stopMicrophoneLevelMonitor" in source:
+                callers.add(rel)
+        self.assertEqual(
+            callers,
+            allowed,
+            "Route microphone monitor start/stop through src/hooks/useMicrophoneSettings.ts (monitorOwner/monitorQueue)",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -931,3 +931,23 @@ describe("setCorrectionValidationConfig payload", () => {
     );
   });
 });
+
+describe("setInputDevice persistence", () => {
+  it("persists the selected microphone to localStorage only after the IPC call succeeds", async () => {
+    localStorage.removeItem("speak-flow-input-device");
+    const { setInputDevice } = await import("@/api/tauri");
+
+    invokeMock.invoke.mockRejectedValueOnce(new Error("device busy"));
+    await expect(setInputDevice("USB Mic")).rejects.toThrow("device busy");
+    expect(localStorage.getItem("speak-flow-input-device")).toBeNull();
+
+    invokeMock.invoke.mockResolvedValueOnce(undefined);
+    await setInputDevice("USB Mic");
+    expect(invokeMock.invoke).toHaveBeenLastCalledWith("set_input_device", { name: "USB Mic" });
+    expect(localStorage.getItem("speak-flow-input-device")).toBe("USB Mic");
+
+    invokeMock.invoke.mockResolvedValueOnce(undefined);
+    await setInputDevice(null);
+    expect(localStorage.getItem("speak-flow-input-device")).toBe("");
+  });
+});

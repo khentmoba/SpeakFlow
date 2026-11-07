@@ -367,6 +367,7 @@ export default function MainPage({ onNavigate, animClass = "" }: {
                   engine={engine}
                   installed={installedEngines}
                   isToggleMode={isToggleMode}
+                  isRecording={isRecording}
                   stage={stage}
                   isReady={isReady}
                   isDownloading={isDownloading}
