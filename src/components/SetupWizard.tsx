@@ -1,26 +1,17 @@
-import { useEffect, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { Check, Download, Mic, Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import {
-  listInputDevices,
-  setInputDevice,
-  startMicrophoneLevelMonitor,
-  stopMicrophoneLevelMonitor,
-} from "@/api/tauri";
-import type { InputDeviceInfo } from "@/types";
 import Kbd from "@/components/Kbd";
 import { findCatalogModel, formatModelSize } from "@/lib/asrCatalog";
 import { engineDisplayLabel } from "@/lib/asrEngineOptions";
 import { ENGLISH_RECOMMENDED_MODEL } from "@/lib/recommendedModel";
-import { INPUT_DEVICE_STORAGE_KEY } from "@/lib/constants";
-import { writeLocalStorage } from "@/lib/storage";
+import { useMicrophoneSettings } from "@/hooks/useMicrophoneSettings";
 import type { ModelStage } from "@/hooks/useModelStatus";
 
 interface SetupWizardProps {
   engine: string;
   installed: ReadonlySet<string>;
   isToggleMode: boolean;
+  isRecording?: boolean;
   stage: ModelStage;
   isReady: boolean;
   isDownloading: boolean;
@@ -44,6 +35,7 @@ export default function SetupWizard({
   engine,
   installed,
   isToggleMode,
+  isRecording = false,
   stage,
   isReady,
   isDownloading,
@@ -63,57 +55,16 @@ export default function SetupWizard({
   const recommendedSelected = recommended ? engine === recommended.key : false;
   const recommendedFailed = recommendedSelected && recommendedInstalled && !isReady && stage === "error";
   const recommendedStarting = recommendedSelected && recommendedInstalled && !isReady && !recommendedFailed;
-  const [devices, setDevices] = useState<InputDeviceInfo[]>([]);
-  const [selectedDevice, setSelectedDevice] = useState("");
-  const [level, setLevel] = useState(0);
-
-  useEffect(() => {
-    let disposed = false;
-    void listInputDevices()
-      .then((payload) => {
-        if (disposed) return;
-        setDevices(payload.devices);
-        setSelectedDevice(payload.selectedDeviceName ?? "");
-      })
-      .catch(() => undefined);
-    return () => { disposed = true; };
-  }, []);
-
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | null = null;
-    let sawLevel = false;
-    let rearm: ReturnType<typeof setTimeout> | null = null;
-    const startMonitor = () => { void startMicrophoneLevelMonitor().catch(() => undefined); };
-    startMonitor();
-    // A settings-page round trip queues its own stop; if no level arrives,
-    // start again so the meter does not stay at zero for the session.
-    rearm = setTimeout(() => { if (!disposed && !sawLevel) startMonitor(); }, 1500);
-    void listen<{ level?: number }>("microphone-level", ({ payload }) => {
-      if (disposed) return;
-      sawLevel = true;
-      const value = typeof payload?.level === "number" ? payload.level : 0;
-      setLevel(Math.max(0, Math.min(1, value)));
-    })
-      .then((dispose) => { if (disposed) dispose(); else unlisten = dispose; })
-      .catch(() => undefined);
-    return () => {
-      disposed = true;
-      if (rearm) clearTimeout(rearm);
-      unlisten?.();
-      void stopMicrophoneLevelMonitor().catch(() => undefined);
-    };
-  }, []);
-
-  const handleDeviceChange = async (name: string) => {
-    setSelectedDevice(name);
-    try {
-      await setInputDevice(name || null);
-      writeLocalStorage(INPUT_DEVICE_STORAGE_KEY, name || "");
-    } catch {
-      // Keep the list usable; the settings page reports the failure in detail.
-    }
-  };
+  const {
+    inputDevices: devices,
+    selectedInputDeviceName: selectedDevice,
+    micLevel: level,
+    handleInputDeviceChange: handleDeviceChange,
+  } = useMicrophoneSettings({
+    active: true,
+    isRecording,
+    alwaysMonitor: true,
+  });
 
   const handleUseRecommended = async () => {
     if (!recommended) return;

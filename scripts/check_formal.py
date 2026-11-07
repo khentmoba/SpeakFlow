@@ -107,6 +107,8 @@ def check_inventory(manifest: dict) -> None:
             source = (ROOT / "formal" / f"{case['model']}.tla").read_text(encoding="utf-8")
             if source.count(case["replace"][0]) != 1:
                 raise ValueError(f"mutation target changed: {case['name']}")
+    for model in manifest.get("runs", {}):
+        check_static_model_bindings(manifest, model)
     print(f"Inventory: {len(actual)} commands, {len(manifest['events'])} event families, "
           f"{len(manifest['lifecycle'])} lifecycle contracts, {len(manifest['protocols'])} protocols.", flush=True)
 
@@ -136,18 +138,15 @@ def tlc(jar: Path, model: str, config: Path, source: Path, directory: Path,
     return record
 
 
-def check_model_bindings(manifest: dict, model: str, logs: Path) -> None:
+def check_static_model_bindings(manifest: dict, model: str) -> tuple[set[str], set[str], set[str]]:
     source = tla_code((ROOT / "formal" / f"{model}.tla").read_text(encoding="utf-8"))
     declarations = list(re.finditer(r"^(\w+)(?:\([^\n]*\))?\s*==", source, re.M))
     bodies = {match[1]: source[match.end():declarations[index + 1].start() if index + 1 < len(declarations) else len(source)]
               for index, match in enumerate(declarations)}
-    checked, observed = set(), set()
+    checked = set()
     for config in manifest["runs"][model]:
         checked.update(re.findall(r"^(?:INVARIANT|PROPERTY)\s+(\w+)",
                                   tla_code((ROOT / "formal" / config).read_text(encoding="utf-8")), re.M))
-        output = (logs / Path(config).stem / "tlc.log").read_text(encoding="utf-8")
-        observed.update(name for name, count in re.findall(
-            r"^<(\w+) line [^\n]+>: \d+:(\d+)$", output, re.M) if int(count) > 0)
     # Only a positive conjunction or alias entails its operands. Merely naming
     # a predicate in a negation, implication, string or comment proves nothing.
     while True:
@@ -165,6 +164,19 @@ def check_model_bindings(manifest: dict, model: str, logs: Path) -> None:
     for action in actions:
         if action not in bodies or not re.search(r"\b\w+'", bodies[action]):
             raise ValueError(f"declared action has no state transition: {model}.{action}")
+    missing = bound - actions - checked
+    if missing:
+        raise ValueError(f"unexercised/unasserted obligations in {model}: {sorted(missing)}")
+    return checked, bound, actions
+
+
+def check_model_bindings(manifest: dict, model: str, logs: Path) -> None:
+    checked, bound, actions = check_static_model_bindings(manifest, model)
+    observed = set()
+    for config in manifest["runs"][model]:
+        output = (logs / Path(config).stem / "tlc.log").read_text(encoding="utf-8")
+        observed.update(name for name, count in re.findall(
+            r"^<(\w+) line [^\n]+>: \d+:(\d+)$", output, re.M) if int(count) > 0)
     missing = (bound - actions - checked) | ((bound & actions) - observed)
     if missing:
         raise ValueError(f"unexercised/unasserted obligations in {model}: {sorted(missing)}")

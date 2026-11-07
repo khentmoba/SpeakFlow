@@ -78,6 +78,50 @@ class ModelBindingTests(unittest.TestCase):
         self.check("Begin == h' = h + 1\n", "", bound="Begin", actions=["Begin"],
                    observed="<Begin line 1, col 1 to line 1, col 20 of module Fixture>: 1:1\n")
 
+    def test_inventory_check_rejects_unlisted_action_without_tlc_logs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "formal").mkdir()
+            (root / "src-tauri/src").mkdir(parents=True)
+            (root / "src").mkdir()
+            (root / "src-tauri/src/lib.rs").write_text(
+                "fn run() { tauri::generate_handler![commands::support::open_log_folder]; }\n"
+                "fn open_log_folder() {}\n",
+                encoding="utf-8",
+            )
+            (root / "formal" / "Fixture.tla").write_text(
+                "ReadSnapshot == s' = s\nOpenUrl == s' = s\n",
+                encoding="utf-8",
+            )
+            (root / "formal" / "Fixture.cfg").write_text("CHECK_DEADLOCK FALSE\n", encoding="utf-8")
+            manifest = {
+                "commands": {"commands::support::open_log_folder": ["support"]},
+                "command_implementation": {
+                    "commands::support::open_log_folder": "src-tauri/src/lib.rs#open_log_folder",
+                },
+                "events": {},
+                "lifecycle": {},
+                "protocols": {},
+                "negative": [],
+                "runs": {"Fixture": ["Fixture.cfg"]},
+                "contracts": {
+                    "support": {
+                        "obligation": "support obligation",
+                        "models": {"Fixture": ["ReadSnapshot", "OpenUrl"]},
+                        "implementation": ["src-tauri/src/lib.rs#open_log_folder"],
+                        "evidence": ["src-tauri/src/lib.rs#open_log_folder"],
+                        "assumptions": "none",
+                    },
+                },
+                "actions": {"Fixture": ["OpenUrl"]},
+            }
+            with patch.object(check_formal, "ROOT", root):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    r"unexercised/unasserted obligations in Fixture: \['ReadSnapshot'\]",
+                ):
+                    check_formal.check_inventory(manifest)
+
 
 if __name__ == "__main__":
     unittest.main()
