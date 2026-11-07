@@ -141,6 +141,7 @@ class Qwen3ASRServer(BaseASRServer):
 
     def _close_runtime(self):
         self.initialized = False
+        self._cached_max_input_samples = None
         if self.session is not None:
             try:
                 self.session.close()
@@ -209,13 +210,19 @@ class Qwen3ASRServer(BaseASRServer):
 
     def _max_input_samples(self):
         """Longest clip the loaded session accepts, or 0 when it states none."""
+        cached = getattr(self, "_cached_max_input_samples", None)
+        if cached is not None:
+            return cached
         try:
             milliseconds = int(self.session.limits.effective_max_audio_ms)
         except Exception:
             return 0
         if milliseconds <= 0:
-            return 0
-        return milliseconds * QWEN3_VAD_SAMPLE_RATE // 1000
+            result = 0
+        else:
+            result = milliseconds * QWEN3_VAD_SAMPLE_RATE // 1000
+        self._cached_max_input_samples = result
+        return result
 
     @staticmethod
     def _split_audio(audio, max_samples):

@@ -89,6 +89,19 @@ class FireRedVad:
             sess_options=session_options,
         )
 
+        self._cache_options()
+
+    def _cache_options(self) -> None:
+        self._min_speech_frames = max(1, self.options.min_speech_duration_ms // 10)
+        self._min_silence_frames = max(1, self.options.min_silence_duration_ms // 10)
+        self._pad_samples = max(0, self.options.speech_pad_ms * SAMPLE_RATE // 1000)
+        self._smooth_window = max(1, int(self.options.smooth_window_frames))
+        self._smooth_kernel = (
+            np.ones(self._smooth_window, dtype=np.float32) / self._smooth_window
+            if self._smooth_window > 1
+            else None
+        )
+
     def _extract_features(self, audio: np.ndarray) -> np.ndarray:
         samples = np.asarray(audio, dtype=np.float32).reshape(-1)
         pcm = np.clip(samples * 32768.0, -32768.0, 32767.0)
@@ -103,10 +116,9 @@ class FireRedVad:
             [fbank.get_frame(index) for index in range(frame_count)],
             dtype=np.float32,
         )
-        return np.ascontiguousarray(
-            (features - self._mean) * self._inverse_std,
-            dtype=np.float32,
-        )
+        features -= self._mean
+        features *= self._inverse_std
+        return features
 
     def probabilities(self, audio: np.ndarray) -> np.ndarray:
         features = self._extract_features(audio)
@@ -132,19 +144,20 @@ class FireRedVad:
         if probabilities.size == 0:
             return []
 
-        window = max(1, int(self.options.smooth_window_frames))
-        if window > 1:
-            kernel = np.ones(window, dtype=np.float32) / window
-            smoothed = np.convolve(probabilities, kernel, mode="full")[: probabilities.size]
-            for index in range(min(window - 1, probabilities.size)):
+        if not hasattr(self, "_smooth_window"):
+            self._cache_options()
+
+        if self._smooth_window > 1:
+            smoothed = np.convolve(probabilities, self._smooth_kernel, mode="full")[: probabilities.size]
+            for index in range(min(self._smooth_window - 1, probabilities.size)):
                 smoothed[index] = probabilities[: index + 1].mean()
         else:
             smoothed = probabilities
 
         speech_flags = smoothed >= self.options.threshold
-        min_speech_frames = max(1, self.options.min_speech_duration_ms // 10)
-        min_silence_frames = max(1, self.options.min_silence_duration_ms // 10)
-        pad_samples = max(0, self.options.speech_pad_ms * SAMPLE_RATE // 1000)
+        min_speech_frames = self._min_speech_frames
+        min_silence_frames = self._min_silence_frames
+        pad_samples = self._pad_samples
 
         segments: list[tuple[int, int]] = []
         candidate_start: int | None = None

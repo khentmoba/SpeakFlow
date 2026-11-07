@@ -90,6 +90,13 @@ pub(super) async fn send_command_to_server_with_timeout<R: tauri::Runtime>(
     .map_err(|_| AppError::Asr("Timed out waiting for the FunASR command".to_string()))?
 }
 
+#[derive(serde::Serialize)]
+struct CommandEnvelope<'a> {
+    request_id: u64,
+    #[serde(flatten)]
+    command: &'a ServerCommand,
+}
+
 /// 向子进程发送命令并读取响应的内部实现
 ///
 /// 调用方在整个 I/O 期间持有进程锁和取消守卫。
@@ -98,23 +105,19 @@ pub(super) async fn send_command_impl(
     command: &ServerCommand,
 ) -> Result<ServerResponse, AppError> {
     let request_id = NEXT_SERVER_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
-    let mut command_value = serde_json::to_value(command)
-        .map_err(|e| AppError::Asr(format!("Failed to serialize command: {}", e)))?;
-    if let Some(map) = command_value.as_object_mut() {
-        map.insert(
-            "request_id".to_string(),
-            serde_json::Value::Number(request_id.into()),
-        );
-    }
-    // 序列化命令为 Python 端期望的扁平 JSON 格式
-    let command_json = serde_json::to_string(&command_value)
-        .map_err(|e| AppError::Asr(format!("Failed to serialize command: {}", e)))?;
+    // 直接单次序列化为字节流，避免先 to_value 深拷贝 512KB base64 负载再 to_string 再 format
+    let mut command_bytes = serde_json::to_vec(&CommandEnvelope {
+        request_id,
+        command,
+    })
+    .map_err(|e| AppError::Asr(format!("Failed to serialize command: {}", e)))?;
+    command_bytes.push(b'\n');
 
     // 写入命令到 stdin
     // `write_all` 确保所有字节都被写入
     process
         .stdin
-        .write_all(format!("{}\n", command_json).as_bytes())
+        .write_all(&command_bytes)
         .await
         .map_err(|e| AppError::Asr(format!("Failed to write command to FunASR: {}", e)))?;
 

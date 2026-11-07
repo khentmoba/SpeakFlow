@@ -57,12 +57,14 @@ pub async fn transcribe_pcm16_owned(
         ));
     }
 
+    let asr_config = paths::read_asr_transcription_config();
+
     // 本地引擎对过短输入的处理不稳定。interim 路径的首个 tick 可能只有
     // 200-400ms，这里尾部 zero-pad 到 0.5s；只对短音频生效，长输入走原路。
     const MIN_IPC_DURATION_SEC: f64 = 0.5;
     let min_samples_for_ipc = (sample_rate as f64 * MIN_IPC_DURATION_SEC) as usize;
     let padded_storage: Vec<i16>;
-    let samples: &[i16] = if paths::read_engine_config() != "confucius4-r2t2"
+    let samples: &[i16] = if asr_config.engine != paths::R2T2_ENGINE
         && samples.len() < min_samples_for_ipc
         && !samples.is_empty()
     {
@@ -104,19 +106,18 @@ pub async fn transcribe_pcm16_owned(
         .await;
     }
 
-    let (language, translate_to_english) = transcription_options();
     let response = send_command_to_server(
         state,
         &ServerCommand::Transcribe {
-            options: profile_r2t2_options(state),
+            options: profile_r2t2_options(state, &asr_config.engine),
             audio_path: None,
             audio_base64: Some(encode_pcm16_base64(samples)),
             audio_format: Some(INLINE_AUDIO_FORMAT_PCM_S16LE.to_string()),
             sample_rate: Some(sample_rate),
             hot_words: hot_words.clone(),
-            language,
-            translate_to_english,
-            filter_silence: Some(paths::read_silence_filter()),
+            language: asr_config.language,
+            translate_to_english: asr_config.translate_to_english.then_some(true),
+            filter_silence: Some(asr_config.filter_silence),
         },
         Some(app_handle),
     )
@@ -154,32 +155,11 @@ pub(super) fn profile_hot_words(state: &AppState) -> Option<Vec<String>> {
     (!words.is_empty()).then_some(words)
 }
 
-/// Recognition language and translation for the local transcribe.cpp models.
-///
-/// R2T2 carries its language in `options`, and online engines never reach this
-/// command. The saved language is resolved once against the selected model, so
-/// a switch to an English-only model never sends an unusable code.
-fn transcription_options() -> (Option<String>, Option<bool>) {
-    let engine = paths::read_engine_config();
-    if engine == paths::R2T2_ENGINE || paths::is_online_engine(&engine) {
-        return (None, None);
-    }
-    let language =
-        crate::utils::asr_catalog::resolve_language(&engine, paths::read_asr_language().as_deref());
-    let translate = paths::read_translate_to_english()
-        && crate::utils::asr_catalog::supports_translation(&engine)
-        && language != "en";
-    (
-        (language != "auto").then_some(language),
-        translate.then_some(true),
-    )
-}
-
 pub(super) fn profile_r2t2_options(
     state: &AppState,
+    engine: &str,
 ) -> Option<crate::state::user_profile::R2T2Config> {
-    (paths::read_engine_config() == "confucius4-r2t2")
-        .then(|| state.with_profile(|profile| profile.r2t2.clone()))
+    (engine == paths::R2T2_ENGINE).then(|| state.with_profile(|profile| profile.r2t2.clone()))
 }
 
 const _: () = assert!(
@@ -319,19 +299,19 @@ pub(super) async fn transcribe_wav_bytes_via_path(
         .await
         .map_err(|e| AppError::Asr(format!("Failed to write temporary audio file: {}", e)))?;
 
-    let (language, translate_to_english) = transcription_options();
+    let asr_config = paths::read_asr_transcription_config();
     let response = send_command_to_server(
         state,
         &ServerCommand::Transcribe {
-            options: profile_r2t2_options(state),
+            options: profile_r2t2_options(state, &asr_config.engine),
             audio_path: Some(temp_file.to_string_lossy().to_string()),
             audio_base64: None,
             audio_format: None,
             sample_rate: None,
             hot_words,
-            language,
-            translate_to_english,
-            filter_silence: Some(paths::read_silence_filter()),
+            language: asr_config.language,
+            translate_to_english: asr_config.translate_to_english.then_some(true),
+            filter_silence: Some(asr_config.filter_silence),
         },
         Some(app_handle),
     )
