@@ -189,22 +189,64 @@ fn engine_json_object_or_empty(value: serde_json::Value) -> serde_json::Value {
     }
 }
 
+struct CachedEngineJson {
+    path: PathBuf,
+    mtime: Option<std::time::SystemTime>,
+    len: u64,
+    value: serde_json::Value,
+}
+
+static ENGINE_JSON_CACHE: parking_lot::RwLock<Option<CachedEngineJson>> =
+    parking_lot::RwLock::new(None);
+
 fn read_engine_json() -> serde_json::Value {
     let path = get_engine_config_path();
-    match std::fs::read_to_string(path) {
+    let meta = std::fs::metadata(&path).ok();
+    let mtime = meta.as_ref().and_then(|m| m.modified().ok());
+    let len = meta.as_ref().map_or(0, |m| m.len());
+
+    {
+        let cache = ENGINE_JSON_CACHE.read();
+        if let Some(ref entry) = *cache {
+            if entry.path == path && entry.mtime == mtime && entry.len == len {
+                return entry.value.clone();
+            }
+        }
+    }
+
+    match std::fs::read_to_string(&path) {
         Ok(data) => match serde_json::from_str::<serde_json::Value>(&data) {
             Ok(value) => {
                 if !value.is_object() {
                     log::warn!("engine.json 是有效 JSON 但不是对象，已按空配置处理");
                 }
-                engine_json_object_or_empty(value)
+                let clean = engine_json_object_or_empty(value);
+                let mut cache = ENGINE_JSON_CACHE.write();
+                *cache = Some(CachedEngineJson {
+                    path,
+                    mtime,
+                    len,
+                    value: clean.clone(),
+                });
+                clean
             }
             Err(err) => {
                 log::warn!("engine.json 解析失败，已按空配置处理: {}", err);
                 serde_json::json!({})
             }
         },
-        Err(_) => serde_json::json!({}),
+        Err(_) => {
+            if meta.is_none() {
+                let mut cache = ENGINE_JSON_CACHE.write();
+                *cache = Some(CachedEngineJson {
+                    path,
+                    mtime: None,
+                    len: 0,
+                    value: serde_json::json!({}),
+                });
+            }
+            serde_json::json!({})
+        }
     }
 }
 
@@ -282,7 +324,18 @@ fn write_engine_json(obj: &serde_json::Value) -> Result<(), std::io::Error> {
             format!("Failed to serialize configuration: {}", e),
         )
     })?;
-    atomic_write(&config_path, serialized.as_bytes())
+    atomic_write(&config_path, serialized.as_bytes())?;
+    let meta = std::fs::metadata(&config_path).ok();
+    let mtime = meta.as_ref().and_then(|m| m.modified().ok());
+    let len = meta.as_ref().map_or(0, |m| m.len());
+    let mut cache = ENGINE_JSON_CACHE.write();
+    *cache = Some(CachedEngineJson {
+        path: config_path,
+        mtime,
+        len,
+        value: obj.clone(),
+    });
+    Ok(())
 }
 
 fn read_region_field(field: &str) -> String {
@@ -511,6 +564,49 @@ fn read_bool_setting(key: &str, default: bool) -> bool {
         .get(key)
         .and_then(|value| value.as_bool())
         .unwrap_or(default)
+}
+
+#[derive(Debug, Clone)]
+pub struct AsrTranscriptionConfig {
+    pub engine: String,
+    pub language: Option<String>,
+    pub translate_to_english: bool,
+    pub filter_silence: bool,
+}
+
+/// Reads all ASR transcription options in a single cached config lookup,
+/// eliminating redundant disk reads and JSON parsing on the hot transcription loop.
+pub fn read_asr_transcription_config() -> AsrTranscriptionConfig {
+    let json = read_engine_json();
+    let engine = configured_engine(json.get("engine").and_then(|v| v.as_str())).to_string();
+    let (language, translate_to_english) = if engine == R2T2_ENGINE || is_online_engine(&engine) {
+        (None, false)
+    } else {
+        let raw = json
+            .get("asr_language")
+            .and_then(|value| value.as_str())
+            .and_then(normalize_language_setting);
+        let resolved = super::asr_catalog::resolve_language(&engine, raw.as_deref());
+        let lang = (resolved != "auto").then_some(resolved);
+        let translate = json
+            .get("translate_to_english")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+            && super::asr_catalog::supports_translation(&engine)
+            && lang.as_deref() != Some("en");
+        (lang, translate)
+    };
+    let filter_silence = json
+        .get("silence_filter")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(true);
+
+    AsrTranscriptionConfig {
+        engine,
+        language,
+        translate_to_english,
+        filter_silence,
+    }
 }
 
 /// Spoken shortcuts and the text they insert. Malformed entries are dropped
@@ -905,5 +1001,18 @@ mod tests {
 
         assert!(normalized.is_object());
         assert!(normalized.as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn asr_transcription_config_reads_defaults_and_caches_cleanly() {
+        let config = super::read_asr_transcription_config();
+        assert!(!config.engine.is_empty());
+
+        // Subsequent call returns consistent cached config
+        let cached = super::read_asr_transcription_config();
+        assert_eq!(config.engine, cached.engine);
+        assert_eq!(config.language, cached.language);
+        assert_eq!(config.translate_to_english, cached.translate_to_english);
+        assert_eq!(config.filter_silence, cached.filter_silence);
     }
 }

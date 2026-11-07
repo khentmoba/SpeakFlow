@@ -153,7 +153,7 @@ def decode_inline_audio(
         raise ValueError("Missing in-memory audio data")
 
     try:
-        audio_bytes = base64.b64decode(audio_base64, validate=True)
+        audio_bytes = base64.b64decode(audio_base64, validate=False)
     except (ValueError, base64.binascii.Error) as exc:
         raise ValueError(f"Failed to decode audio base64: {exc}") from exc
     fmt = (audio_format or "pcm_s16le").lower()
@@ -167,7 +167,8 @@ def decode_inline_audio(
 
         samples = np.frombuffer(audio_bytes, dtype="<i2")
         duration = len(samples) / float(sample_rate)
-        audio = np.multiply(samples, 1.0 / 32768.0, dtype=np.float32)
+        audio = samples.astype(np.float32)
+        audio *= (1.0 / 32768.0)
         return audio, duration
 
     if fmt == "wav":
