@@ -106,6 +106,12 @@ function createNoArgCommand<T = string>(
 }
 
 export const startFunASR = createNoArgCommand<string>("start_funasr");
+export const getDiagnostics = createNoArgCommand<string>("get_diagnostics");
+export const openLogsFolder = createNoArgCommand<string>("open_logs_folder");
+
+export function getFreeDiskSpace(path?: string | null): Promise<number> {
+  return invokeCommand<number>("get_free_disk_space", { path: path ?? null });
+}
 export const checkAppUpdate = createNoArgCommand<AppUpdateInfo>("check_app_update");
 
 export interface AppUpdateProgress {

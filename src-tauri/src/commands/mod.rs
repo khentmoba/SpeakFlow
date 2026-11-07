@@ -16,5 +16,6 @@ pub mod magpie;
 mod polish_credential_tests;
 pub mod profile;
 pub mod selection;
+pub mod support;
 pub mod updater;
 pub mod window;

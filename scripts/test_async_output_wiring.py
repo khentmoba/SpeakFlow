@@ -41,10 +41,10 @@ class SubtitleFocusWiring(unittest.TestCase):
         source = body("src-tauri/src/commands/window.rs", "show_subtitle_window_unlocked")
         self.assertNotIn(".show()", source)
         self.assertNotIn(".set_always_on_top(", source)
-        self.assertIn("show_subtitle_without_activation(&window)", source)
+        self.assertIn("show_overlay_without_activation(&window)", source)
 
     def test_windows_subtitle_visibility_and_interaction_use_native_operations(self):
-        show = body("src-tauri/src/commands/window.rs", "show_subtitle_without_activation")
+        show = body("src-tauri/src/commands/window.rs", "show_overlay_without_activation")
         self.assertIn("SWP_NOACTIVATE", show)
         self.assertIn("SWP_SHOWWINDOW", show)
         interaction = body("src-tauri/src/commands/window.rs", "set_subtitle_window_interactive")

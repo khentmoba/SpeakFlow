@@ -92,6 +92,7 @@ describe("Tauri window capability boundaries", () => {
       "main",
       "subtitle",
       "selection",
+      "pill",
     ]);
   });
 });

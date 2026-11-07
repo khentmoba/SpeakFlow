@@ -13,9 +13,8 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
-import { Copy, ExternalLink, MessageCircle } from "lucide-react";
+import { Copy, MessageCircle } from "lucide-react";
 import { searchNoticeKey } from "@/lib/searchNotice";
-import GoogleSearchEntryPoint from "@/features/assistant/GoogleSearchEntryPoint";
 import {
   cancelAssistantConversation,
   continueAssistantConversation,
@@ -57,6 +56,7 @@ import {
   mergeAssistantSources,
 } from "@/pages/subtitle/overlayModel";
 import { SubtitleConversation } from "@/pages/subtitle/SubtitleConversation";
+import { SubtitleAssistantResult } from "@/pages/subtitle/SubtitleAssistantResult";
 
 const MarkdownContent = lazy(() => import("@/components/MarkdownContent"));
 
@@ -1077,26 +1077,6 @@ export default function SubtitleOverlay() {
     </Suspense>
   );
 
-  const renderSources = (sources: AssistantSource[] | undefined) => {
-    if (!sources?.length) return null;
-    return (
-      <div className="subtitle-source-list" aria-label={t("subtitle.conversation.sources")}>
-        {sources.map((source, index) => (
-          <button
-            key={`${source.url}-${index}`}
-            type="button"
-            className="subtitle-source-link"
-            title={source.url}
-            onClick={(event) => handleOpenSource(event, source)}
-          >
-            <span>{source.title || source.url}</span>
-            <ExternalLink size={11} aria-hidden="true" />
-          </button>
-        ))}
-      </div>
-    );
-  };
-
   return (
     <div
       className={`subtitle-root${assistantInteractive ? " subtitle-root-interactive" : ""}`}
@@ -1200,43 +1180,20 @@ export default function SubtitleOverlay() {
                 ))}
               </div>
             )}
-            {isAssistant && phase === "result" && renderSources(assistantSources)}
-            {isAssistant && phase === "result" && assistantGoogleSearchEntryPoint && (
-              <GoogleSearchEntryPoint
-                html={assistantGoogleSearchEntryPoint}
-                label="Google Search"
-                onOpen={handleOpenAssistantUrl}
+            {isAssistant && phase === "result" && (
+              <SubtitleAssistantResult
+                sources={assistantSources}
+                googleSearchEntryPoint={assistantGoogleSearchEntryPoint}
+                searchQuery={assistantSearchQuery}
+                searchProvider={assistantSearchProvider}
+                searchElapsedMs={assistantSearchElapsedMs}
+                elapsedMs={assistantElapsedMs}
+                searchError={assistantSearchError}
+                retryBusy={assistantRetryBusy}
+                onOpenSource={handleOpenSource}
+                onOpenUrl={handleOpenAssistantUrl}
+                onRetry={handleRetryAssistant}
               />
-            )}
-            {isAssistant && phase === "result" && (assistantSearchQuery || assistantElapsedMs !== null) && (
-              <div className="subtitle-search-meta" role="status">
-                {assistantSearchQuery && (
-                  <span className="subtitle-search-query" title={assistantSearchQuery}>
-                    {assistantSearchQuery}
-                  </span>
-                )}
-                {assistantSearchProvider && (
-                  <span>{t("subtitle.conversation.searchProvider", { provider: assistantSearchProvider })}</span>
-                )}
-                {assistantSearchElapsedMs !== null && (
-                  <span>{t("subtitle.conversation.searchTiming", { ms: assistantSearchElapsedMs })}</span>
-                )}
-                {assistantElapsedMs !== null && (
-                  <span>{t("subtitle.conversation.totalTiming", { ms: assistantElapsedMs })}</span>
-                )}
-              </div>
-            )}
-            {assistantSearchError && isAssistant && phase === "result" && (
-              <div className="subtitle-search-warning" role="status">
-                <span>{assistantSearchError}</span>
-                <button
-                  type="button"
-                  onClick={handleRetryAssistant}
-                  disabled={assistantRetryBusy}
-                >
-                  {assistantRetryBusy ? t("subtitle.conversation.retrying") : t("common.retry")}
-                </button>
-              </div>
             )}
             {hasText && phase === "polishing" && streamTokens > 0 && (
               <span className="subtitle-stream-badge">{streamTokens}</span>

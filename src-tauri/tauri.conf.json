@@ -49,6 +49,22 @@
         "shadow": false,
         "visible": false,
         "url": "/?window=selection"
+      },
+      {
+        "label": "recording-pill",
+        "title": "SpeakFlow Recording",
+        "width": 280,
+        "height": 56,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false,
+        "focusable": false,
+        "shadow": false,
+        "visible": false,
+        "url": "/?window=pill"
       }
     ],
     "security": {
@@ -56,7 +72,8 @@
       "capabilities": [
         "main",
         "subtitle",
-        "selection"
+        "selection",
+        "pill"
       ]
     }
   },

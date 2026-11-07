@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Cpu, Globe, Loader2, Download } from "lucide-react";
+import { Cpu, Globe, Loader2, Download, Pause, Play } from "lucide-react";
 import type { ModelStage } from "@/hooks/useModelStatus";
+import { formatDownloadSpeed, formatEta, type DownloadEstimate } from "@/lib/downloadEstimate";
 
 interface StatusIndicatorProps {
   stage: ModelStage;
@@ -14,8 +15,12 @@ interface StatusIndicatorProps {
   downloadProgress: number;
   downloadMessage: string | null;
   isDownloading: boolean;
+  isDownloadPaused?: boolean;
+  downloadEstimate?: DownloadEstimate | null;
   downloadModels: () => void;
   cancelDownload: () => void;
+  pauseDownload?: () => void;
+  resumeDownload?: () => void;
   children?: ReactNode;
 }
 
@@ -42,12 +47,14 @@ function getStatusText(
   stage: ModelStage,
   downloadProgress: number,
   downloadMessage: string | null,
+  isPaused: boolean,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
   if (isStarting) return t("status.connectingMicrophone");
   if (isRecording) return t("status.listening");
   if (isProcessing) return t("status.recognizing");
   if (isReady) return t("status.clickToStart");
+  if (isPaused) return t("status.downloadPaused");
   if (stage === "downloading") {
     return downloadProgress > 1
       ? t("status.downloadingModel", { progress: Math.round(downloadProgress) })
@@ -73,7 +80,8 @@ function getChipLabel(stage: ModelStage, t: (key: string, options?: Record<strin
 export default function StatusIndicator({
   stage, isReady, isStarting, isRecording, isProcessing,
   device, gpuName, downloadProgress, downloadMessage,
-  isDownloading, downloadModels, cancelDownload, children,
+  isDownloading, isDownloadPaused = false, downloadEstimate = null,
+  downloadModels, cancelDownload, pauseDownload, resumeDownload, children,
 }: StatusIndicatorProps) {
   const { t } = useTranslation();
   const showProgressBar = stage === "downloading" || stage === "loading";
@@ -110,12 +118,13 @@ export default function StatusIndicator({
         aria-live="polite"
         className="status-text animate-text-swap"
       >
-        {getStatusText(isStarting, isRecording, isProcessing, isReady, stage, downloadProgress, downloadMessage, t)}
+        {getStatusText(isStarting, isRecording, isProcessing, isReady, stage, downloadProgress, downloadMessage, isDownloadPaused, t)}
       </p>
 
       {(stage === "need_download" || stage === "need_repair") && !isDownloading && (
-        <button onClick={() => downloadModels()} className="btn-primary btn-primary-sm" style={{ marginTop: 4 }}>
-          <Download size={12} /> {t(stage === "need_repair" ? "status.repairModels" : "status.startDownload")}
+        <button onClick={() => (isDownloadPaused && resumeDownload ? resumeDownload() : downloadModels())} className="btn-primary btn-primary-sm" style={{ marginTop: 4 }}>
+          {isDownloadPaused ? <Play size={12} /> : <Download size={12} />}
+          {t(isDownloadPaused ? "status.resumeDownload" : stage === "need_repair" ? "status.repairModels" : "status.startDownload")}
         </button>
       )}
       {stage === "need_download" && isDownloading && (
@@ -138,7 +147,21 @@ export default function StatusIndicator({
               : <div className="download-pulse-bar" />}
           </div>
           {stage === "downloading" && (
-<button onClick={() => cancelDownload()} className="btn-ghost-sm">{t("status.cancelDownload")}</button>
+            <div className="download-actions">
+              {downloadEstimate && (
+                <span className="download-estimate">
+                  {formatDownloadSpeed(downloadEstimate.bytesPerSecond)}
+                  {" · "}
+                  {t("status.downloadEta", { time: formatEta(downloadEstimate.secondsRemaining) })}
+                </span>
+              )}
+              {pauseDownload && (
+                <button onClick={() => pauseDownload()} className="btn-ghost-sm">
+                  <Pause size={11} aria-hidden="true" /> {t("status.pauseDownload")}
+                </button>
+              )}
+              <button onClick={() => cancelDownload()} className="btn-ghost-sm">{t("status.cancelDownload")}</button>
+            </div>
           )}
         </div>
       )}

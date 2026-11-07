@@ -113,6 +113,9 @@ jobs:
       - name: Run frontend checks
         run: pnpm check
 
+      - name: Enforce coverage thresholds
+        run: pnpm test:coverage
+
       - name: Audit production dependencies
         run: pnpm audit --prod --audit-level high
 

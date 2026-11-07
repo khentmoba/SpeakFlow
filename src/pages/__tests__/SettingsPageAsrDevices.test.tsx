@@ -409,7 +409,7 @@ describe("SettingsPage ASR and device settings", () => {
     });
     content.scrollTop = 1800;
     fireEvent.scroll(content);
-    await waitFor(() => expect(container.querySelector('[data-nav-tab="startup"]')).toHaveAttribute("data-active", "true"));
+    await waitFor(() => expect(container.querySelector('[data-nav-tab="support"]')).toHaveAttribute("data-active", "true"));
   });
   it("loads the persisted engine, microphone, and model directory and applies a directory change", async () => {
     const defaultModelsDir = "C:\\speak-flow\\models";

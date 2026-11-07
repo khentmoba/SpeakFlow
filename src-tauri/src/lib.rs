@@ -42,6 +42,8 @@ pub fn run() {
                     },
                 ))
                 .level(log::LevelFilter::Info)
+                .max_file_size(5_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(3))
                 .build(),
         )
         .manage(AppState::new())
@@ -416,6 +418,9 @@ pub fn run() {
             commands::history::delete_transcription_history,
             commands::history::export_transcription_history,
             commands::history::reprocess_transcription_history,
+            commands::support::get_diagnostics,
+            commands::support::open_logs_folder,
+            commands::support::get_free_disk_space,
         ]))
         .run(tauri::generate_context!())
         .expect("启动SpeakFlow 时发生错误");
@@ -717,8 +722,20 @@ fn setup_system_tray(app_handle: &tauri::AppHandle) -> Result<(), Box<dyn std::e
         .build(app_handle)?;
 
     let app = app_handle.clone();
-    app_handle.listen("recording-state", move |_| {
-        refresh_tray_icon(&app, icon_size)
+    app_handle.listen("recording-state", move |event| {
+        refresh_tray_icon(&app, icon_size);
+        // The pill is the only on-screen feedback while dictating into another
+        // app, so it follows the same event that drives the tray mark.
+        let payload: serde_json::Value = serde_json::from_str(event.payload()).unwrap_or_default();
+        let active = ["isStarting", "isRecording", "isProcessing"]
+            .iter()
+            .any(|key| {
+                payload
+                    .get(key)
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(false)
+            });
+        commands::window::update_recording_pill(&app, active);
     });
 
     // The taskbar theme, and the accent it can be painted in, change while the

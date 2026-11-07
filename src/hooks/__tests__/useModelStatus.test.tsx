@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
   restart: vi.fn(),
   download: vi.fn(),
   cancel: vi.fn(),
+  getEngine: vi.fn(),
+  getModelsDir: vi.fn(),
+  getFreeDiskSpace: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: mocks.listen }));
@@ -17,10 +20,14 @@ vi.mock("@/api/tauri", () => ({
   restartFunASR: mocks.restart,
   downloadModels: mocks.download,
   cancelModelDownload: mocks.cancel,
+  getEngine: mocks.getEngine,
+  getModelsDir: mocks.getModelsDir,
+  getFreeDiskSpace: mocks.getFreeDiskSpace,
 }));
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => key } }));
 
 import { useModelStatus } from "../useModelStatus";
+import { ONBOARDING_DISMISSED_KEY } from "@/lib/constants";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -177,6 +184,7 @@ describe("useModelStatus model integrity repair", () => {
   };
 
   beforeEach(() => {
+    localStorage.setItem(ONBOARDING_DISMISSED_KEY, "true");
     vi.useFakeTimers();
     vi.resetAllMocks();
     handlers.clear();
@@ -303,4 +311,51 @@ describe("useModelStatus model integrity repair", () => {
       await act(async () => { pendingDownload.resolve(undefined); });
     },
   );
+});
+
+describe("useModelStatus disk space refusal", () => {
+  beforeEach(() => {
+    localStorage.setItem(ONBOARDING_DISMISSED_KEY, "true");
+    vi.useFakeTimers();
+    vi.resetAllMocks();
+    mocks.listen.mockImplementation(() => Promise.resolve(vi.fn()));
+    mocks.check.mockResolvedValue({
+      running: false,
+      ready: false,
+      models_present: false,
+      device: "cpu",
+      gpu_name: null,
+    });
+    mocks.start.mockResolvedValue(undefined);
+    mocks.restart.mockResolvedValue(undefined);
+    mocks.download.mockResolvedValue(undefined);
+    mocks.cancel.mockResolvedValue(undefined);
+    mocks.getEngine.mockResolvedValue("parakeet-unified-en-0.6b");
+    mocks.getModelsDir.mockResolvedValue({ path: "C:/models", is_custom: false });
+    mocks.getFreeDiskSpace.mockResolvedValue(1);
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("keeps the disk-space error through the next status poll", async () => {
+    const hook = renderHook(() => useModelStatus());
+    await flushMicrotasks();
+    act(() => { hook.result.current.downloadModels(); });
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(hook.result.current.error).toContain("model.notEnoughDisk");
+    expect(hook.result.current.stage).toBe("error");
+
+    await act(async () => {
+      vi.advanceTimersByTime(7000);
+      await Promise.resolve();
+    });
+
+    expect(hook.result.current.error).toContain("model.notEnoughDisk");
+    expect(hook.result.current.stage).toBe("error");
+  });
 });

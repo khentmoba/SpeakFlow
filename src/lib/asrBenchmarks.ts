@@ -1,5 +1,8 @@
 import benchmarks from "../../src-tauri/resources/asr_benchmarks.json";
-import type { CatalogModel } from "@/lib/asrCatalog";
+import { CATALOG_MODELS, LARGE_MODEL_DOWNLOAD_BYTES, type CatalogModel } from "@/lib/asrCatalog";
+import { ENGLISH_RECOMMENDED_MODEL } from "@/lib/recommendedModel";
+
+export { ENGLISH_RECOMMENDED_MODEL };
 
 interface Benchmark {
   /** Time to transcribe 30 seconds of audio on the benchmark machine. */
@@ -110,6 +113,55 @@ function compareModels(language: string | "all") {
 export interface ModelFilter {
   language: string | "all";
   query: string;
+}
+
+/**
+ * SpeakFlow's English pick lives in `recommendedModel.ts` so the first-run
+ * guide can name it without importing this benchmark table.
+ */
+
+function recommendationRank(language: string) {
+  return (a: CatalogModel, b: CatalogModel): number => {
+    const left = accuracyFor(a, language);
+    const right = accuracyFor(b, language);
+    const leftScore = left ? gradeScore(left.grade) : -3;
+    const rightScore = right ? gradeScore(right.grade) : -3;
+    if (leftScore !== rightScore) return rightScore - leftScore;
+    const leftSpeed = benchmarkFor(a.key)?.speed ?? Number.POSITIVE_INFINITY;
+    const rightSpeed = benchmarkFor(b.key)?.speed ?? Number.POSITIVE_INFINITY;
+    if (leftSpeed !== rightSpeed) return leftSpeed - rightSpeed;
+    const leftError = left?.errorPercent ?? Number.POSITIVE_INFINITY;
+    const rightError = right?.errorPercent ?? Number.POSITIVE_INFINITY;
+    if (leftError !== rightError) return leftError - rightError;
+    if (a.recommended !== b.recommended) return a.recommended ? -1 : 1;
+    if (a.long_tail !== b.long_tail) return a.long_tail ? 1 : -1;
+    return a.size - b.size;
+  };
+}
+
+/**
+ * The model SpeakFlow recommends for a language.
+ *
+ * English is a product choice (small and fast enough to feel immediate). Every
+ * other language follows the published benchmark: best grade, then fastest,
+ * then lowest error. Models above the usual download budget are only
+ * considered when nothing smaller covers the language, so a recommendation is
+ * never a 25 GB download without an alternative.
+ */
+export function recommendedModelFor(
+  language: string,
+  models: readonly CatalogModel[] = CATALOG_MODELS,
+): CatalogModel | null {
+  if (language === "all") return null;
+  if (language === "en") {
+    const english = models.find((model) => model.key === ENGLISH_RECOMMENDED_MODEL);
+    if (english) return english;
+  }
+  const candidates = models.filter((model) => model.languages.includes(language));
+  if (candidates.length === 0) return null;
+  const affordable = candidates.filter((model) => model.size <= LARGE_MODEL_DOWNLOAD_BYTES);
+  const pool = affordable.length > 0 ? affordable : candidates;
+  return [...pool].sort(recommendationRank(language))[0] ?? null;
 }
 
 /**

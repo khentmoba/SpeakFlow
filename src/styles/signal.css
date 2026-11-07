@@ -507,6 +507,132 @@ h2.signal-label { margin: 0; }
   color: var(--color-text-tertiary);
 }
 
+/* First-run guide: four steps, each with its own control. */
+.setup-wizard {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+}
+.setup-wizard-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.setup-wizard-skip { font-size: 11px; }
+.setup-wizard-steps {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+}
+.setup-step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.setup-step-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-tertiary);
+}
+.setup-step[data-done="true"] .setup-step-icon {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+.setup-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.setup-step-title {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+.setup-step-desc {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+.setup-step-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+.setup-step-meta {
+  font-size: 10.5px;
+  color: var(--color-text-tertiary);
+}
+.setup-wizard-select {
+  min-width: 160px;
+  max-width: 240px;
+}
+.setup-level {
+  display: block;
+  width: 84px;
+  height: 3px;
+  background: var(--color-bg-tertiary);
+  overflow: hidden;
+}
+.setup-level-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  background: var(--color-accent);
+  transition: transform 90ms linear;
+}
+.setup-level-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--color-text-tertiary);
+}
+.setup-progress {
+  display: block;
+  width: 120px;
+  height: 3px;
+  background: var(--color-bg-tertiary);
+  overflow: hidden;
+}
+.setup-progress-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  background: var(--color-accent);
+  transition: transform 320ms ease-out;
+}
+.setup-wizard-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+}
+.setup-wizard-hint {
+  font-size: 10.5px;
+  color: var(--color-text-tertiary);
+}
+
 /* ============================================================
    Shared component treatment
    ============================================================ */
@@ -638,6 +764,18 @@ h2.signal-label { margin: 0; }
   gap: 8px;
   font-size: 10px;
   color: var(--color-text-tertiary);
+}
+.download-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.download-estimate {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
 }
 
 /* Transcript result — the live line, set large and quiet. */
@@ -977,6 +1115,40 @@ h2.signal-label { margin: 0; }
   font-size: 9px;
   color: var(--color-text-tertiary);
 }
+
+.settings-nav-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-tertiary);
+}
+.settings-nav-search input {
+  min-width: 0;
+  width: 100%;
+  padding: 3px 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  outline: none;
+}
+.settings-nav-search input::placeholder { color: var(--color-text-tertiary); }
+.settings-nav-search input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.settings-nav-search:focus-within { color: var(--color-accent); }
+.settings-nav-empty {
+  padding: 10px 12px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-tertiary);
+}
+
+/* The filter sets `hidden`; author display rules must not defeat it. */
+.settings-card[data-nav-id][hidden] { display: none !important; }
 
 .settings-nav-tab {
   display: flex;

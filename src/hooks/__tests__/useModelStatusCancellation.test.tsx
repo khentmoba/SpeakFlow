@@ -33,6 +33,7 @@ vi.mock("@/api/tauri", () => ({
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => key } }));
 
 import { useModelStatus } from "../useModelStatus";
+import { ONBOARDING_DISMISSED_KEY } from "@/lib/constants";
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -73,6 +74,7 @@ async function advanceAutoRetry() {
 
 describe("useModelStatus automatic download cancellation", () => {
   beforeEach(() => {
+    localStorage.setItem(ONBOARDING_DISMISSED_KEY, "true");
     vi.useFakeTimers();
     vi.resetAllMocks();
     mocks.listen.mockImplementation(() => Promise.resolve(vi.fn()));

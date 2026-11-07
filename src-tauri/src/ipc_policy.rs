@@ -35,6 +35,7 @@ where
                     | "run_selection_action"
                     | "cancel_selection_action"
             ),
+            "recording-pill" => matches!(command, "get_recording_snapshot"),
             _ => false,
         };
         if allowed {
@@ -97,7 +98,7 @@ mod tests {
             ]))
             .build(mock_context(noop_assets()))
             .unwrap();
-        for label in ["subtitle", "selection-toolbar", "unknown"] {
+        for label in ["subtitle", "selection-toolbar", "recording-pill", "unknown"] {
             let window = tauri::WebviewWindowBuilder::new(&app, label, Default::default())
                 .build()
                 .unwrap();
@@ -121,6 +122,9 @@ mod tests {
             } else if label == "selection-toolbar" {
                 assert!(invoke(&window, "run_selection_action").is_ok());
                 assert!(invoke(&window, "get_recording_snapshot").is_err());
+            } else if label == "recording-pill" {
+                assert!(invoke(&window, "get_recording_snapshot").is_ok());
+                assert!(invoke(&window, "run_selection_action").is_err());
             } else {
                 assert!(invoke(&window, "get_recording_snapshot").is_err());
                 assert!(invoke(&window, "run_selection_action").is_err());

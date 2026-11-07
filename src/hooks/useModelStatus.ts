@@ -6,9 +6,15 @@ import {
   cancelModelDownload,
   checkFunASRStatus,
   downloadModels,
+  getEngine,
+  getFreeDiskSpace,
+  getModelsDir,
   restartFunASR,
   startFunASR,
 } from "@/api/tauri";
+import { findCatalogModel, formatModelSize } from "@/lib/asrCatalog";
+import { readLocalStorage } from "@/lib/storage";
+import { ONBOARDING_DISMISSED_KEY } from "@/lib/constants";
 export type ModelStage =
   | "checking"
   | "need_download"
@@ -26,9 +32,12 @@ interface UseModelStatusReturn {
   downloadProgress: number;
   downloadMessage: string | null;
   isDownloading: boolean;
+  isDownloadPaused: boolean;
   error: string | null;
   downloadModels: () => void;
   cancelDownload: () => void;
+  pauseDownload: () => void;
+  resumeDownload: () => void;
   retry: () => void;
 }
 
@@ -58,6 +67,16 @@ function normalizeProgress(progress: number | undefined, current: number): numbe
   return Math.max(0, Math.min(100, progress));
 }
 
+/** Free bytes on the model volume, or null when the backend cannot report it. */
+async function freeSpaceForDownload(): Promise<number | null> {
+  try {
+    const dir = await getModelsDir();
+    return await getFreeDiskSpace(dir.path);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * React hook that tracks the FunASR lifecycle:
  *   checking -> need_download -> downloading -> loading -> ready
@@ -72,6 +91,9 @@ export function useModelStatus(): UseModelStatusReturn {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
   const [downloadActive, setDownloadActive] = useState(false);
+  const [downloadPaused, setDownloadPaused] = useState(false);
+  const pauseIntentRef = useRef(false);
+  const pausedGenerationRef = useRef(0);
   const [error, setError] = useState<string | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -156,8 +178,12 @@ export function useModelStatus(): UseModelStatusReturn {
     setError(null);
     setDownloadMessage(null);
     if (!autoDownloadTriggeredRef.current && !downloadingRef.current) {
-      autoDownloadTriggeredRef.current = true;
-      scheduleAutoDownload();
+      // First run: the setup guide asks before a multi-gigabyte download.
+      // Once the guide is dismissed, the usual automatic download resumes.
+      if (readLocalStorage(ONBOARDING_DISMISSED_KEY) === "true") {
+        autoDownloadTriggeredRef.current = true;
+        scheduleAutoDownload();
+      }
     }
   }, [scheduleAutoDownload]);
 
@@ -395,6 +421,12 @@ export function useModelStatus(): UseModelStatusReturn {
                 lastDownloadEventAtRef.current = Date.now();
                 startDownloadWatchdog();
                 setDownloadingState(true);
+                setDownloadPaused(false);
+                // A progress event from the generation being paused must not
+                // turn Pause into Cancel; a resumed generation clears it.
+                if (downloadGenerationRef.current !== pausedGenerationRef.current) {
+                  pauseIntentRef.current = false;
+                }
                 setStage("downloading");
                 setError(null);
                 setDownloadProgress((prev) => normalizeProgress(progress, prev));
@@ -404,6 +436,7 @@ export function useModelStatus(): UseModelStatusReturn {
               case "completed": {
                 clearDownloadWatchdog();
                 autoDownloadRetryRef.current = 0;
+                setDownloadPaused(false);
                 setDownloadingState(false);
                 setDownloadProgress(100);
                 setDownloadMessage(message ?? null);
@@ -412,6 +445,18 @@ export function useModelStatus(): UseModelStatusReturn {
                 break;
               }
               case "cancelled": {
+                if (pauseIntentRef.current) {
+                  pauseIntentRef.current = false;
+                  clearDownloadWatchdog();
+                  // A resume that already advanced the generation owns the state.
+                  if (downloadGenerationRef.current === pausedGenerationRef.current) {
+                    setDownloadingState(false);
+                    setStage("need_download");
+                    setDownloadPaused(true);
+                    setDownloadMessage(i18n.t("model.downloadPaused"));
+                  }
+                  break;
+                }
                 autoDownloadAllowedRef.current = false;
                 invalidateDownload();
                 clearDownloadWatchdog();
@@ -477,6 +522,32 @@ export function useModelStatus(): UseModelStatusReturn {
         autoDownloadTriggeredRef.current = true;
       }
 
+      // Refuse a download that cannot fit before any bytes are written. A
+      // backend that cannot report free space skips the check.
+      const freeBytes = await freeSpaceForDownload();
+      if (freeBytes !== null) {
+        // A failed engine read skips the check instead of failing the download.
+        const model = await getEngine()
+          .then((engine) => findCatalogModel(engine) ?? null)
+          .catch(() => null);
+        if (model) {
+          const required = Math.ceil(model.size * 1.1) + 200 * 1024 * 1024;
+          if (freeBytes < required) {
+            // Stop polling so the next status tick cannot replace the reason.
+            enterErrorState(i18n.t("model.notEnoughDisk", {
+              free: formatModelSize(freeBytes),
+              required: formatModelSize(required),
+            }));
+            return;
+          }
+        }
+      }
+
+      // The awaits above let a second click through the entry guard; the first
+      // caller to reach this point owns the download.
+      if (!current() || downloadingRef.current) return;
+
+      setDownloadPaused(false);
       setDownloadingState(true);
       lastDownloadEventAtRef.current = Date.now();
       startDownloadWatchdog();
@@ -518,12 +589,14 @@ export function useModelStatus(): UseModelStatusReturn {
       setError(message);
       setStage("error");
     }
-  }, [checkStatus, clearDownloadWatchdog, invalidateDownload, scheduleAutoDownload, setDownloadingState, startDownloadWatchdog]);
+  }, [checkStatus, clearDownloadWatchdog, enterErrorState, invalidateDownload, scheduleAutoDownload, setDownloadingState, startDownloadWatchdog]);
 
   triggerDownloadRef.current = triggerDownload;
 
   const cancelDownload = useCallback(async () => {
     autoDownloadAllowedRef.current = false;
+    pauseIntentRef.current = false;
+    setDownloadPaused(false);
     invalidateDownload();
     const generation = downloadGenerationRef.current;
     try {
@@ -539,8 +612,36 @@ export function useModelStatus(): UseModelStatusReturn {
     }
   }, [clearDownloadWatchdog, invalidateDownload, setDownloadingState]);
 
+  const pauseDownload = useCallback(async () => {
+    autoDownloadAllowedRef.current = false;
+    pauseIntentRef.current = true;
+    invalidateDownload();
+    pausedGenerationRef.current = downloadGenerationRef.current;
+    const generation = downloadGenerationRef.current;
+    try {
+      await cancelModelDownload();
+      if (!mountedRef.current || generation !== downloadGenerationRef.current) return;
+      clearDownloadWatchdog();
+      setDownloadingState(false);
+      setStage("need_download");
+      setDownloadPaused(true);
+      setDownloadMessage(i18n.t("model.downloadPaused"));
+    } catch (err) {
+      if (!mountedRef.current || generation !== downloadGenerationRef.current) return;
+      setError(toErrorMessage(err, i18n.t("model.cancelFailed")));
+      setStage("error");
+    }
+  }, [clearDownloadWatchdog, invalidateDownload, setDownloadingState]);
+
+  const resumeDownload = useCallback(() => {
+    setDownloadPaused(false);
+    triggerDownloadRef.current?.("manual");
+  }, []);
+
   const retry = useCallback(() => {
     invalidateDownload();
+    pauseIntentRef.current = false;
+    setDownloadPaused(false);
     autoDownloadAllowedRef.current = true;
     clearDownloadWatchdog();
     setDownloadingState(false);
@@ -566,9 +667,12 @@ export function useModelStatus(): UseModelStatusReturn {
     downloadProgress,
     downloadMessage,
     isDownloading: downloadActive,
+    isDownloadPaused: downloadPaused,
     error,
     downloadModels: triggerDownload,
     cancelDownload,
+    pauseDownload,
+    resumeDownload,
     retry,
   };
 }

@@ -6,7 +6,7 @@ use tauri::{Emitter, Manager};
 
 // Tauri's Windows show/style updates can activate the overlay, even with focused(false).
 #[cfg(target_os = "windows")]
-fn show_subtitle_without_activation(window: &tauri::WebviewWindow) -> Result<(), AppError> {
+fn show_overlay_without_activation(window: &tauri::WebviewWindow) -> Result<(), AppError> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         SetWindowPos, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
     };
@@ -28,7 +28,7 @@ fn show_subtitle_without_activation(window: &tauri::WebviewWindow) -> Result<(),
     };
     if shown == 0 {
         return Err(tauri_error(
-            "Failed to show subtitle window",
+            "Failed to show overlay window",
             std::io::Error::last_os_error(),
         ));
     }
@@ -36,17 +36,57 @@ fn show_subtitle_without_activation(window: &tauri::WebviewWindow) -> Result<(),
 }
 
 #[cfg(not(target_os = "windows"))]
-fn show_subtitle_without_activation(window: &tauri::WebviewWindow) -> Result<(), AppError> {
+fn show_overlay_without_activation(window: &tauri::WebviewWindow) -> Result<(), AppError> {
     window
         .show()
-        .map_err(|e| tauri_error("Failed to show subtitle window", e))?;
+        .map_err(|e| tauri_error("Failed to show overlay window", e))?;
     window
         .set_always_on_top(true)
-        .map_err(|e| tauri_error("Failed to set subtitle window topmost", e))
+        .map_err(|e| tauri_error("Failed to set overlay window topmost", e))
 }
 
 const DEFAULT_SUBTITLE_WINDOW_WIDTH: f64 = 1280.0;
 const DEFAULT_SUBTITLE_WINDOW_HEIGHT: f64 = 720.0;
+
+const PILL_WINDOW_LABEL: &str = "recording-pill";
+const PILL_WIDTH: f64 = 280.0;
+const PILL_HEIGHT: f64 = 56.0;
+const PILL_BOTTOM_MARGIN: f64 = 48.0;
+
+/// Show or hide the floating recording pill. The pill is click-through and
+/// never takes focus; it sits above the taskbar at the bottom of the monitor
+/// the pointer is on.
+pub(crate) fn update_recording_pill(app_handle: &tauri::AppHandle, active: bool) {
+    let Some(window) = app_handle.get_webview_window(PILL_WINDOW_LABEL) else {
+        return;
+    };
+    if !active {
+        if let Err(error) = window.hide() {
+            log::warn!("Failed to hide recording pill: {error}");
+        }
+        return;
+    }
+    let _ = window.set_ignore_cursor_events(true);
+    if let Some(monitor) =
+        find_cursor_monitor(app_handle).or_else(|| window.current_monitor().ok().flatten())
+    {
+        let scale = monitor.scale_factor();
+        let size = monitor.size();
+        let position = monitor.position();
+        let logical_width = size.width as f64 / scale;
+        let logical_height = size.height as f64 / scale;
+        let x = position.x as f64 / scale + (logical_width - PILL_WIDTH) / 2.0;
+        let y = position.y as f64 / scale + logical_height - PILL_HEIGHT - PILL_BOTTOM_MARGIN;
+        let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
+            PILL_WIDTH,
+            PILL_HEIGHT,
+        )));
+        let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, y)));
+    }
+    if let Err(error) = show_overlay_without_activation(&window) {
+        log::warn!("Failed to show recording pill: {error}");
+    }
+}
 
 fn tauri_error(action: &str, err: impl std::fmt::Display) -> AppError {
     AppError::Tauri(format!("{}: {}", action, err))
@@ -357,9 +397,9 @@ fn show_subtitle_window_unlocked(
         }) {
             return Ok(stale_session_show_result(session_id, show_gen));
         }
-        show_subtitle_without_activation(&window)?;
+        show_overlay_without_activation(&window)?;
     } else {
-        show_subtitle_without_activation(&window)?;
+        show_overlay_without_activation(&window)?;
     }
 
     if let Err(err) = set_subtitle_window_interactive(app_handle, false) {
