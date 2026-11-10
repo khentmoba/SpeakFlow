@@ -49,10 +49,10 @@ h2.signal-label { margin: 0; }
   min-height: 22px;
   padding: 2px 7px;
   border-radius: 6px;
-  background: #18181D;
-  border: 1px solid rgba(255, 176, 32, 0.45);
-  color: #FFB020;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: var(--color-kbd-bg);
+  border: 1px solid var(--color-border-accent);
+  color: var(--color-accent);
+  box-shadow: var(--shadow-xs);
 }
 
 .signal-link {
@@ -129,14 +129,14 @@ h2.signal-label { margin: 0; }
   min-height: 136px;
   flex-shrink: 0;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: #17171C;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--color-hairline);
+  background: var(--color-surface-card);
+  box-shadow: var(--shadow-sm);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   overflow: hidden;
 }
 .wave-panel:hover {
-  border-color: rgba(255, 176, 32, 0.28);
+  border-color: var(--color-border-accent);
 }
 
 .wave-head {
@@ -349,10 +349,10 @@ h2.signal-label { margin: 0; }
   gap: 16px;
   padding: 10px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: #17171C;
+  border: 1px solid var(--color-hairline);
+  background: var(--color-surface-card);
   flex-shrink: 0;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-sm);
 }
 
 .rail-head {
@@ -1042,20 +1042,14 @@ h2.signal-label { margin: 0; }
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 
-@media (max-width: 1100px) {
-  .signal-body { grid-template-columns: minmax(0, 1fr) 4px 220px; }
-  .rail-count-value { font-size: 36px; }
-}
-
 @media (max-width: 900px) {
-  .signal-body { grid-template-columns: minmax(0, 1fr); }
-  .signal-rail { display: none; }
-  .signal-vsplit { display: none; }
-  .signal-main { grid-template-rows: 148px minmax(0, 1fr) 4px 156px; }
+  .signal-rail {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
 }
 
 @media (max-width: 640px) {
-  .signal-main { grid-template-rows: 132px minmax(0, 1fr) 4px 140px; }
   .wave-head { height: 38px; gap: 10px; padding: 0 10px; }
   .wave-bars { padding: 0 10px; }
   .transcript-head { height: auto; flex-wrap: wrap; gap: 6px; padding: 6px 10px; }
@@ -1103,7 +1097,7 @@ h2.signal-label { margin: 0; }
   overflow-y: auto;
   overflow-x: hidden;
   mask-image: none;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid var(--color-hairline);
   border-bottom: 0;
   background: transparent;
 }
@@ -1144,8 +1138,8 @@ h2.signal-label { margin: 0; }
   padding: 4px 8px;
   margin: 0 4px 6px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--color-hairline);
+  background: var(--color-bg-secondary);
   color: var(--color-text-tertiary);
 }
 .settings-nav-search input {
@@ -1241,18 +1235,18 @@ h2.signal-label { margin: 0; }
 .settings-card {
   position: relative;
   padding: 18px 20px 22px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--color-hairline);
   border-radius: 12px;
-  background: #17171C;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  background: var(--color-surface-card);
+  box-shadow: var(--shadow-sm);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 .settings-card:hover {
-  border-color: rgba(255, 176, 32, 0.28);
+  border-color: var(--color-border-accent);
 }
 .settings-card:focus-within {
-  border-color: rgba(255, 176, 32, 0.45);
-  box-shadow: 0 0 0 1px rgba(255, 176, 32, 0.15), 0 4px 16px rgba(0, 0, 0, 0.45);
+  border-color: var(--color-border-accent);
+  box-shadow: 0 0 0 1px var(--color-hairline-accent), var(--shadow-md);
 }
 .settings-card[data-nav-id] { scroll-margin-top: 8px; }
 
@@ -1262,7 +1256,7 @@ h2.signal-label { margin: 0; }
   gap: 8px;
   margin-bottom: 14px;
   padding-bottom: 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--color-hairline);
 }
 .settings-section-header > .icon-accent {
   color: var(--color-accent);
@@ -1521,8 +1515,8 @@ h2.signal-label { margin: 0; }
   width: 36px;
   height: 20px;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: #1C1C22;
+  border: 1px solid var(--color-hairline);
+  background: var(--color-bg-secondary);
   padding: 0;
   cursor: pointer;
   transition: background-color var(--transition-fast), border-color var(--transition-fast);
@@ -1535,7 +1529,7 @@ h2.signal-label { margin: 0; }
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--color-text-secondary);
+  background: var(--color-text-tertiary);
   transition: transform var(--transition-fast), background-color var(--transition-fast);
 }
 .toggle-switch[aria-checked="true"] {
@@ -1544,7 +1538,7 @@ h2.signal-label { margin: 0; }
   box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.35);
 }
 .toggle-switch[aria-checked="true"]::after {
-  background: #0A0A0C;
+  background: var(--color-text-inverse);
   transform: translateX(16px);
 }
 .toggle-switch:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -1561,10 +1555,10 @@ h2.signal-label { margin: 0; }
   min-height: 22px;
   padding: 2px 7px;
   border-radius: 6px;
-  background: #18181D;
-  border: 1px solid rgba(255, 176, 32, 0.45);
-  color: #FFB020;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: var(--color-kbd-bg);
+  border: 1px solid var(--color-border-accent);
+  color: var(--color-accent);
+  box-shadow: var(--shadow-xs);
 }
 .kbd-group { display: inline-flex; align-items: center; gap: 4px; }
 .kbd-group-item { display: inline-flex; }
@@ -1788,13 +1782,13 @@ h2.signal-label { margin: 0; }
 
 /* Short windows win over narrow windows: the transcript must keep its room. */
 @media (max-height: 620px) {
-  .signal-main { grid-template-rows: 116px minmax(0, 1fr) 4px 132px; }
+  .wave-panel { min-height: 116px; }
   .wave-bars { padding: 0 10px; }
   .transcript-body { padding: 10px 12px 12px; }
   .result-card-body { font-size: 16px; }
 }
 
 @media (max-width: 640px) and (max-height: 620px) {
-  .signal-main { grid-template-rows: 104px minmax(0, 1fr) 4px 112px; }
+  .wave-panel { min-height: 104px; }
   .transcript-body { padding: 10px; }
 }

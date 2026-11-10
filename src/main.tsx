@@ -9,6 +9,7 @@ import MainPage from "./pages/MainPage";
 import TitleBar, { SpeakFlowBrandIcon } from "./components/TitleBar";
 import AppNavigation from "./components/AppNavigation";
 import SidebarFooter from "./components/SidebarFooter";
+import { handleWindowDrag } from "./hooks/useWindowDrag";
 import { AppUpdateProvider, useAppUpdates } from "./contexts/AppUpdateContext";
 import { useTheme } from "./hooks/useTheme";
 import { useProfileSaveNotifications } from "./hooks/useProfileSaveNotifications";
@@ -127,34 +128,13 @@ function AppWorkspace() {
     startTransition();
   }, [view]);
 
-  const startDrag = (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    const target = e.target as HTMLElement;
-    if (
-      target.closest("button") ||
-      target.closest("input") ||
-      target.closest("select") ||
-      target.closest("textarea") ||
-      target.closest("a") ||
-      target.closest("[data-no-drag]")
-    ) {
-      return;
-    }
-    e.preventDefault();
-    try {
-      getCurrentWindow().startDragging();
-    } catch {
-      // non-Tauri preview fallback
-    }
-  };
-
   return (
     <RecordingProvider>
       <div className="app-shell">
         <a className="skip-link" href="#main-content">{i18n.t("app.skipToContent")}</a>
         <aside className="app-sidebar">
           {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
-          <div className="app-sidebar-header" onMouseDown={startDrag}>
+          <div className="app-sidebar-header" onMouseDown={handleWindowDrag}>
             <SpeakFlowBrandIcon height={16} className="app-sidebar-logo" />
             <span className="app-sidebar-name">SpeakFlow</span>
           </div>
@@ -165,7 +145,6 @@ function AppWorkspace() {
             updateInstalling={updateInstalling}
           />
           <SidebarFooter
-            view={view}
             onNavigate={navigateTo}
             updateAvailable={Boolean(latestAvailableVersion)}
           />

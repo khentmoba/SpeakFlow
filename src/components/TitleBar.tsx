@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Minus, Square, X } from "lucide-react";
 import { hideMainWindow } from "@/api/tauri";
+import { handleWindowDrag } from "@/hooks/useWindowDrag";
 
 export function SpeakFlowBrandIcon({ height = 14, className }: { height?: number; className?: string }) {
   const width = Math.round(((height * 394) / 228) * 100) / 100;
@@ -34,30 +35,11 @@ interface TitleBarProps {
 export default function TitleBar({ title }: TitleBarProps) {
   const { t } = useTranslation();
 
-  const startDrag = (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-
-    const target = e.target as HTMLElement;
-    if (
-      target.closest("button") ||
-      target.closest("input") ||
-      target.closest("select") ||
-      target.closest("textarea") ||
-      target.closest("a") ||
-      target.closest("[data-no-drag]")
-    ) {
-      return;
-    }
-
-    e.preventDefault();
-    getCurrentWindow().startDragging();
-  };
-
   return (
     // Window dragging is a pointer-only desktop affordance; keyboard actions
     // remain on the real buttons rendered in the action slots.
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
-    <header onMouseDown={startDrag} className="title-bar">
+    <header onMouseDown={handleWindowDrag} className="title-bar">
       <div className="title-bar-brand">
         <h1 className="title-bar-doc">{title}</h1>
       </div>

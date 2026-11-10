@@ -1,10 +1,11 @@
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { getVersion } from "@tauri-apps/api/app";
 import { useRecordingContext } from "@/contexts/RecordingContext";
 import Kbd from "./Kbd";
 import type { AppView } from "./AppNavigation";
 
 interface SidebarFooterProps {
-  view: AppView;
   onNavigate: (view: AppView) => void;
   updateAvailable?: boolean;
 }
@@ -14,6 +15,12 @@ export default function SidebarFooter({
   updateAvailable = false,
 }: SidebarFooterProps) {
   const { t } = useTranslation();
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    void getVersion().then(setVersion).catch(() => {});
+  }, []);
+
   const {
     isRecording, isStarting, isProcessing, isReady, stage,
     hotkeyDisplay,
@@ -49,13 +56,13 @@ export default function SidebarFooter({
         {hotkeyDisplay && <Kbd combo={hotkeyDisplay} className="app-sidebar-key" />}
       </div>
       <div className="app-sidebar-meta">
-        <span className="app-sidebar-version">v1.2.0</span>
+        {version && <span className="app-sidebar-version">v{version}</span>}
         <button
           type="button"
           className="app-sidebar-link"
           onClick={() => onNavigate("updates")}
         >
-          {updateAvailable ? t("updates.updateAvailable") : t("settings.updateCheck")}
+          {updateAvailable ? t("settings.newVersionAvailable", { version: "" }).trim() : t("settings.checkUpdate")}
         </button>
       </div>
     </footer>
