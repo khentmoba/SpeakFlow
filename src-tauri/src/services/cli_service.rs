@@ -527,6 +527,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cli_entry_skips_the_program_name_before_dispatch() {
+        // Regression: dispatching on argv[0] made every subcommand report
+        // "Unknown speakflow subcommand: <exe path>".
+        let entry =
+            |args: &[&str]| crate::cli_entry(args.iter().map(|arg| (*arg).to_string()).collect());
+        assert_eq!(entry(&["speakflow", "--help"]), 0);
+        assert_eq!(entry(&["speakflow", "bogus"]), 2);
+    }
+
+    #[test]
     fn mcp_tool_schema_contains_all_expected_tools() {
         let tools = mcp_tool_definitions();
         let arr = tools.as_array().unwrap();

@@ -12,7 +12,8 @@ use state::{AppState, RecordingSlot};
 use tauri::{Emitter, Manager};
 
 pub fn cli_entry(args: Vec<String>) -> i32 {
-    services::cli_service::run_cli(args)
+    // `args` is the raw process argv, so drop the executable path before dispatch.
+    services::cli_service::run_cli(args.into_iter().skip(1).collect())
 }
 
 pub fn run() {
