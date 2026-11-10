@@ -7,14 +7,16 @@ Serves every model in asr_catalog.json. All run through the same transcribe.cpp
 session, FireRedVAD front end and offline transcription path.
 """
 
+import contextlib
 import importlib.metadata
 import os
 import subprocess
 import time
 import traceback
+from typing import Any, cast
 
 from firered_vad import FireRedVad
-
+from hf_cache_utils import TRANSCRIBE_CPP_ASR_MODELS, find_hf_snapshot_file
 from server_common import (
     BaseASRServer,
     _has_nvidia_gpu,
@@ -27,8 +29,6 @@ from server_common import (
 apply_hf_env_defaults()
 ensure_safe_cuda_env()
 logger = setup_rotating_logger(__name__, "qwen3_asr_server.log", "Local ASR server")
-
-from hf_cache_utils import TRANSCRIBE_CPP_ASR_MODELS, find_hf_snapshot_file
 
 QWEN3_ASR_N_CTX = 32_768
 QWEN3_VAD_SAMPLE_RATE = 16_000
@@ -60,14 +60,27 @@ class Qwen3ASRServer(BaseASRServer):
 
     def __init__(self, engine=None):
         engine = engine or os.environ.get("SPEAK_FLOW_ASR_ENGINE", "qwen3-asr-1.7b")
-        if engine not in TRANSCRIBE_CPP_ASR_MODELS:
-            raise ValueError(f"Unsupported transcribe.cpp ASR engine: {engine}")
-        self.model_config = TRANSCRIBE_CPP_ASR_MODELS[engine]
-        self.display_name = ENGINE_DISPLAY_NAMES[engine]
+        custom_path = os.environ.get("SPEAK_FLOW_CUSTOM_MODEL_PATH", "").strip()
+        if engine.startswith("custom:") and custom_path:
+            self.model_config = {
+                "key": engine,
+                "name": os.environ.get("SPEAK_FLOW_CUSTOM_MODEL_NAME", os.path.basename(custom_path)),
+                "repo_id": "",
+                "filename": os.path.basename(custom_path),
+            }
+            self.display_name = self.model_config["name"]
+            self._custom_model_path = custom_path
+        else:
+            if engine not in TRANSCRIBE_CPP_ASR_MODELS:
+                raise ValueError(f"Unsupported transcribe.cpp ASR engine: {engine}")
+            self.model_config = TRANSCRIBE_CPP_ASR_MODELS[engine]
+            self.display_name = ENGINE_DISPLAY_NAMES[engine]
+            self._custom_model_path = None
         super().__init__(engine=engine, logger=logger)
-        self.model = None
-        self.session = None
-        self.vad_model = None
+        self.model: Any = None
+        self.session: Any = None
+        self.vad_model: Any = None
+        self._streams = {}
         self.backend = "cuda" if self.device == "cuda" else "auto"
         self._last_load_error = None
         # Filled in once the runtime is loaded; empty means "catch nothing".
@@ -88,7 +101,7 @@ class Qwen3ASRServer(BaseASRServer):
         return "cpu"
 
     def _get_gpu_device_info(self):
-        info = {"device": self.device}
+        info: dict[str, Any] = {"device": self.device}
         if self.backend != "cuda":
             return info
         try:
@@ -102,7 +115,7 @@ class Qwen3ASRServer(BaseASRServer):
                 text=True,
                 check=False,
                 timeout=3,  # Optional metadata must not block model initialization.
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                creationflags=int(getattr(subprocess, "CREATE_NO_WINDOW", 0)),
             )
             name, memory_mb = [part.strip() for part in query.stdout.splitlines()[0].split(",", 1)]
             info["gpu_name"] = name
@@ -124,9 +137,15 @@ class Qwen3ASRServer(BaseASRServer):
         return []
 
     def _resolve_model_path(self):
+        custom_path = getattr(self, "_custom_model_path", None)
+        if custom_path and os.path.isfile(custom_path):
+            return custom_path
         return find_hf_snapshot_file(
             self.model_config["repo_id"], self.model_config["filename"]
         )
+
+    def _gpu_idle_stream_active(self):
+        return bool(self._streams)
 
     def _suspend_gpu_runtime(self):
         """Unload the GGUF model and KV session. FireRedVAD stays on CPU."""
@@ -143,16 +162,12 @@ class Qwen3ASRServer(BaseASRServer):
         self.initialized = False
         self._cached_max_input_samples = None
         if self.session is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self.session.close()
-            except Exception:
-                pass
             self.session = None
         if self.model is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self.model.close()
-            except Exception:
-                pass
             self.model = None
 
     def _preferred_backends(self):
@@ -185,7 +200,7 @@ class Qwen3ASRServer(BaseASRServer):
         for backend in preferred:
             try:
                 with self.stdout_suppressor.suppress():
-                    self.model = transcribe_cpp.Model(model_path, backend=backend)
+                    self.model = transcribe_cpp.Model(model_path, backend=cast(Any, backend))
                     self.session = self.model.session(**self._session_options())
                 # "auto" resolves to a device; keep what it resolved to, so a CPU
                 # failure is not mistaken for a GPU failure.
@@ -214,6 +229,7 @@ class Qwen3ASRServer(BaseASRServer):
         if cached is not None:
             return cached
         try:
+            assert self.session is not None
             milliseconds = int(self.session.limits.effective_max_audio_ms)
         except Exception:
             return 0
@@ -313,9 +329,11 @@ class Qwen3ASRServer(BaseASRServer):
             started = time.perf_counter()
             rng = np.random.default_rng(0)
             audio = rng.standard_normal(16_000).astype(np.float32) * 0.002
+            assert self.vad_model is not None
+            assert self.session is not None
             self.vad_model.warmup()
             with self.stdout_suppressor.suppress():
-                self.session.run(audio, timestamps="none")
+                self.session.run(cast(Any, audio), timestamps="none")
             logger.info(
                 "%s and FireRedVAD warmup completed in %.3f seconds",
                 self.display_name,
@@ -331,6 +349,7 @@ class Qwen3ASRServer(BaseASRServer):
     def _filter_speech(self, audio):
         import numpy as np
 
+        assert self.vad_model is not None
         started = time.perf_counter()
         chunks = self.vad_model.speech_timestamps(audio)
         vad_ms = (time.perf_counter() - started) * 1000
@@ -379,12 +398,18 @@ class Qwen3ASRServer(BaseASRServer):
             self._cpu_recovery_used = False
             elapsed = time.perf_counter() - started
             logger.info("%s initialization completed; backend: %s; elapsed: %.3f seconds", self.display_name, self.backend, elapsed)
+            caps = getattr(self.model, "capabilities", None)
+            supports_streaming = bool(getattr(caps, "supports_streaming", False))
+            supports_fn = getattr(self.model, "supports", None)
+            supports_diarization = bool(callable(supports_fn) and supports_fn("diarization"))
             return {
                 "success": True,
                 "message": f"{self.display_name} initialized successfully in {elapsed:.2f} seconds",
                 "model_loaded": True,
                 "engine": self.engine,
                 "backend": self.backend,
+                "supports_streaming": supports_streaming,
+                "supports_diarization": supports_diarization,
                 **self._get_gpu_device_info(),
             }
         except ImportError as exc:
@@ -450,6 +475,194 @@ class Qwen3ASRServer(BaseASRServer):
         audio = audio.mean(axis=1, dtype=np.float32)
         audio = self._resample(audio, source_rate)
         return np.ascontiguousarray(audio), len(audio) / 16_000.0, "path"
+
+    def _apply_vocabulary_conditioning(self, run_options, hot_words, translate_to_english):
+        if not hot_words or translate_to_english or self.model is None:
+            return
+        supports_fn = getattr(self.model, "supports", None)
+        if not callable(supports_fn):
+            return
+        try:
+            if supports_fn("vocabulary"):
+                run_options["vocabulary"] = hot_words
+            elif supports_fn("initial_prompt") or supports_fn("context_prompt"):
+                prompt = ", ".join(str(w).strip() for w in hot_words if str(w).strip())
+                if prompt:
+                    run_options["prompt"] = prompt
+        except Exception as exc:
+            logger.debug("Vocabulary/prompt conditioning skipped: %s", exc)
+
+    def handle_stream_command(self, command):
+        action = command.get("action")
+        session_id = command.get("session_id")
+        if not isinstance(session_id, int) or session_id <= 0:
+            return {"success": False, "error": "Invalid session_id"}
+
+        if action == "stream_start":
+            if not self.initialized:
+                init_result = self.initialize()
+                if not init_result.get("success"):
+                    return init_result
+            capabilities = getattr(self.model, "capabilities", None)
+            if not getattr(capabilities, "supports_streaming", False):
+                return {
+                    "success": False,
+                    "error": f"{self.display_name} does not support native streaming",
+                }
+            stream_opts: dict[str, object] = {"timestamps": "none"}
+            language = command.get("language")
+            if language:
+                stream_opts["language"] = language
+            self._apply_vocabulary_conditioning(
+                stream_opts, command.get("hot_words"), False
+            )
+            try:
+                assert self.session is not None
+                stream_kwargs: dict[str, Any] = {"timestamps": "none"}
+                for key in ("language", "vocabulary", "prompt"):
+                    val = stream_opts.get(key)
+                    if val is not None:
+                        stream_kwargs[key] = val
+                with self.stdout_suppressor.suppress():
+                    stream = cast(Any, self.session).stream(**stream_kwargs)
+            except Exception as exc:
+                return {"success": False, "error": f"Stream start failed: {exc}"}
+            self._streams[session_id] = {
+                "stream": stream,
+                "sample_count": 0,
+                "language": language,
+                "committed": "",
+            }
+            return {
+                "success": True,
+                "session_id": session_id,
+                "sample_count": 0,
+                "text": "",
+                "tentative_text": "",
+                "final": False,
+                "language": language,
+            }
+
+        entry = self._streams.get(session_id)
+        if entry is None:
+            return {"success": False, "error": f"Unknown stream session: {session_id}"}
+
+        if action == "stream_feed":
+            audio_b64 = command.get("audio_base64")
+            if not isinstance(audio_b64, str) or not audio_b64:
+                return {"success": False, "error": "Missing audio_base64 for stream_feed"}
+            audio_fmt = command.get("audio_format") or "pcm_s16le"
+            sr = command.get("sample_rate") or 16_000
+            try:
+                audio, _dur = decode_inline_audio(audio_b64, audio_fmt, sr)
+                import numpy as np
+                if isinstance(audio, np.ndarray):
+                    audio = self._resample(audio, sr)
+                    chunk_len = len(audio)
+                else:
+                    return {"success": False, "error": "Streaming requires PCM audio"}
+                with self.stdout_suppressor.suppress():
+                    entry["stream"].feed(audio)
+                    st = entry["stream"].text()
+                entry["sample_count"] += chunk_len
+                raw_committed = getattr(st, "committed", "") or ""
+                tentative = getattr(st, "tentative", "") or ""
+                prev_committed = entry["committed"]
+                if raw_committed.startswith(prev_committed):
+                    entry["committed"] = raw_committed
+                else:
+                    # Keep monotonic committed prefix if a model rewrites tail whitespace.
+                    tentative = raw_committed + tentative
+                return {
+                    "success": True,
+                    "session_id": session_id,
+                    "sample_count": entry["sample_count"],
+                    "text": entry["committed"],
+                    "tentative_text": tentative,
+                    "final": False,
+                    "language": entry["language"],
+                }
+            except Exception as exc:
+                self._streams.pop(session_id, None)
+                return {"success": False, "error": f"Stream feed failed: {exc}"}
+
+        if action == "stream_finish":
+            self._streams.pop(session_id, None)
+            try:
+                with self.stdout_suppressor.suppress():
+                    entry["stream"].finalize()
+                    st = entry["stream"].text()
+                self.transcription_count += 1
+                raw_final = (getattr(st, "full", "") or getattr(st, "committed", "") or "")
+                prev_committed = entry["committed"]
+                if raw_final.startswith(prev_committed):
+                    final_text = raw_final
+                elif prev_committed and raw_final.lstrip().startswith(prev_committed.lstrip()):
+                    stripped_tail = raw_final.lstrip()[len(prev_committed.lstrip()):]
+                    final_text = prev_committed + stripped_tail
+                else:
+                    final_text = prev_committed if prev_committed else raw_final.strip()
+                return {
+                    "success": True,
+                    "session_id": session_id,
+                    "sample_count": entry["sample_count"],
+                    "text": final_text,
+                    "tentative_text": "",
+                    "final": True,
+                    "language": entry["language"],
+                }
+            except Exception as exc:
+                return {"success": False, "error": f"Stream finish failed: {exc}"}
+
+        if action == "stream_cancel":
+            self._streams.pop(session_id, None)
+            import contextlib
+
+            with contextlib.suppress(Exception):
+                entry["stream"].reset()
+            return {
+                "success": True,
+                "session_id": session_id,
+                "sample_count": entry["sample_count"],
+                "text": "",
+                "tentative_text": "",
+                "final": True,
+            }
+
+        return {"success": False, "error": f"Unknown stream action: {action}"}
+
+    def diarize_audio(self, audio_path, audio_base64=None, audio_format=None, sample_rate=None):
+        if not self.initialized:
+            init_result = self.initialize()
+            if not init_result.get("success"):
+                return init_result
+        try:
+            if not self.model or not self.model.supports("diarization"):
+                return {"success": True, "supported": False, "segments": []}
+            audio, _duration, _mode = self._load_audio(
+                audio_path, audio_base64, audio_format, sample_rate
+            )
+            with self.stdout_suppressor.suppress():
+                ds = self.model.diarize_session()
+                raw_pcm: object = audio.tolist() if hasattr(audio, "tolist") else audio
+                segments = ds.run(raw_pcm)  # type: ignore[arg-type]
+                ds.close()
+            return {
+                "success": True,
+                "supported": True,
+                "segments": [
+                    {
+                        "t0_ms": int(getattr(seg, "t0_ms", 0)),
+                        "t1_ms": int(getattr(seg, "t1_ms", 0)),
+                        "speaker_id": int(getattr(seg, "speaker_id", 0)),
+                        "p": float(getattr(seg, "p", 0.0)),
+                    }
+                    for seg in (segments or [])
+                ],
+            }
+        except Exception as exc:
+            logger.warning("Diarization failed: %s", exc)
+            return {"success": True, "supported": False, "segments": [], "error": str(exc)}
 
     def transcribe_audio(
         self,
@@ -517,25 +730,27 @@ class Qwen3ASRServer(BaseASRServer):
                 if not getattr(capabilities, "supports_translate", False):
                     translate_to_english = False
 
-            run_options = {"timestamps": "none"}
+            run_options: dict[str, object] = {"timestamps": "none"}
             if language:
                 run_options["language"] = language
             if translate_to_english:
                 run_options["task"] = "translate"
                 run_options["target_language"] = "en"
-            # Custom terms condition recognition, which a translation run does
-            # not use. Keep them for spelling correction only.
-            if hot_words and self.model.supports("vocabulary") and not translate_to_english:
-                run_options["vocabulary"] = hot_words
+            # Condition vocabulary/initial_prompt across Qwen3-ASR, Parakeet, Whisper, and Canary.
+            self._apply_vocabulary_conditioning(
+                run_options, hot_words, translate_to_english
+            )
             pieces = self._split_audio(audio, self._max_input_samples())
             started = time.perf_counter()
             results = []
+            run_kwargs: dict[str, Any] = dict(run_options)
+            assert self.session is not None
             with self.stdout_suppressor.suppress():
                 # These models do not advertise speculative decoding. Keeping a
                 # persistent KV session is the supported low-latency path.
                 for piece in pieces:
                     try:
-                        results.append(self.session.run(piece, **run_options))
+                        results.append(cast(Any, self.session).run(piece, **run_kwargs))
                     except self._truncated_errors as exc:
                         partial = getattr(exc, "partial_result", None)
                         if partial is None or not (partial.text or "").strip():
@@ -549,7 +764,8 @@ class Qwen3ASRServer(BaseASRServer):
                     except Exception as exc:
                         if not self._recover_to_cpu(exc):
                             raise
-                        results.append(self.session.run(piece, **run_options))
+                        assert self.session is not None
+                        results.append(cast(Any, self.session).run(piece, **run_kwargs))
             inference_ms = (time.perf_counter() - started) * 1000
             self._total_inference_ms += inference_ms
             self.transcription_count += 1
@@ -614,6 +830,10 @@ class Qwen3ASRServer(BaseASRServer):
         try:
             version = importlib.metadata.version("transcribe-cpp")
             model_loaded = self.model is not None and self.session is not None
+            caps = getattr(self.model, "capabilities", None)
+            supports_streaming = bool(getattr(caps, "supports_streaming", False))
+            supports_fn = getattr(self.model, "supports", None)
+            supports_diarization = bool(callable(supports_fn) and supports_fn("diarization"))
             return self._with_gpu_suspend_flag({
                 "success": True,
                 "installed": True,
@@ -623,6 +843,8 @@ class Qwen3ASRServer(BaseASRServer):
                 "backend": self.backend,
                 "cpu_recovery": self._cpu_recovery_used,
                 "model_loaded": model_loaded,
+                "supports_streaming": supports_streaming,
+                "supports_diarization": supports_diarization,
                 "models": {
                     "asr": model_loaded,
                     "vad": self.vad_model is not None,

@@ -1014,6 +1014,99 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::
     Ok(())
 }
 
+#[tauri::command]
+pub async fn inspect_gguf_model(
+    path: String,
+) -> Result<crate::services::custom_models::GgufInspection, AppError> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::Other(
+            "GGUF file path cannot be empty".to_string(),
+        ));
+    }
+    let pb = std::path::PathBuf::from(trimmed);
+    tokio::task::spawn_blocking(move || crate::services::custom_models::inspect_gguf_file(&pb))
+        .await
+        .map_err(|e| AppError::Other(format!("Failed to inspect GGUF file: {e}")))
+}
+
+#[tauri::command]
+pub async fn list_custom_models(
+) -> Result<Vec<crate::services::custom_models::CustomModelEntry>, AppError> {
+    tokio::task::spawn_blocking(crate::services::custom_models::load_custom_models)
+        .await
+        .map_err(|e| AppError::Other(format!("Failed to list custom models: {e}")))
+}
+
+#[tauri::command]
+pub async fn add_custom_model(
+    path: String,
+    name: Option<String>,
+    source: Option<String>,
+    repo_id: Option<String>,
+) -> Result<crate::services::custom_models::CustomModelEntry, AppError> {
+    let pb = std::path::PathBuf::from(path.trim());
+    let src = source.unwrap_or_else(|| "local_gguf".to_string());
+    tokio::task::spawn_blocking(move || {
+        crate::services::custom_models::register_custom_model(
+            &pb,
+            name.as_deref(),
+            &src,
+            repo_id.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("Failed to register custom model: {e}")))?
+    .map_err(AppError::Other)
+}
+
+#[tauri::command]
+pub async fn remove_custom_model(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<bool, AppError> {
+    let trimmed = id.trim().to_string();
+    let target_engine = if trimmed.starts_with("custom:") {
+        trimmed.clone()
+    } else {
+        format!("custom:{trimmed}")
+    };
+    let removed = tokio::task::spawn_blocking(move || {
+        crate::services::custom_models::remove_custom_model(&trimmed)
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("Failed to remove custom model: {e}")))?
+    .map_err(AppError::Other)?;
+
+    if removed && paths::read_engine_config() == target_engine {
+        let fallback = "qwen3-asr-0.6b";
+        let _ = paths::write_engine_config(fallback);
+        let _ = funasr_service::stop_server(state.inner()).await;
+        let _ = app_handle.emit("engine-changed", fallback);
+    }
+    Ok(removed)
+}
+
+#[tauri::command]
+pub async fn scan_hf_cache_models(
+) -> Result<Vec<crate::services::custom_models::DiscoveredHfModel>, AppError> {
+    tokio::task::spawn_blocking(crate::services::custom_models::scan_hf_cache_models)
+        .await
+        .map_err(|e| AppError::Other(format!("Failed to scan HuggingFace cache: {e}")))
+}
+
+#[tauri::command]
+pub async fn pick_gguf_file(window: tauri::WebviewWindow) -> Result<Option<String>, AppError> {
+    let result = rfd::AsyncFileDialog::new()
+        .set_title("Select GGUF Model File")
+        .add_filter("GGUF Models", &["gguf"])
+        .set_parent(&window)
+        .pick_file()
+        .await;
+    Ok(result.map(|handle| handle.path().to_string_lossy().to_string()))
+}
+
 #[cfg(test)]
 mod model_dir_migration_tests {
     use super::{cleanup_migrated_sources, migrate_model_dirs, models_dir_update_result};

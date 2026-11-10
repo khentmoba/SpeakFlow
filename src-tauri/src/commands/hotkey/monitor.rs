@@ -1,11 +1,12 @@
 use super::*;
 
-// Monitor thread management (LLKH backend)
+// Monitor thread management (LLKH + Mouse LL backend)
 // ---------------------------------------------------------------------------
 
 #[cfg(target_os = "windows")]
 pub(super) struct UnifiedHotkeyMonitor {
     pub(super) thread_id: u32,
+    pub(super) has_mouse: bool,
     pub(super) handle: JoinHandle<()>,
 }
 
@@ -59,64 +60,102 @@ pub(super) fn install_hook_on_thread() -> Result<HookHandle, String> {
 }
 
 #[cfg(target_os = "windows")]
-pub(super) fn ensure_unified_hotkey_monitor(_app_handle: tauri::AppHandle) -> Result<(), AppError> {
-    let monitor_running = {
-        let guard = monitor_slot().lock();
-        guard.is_some()
-    };
-    if monitor_running {
-        return Ok(());
+pub(super) fn install_mouse_hook_on_thread() -> Result<HookHandle, String> {
+    // SAFETY: Passing null returns the HMODULE of the current executable for the low-level mouse hook.
+    let module = unsafe { GetModuleHandleW(std::ptr::null()) };
+    // SAFETY: `unified_low_level_mouse_proc` matches HOOKPROC signature and module is valid for process lifetime.
+    let hook =
+        unsafe { SetWindowsHookExW(WH_MOUSE_LL, Some(unified_low_level_mouse_proc), module, 0) };
+    if hook.is_null() {
+        Err(format!(
+            "Failed to install mouse hook: {}",
+            std::io::Error::last_os_error()
+        ))
+    } else {
+        Ok(hook)
     }
+}
+
+#[cfg(target_os = "windows")]
+pub(super) fn ensure_unified_hotkey_monitor(
+    _app_handle: tauri::AppHandle,
+    need_mouse: bool,
+) -> Result<(), AppError> {
+    {
+        let guard = monitor_slot().lock();
+        if let Some(monitor) = guard.as_ref() {
+            if monitor.has_mouse == need_mouse {
+                return Ok(());
+            }
+        }
+    }
+    stop_unified_hotkey_monitor();
 
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();
 
     let handle = std::thread::Builder::new()
         .name("unified-hotkey-monitor".to_string())
         .spawn(move || {
-            // SAFETY: GetCurrentThreadId takes no arguments and cannot fail.
+            // SAFETY: GetCurrentThreadId has no preconditions and returns the Win32 ID of this OS thread.
             let thread_id = unsafe { GetCurrentThreadId() };
 
-            let hook = match install_hook_on_thread() {
+            let kbd_hook = match install_hook_on_thread() {
                 Ok(h) => h,
                 Err(msg) => {
                     let _ = ready_tx.send(Err(msg));
                     return;
                 }
             };
-            let hook_handle: HookHandle = hook;
+            let mouse_hook = if need_mouse {
+                match install_mouse_hook_on_thread() {
+                    Ok(h) => Some(h),
+                    Err(msg) => {
+                        // SAFETY: `kbd_hook` was returned by `SetWindowsHookExW` above.
+                        unsafe { UnhookWindowsHookEx(kbd_hook) };
+                        let _ = ready_tx.send(Err(msg));
+                        return;
+                    }
+                }
+            } else {
+                None
+            };
 
-            // Ensure message queue exists
-            // SAFETY: MSG is a plain C struct of integers and pointers, so the all-zero bit pattern is a valid value.
+            // SAFETY: `MSG` is a plain Win32 C struct; zero-initialization is valid before PeekMessageW populates it.
             let mut peek_msg: MSG = unsafe { std::mem::zeroed() };
-            // SAFETY: peek_msg is a valid writable MSG; PM_NOREMOVE only creates this thread's queue and does not dequeue messages.
+            // SAFETY: `peek_msg` points to writable stack memory on the current thread to initialize its message queue.
             let _ = unsafe { PeekMessageW(&mut peek_msg, std::ptr::null_mut(), 0, 0, PM_NOREMOVE) };
 
             if ready_tx.send(Ok(thread_id)).is_err() {
-                // SAFETY: hook_handle was just returned by SetWindowsHookExW on this thread and has not been unhooked yet.
-                unsafe { UnhookWindowsHookEx(hook_handle) };
+                // SAFETY: `kbd_hook` and `mh` were created on this thread via `SetWindowsHookExW`.
+                unsafe { UnhookWindowsHookEx(kbd_hook) };
+                if let Some(mh) = mouse_hook {
+                    // SAFETY: `mh` was created on this thread via `SetWindowsHookExW`.
+                    unsafe { UnhookWindowsHookEx(mh) };
+                }
                 return;
             }
 
-            // Simple message loop — the hook callback is kept fast enough that
-            // Windows will not silently remove it.
-            // SAFETY: MSG is a plain C struct of integers and pointers, so the all-zero bit pattern is a valid value.
+            // SAFETY: `MSG` is a plain Win32 C struct populated by GetMessageW below.
             let mut message: MSG = unsafe { std::mem::zeroed() };
             loop {
-                // SAFETY: message is a valid writable MSG, and a null window retrieves messages for this thread's queue.
+                // SAFETY: `message` is writable stack storage owned by this thread's message loop.
                 let result = unsafe { GetMessageW(&mut message, std::ptr::null_mut(), 0, 0) };
                 if result <= 0 {
                     break;
                 }
-
-                // SAFETY: message was just filled by GetMessageW on this thread and is a valid MSG for both calls.
+                // SAFETY: `message` was initialized by GetMessageW above.
                 unsafe {
                     TranslateMessage(&message);
                     DispatchMessageW(&message);
                 }
             }
 
-            // SAFETY: hook_handle is still installed by this thread and is unhooked once, after the message loop exits.
-            unsafe { UnhookWindowsHookEx(hook_handle) };
+            // SAFETY: Unhooking the Win32 hooks registered by this thread before exit.
+            unsafe { UnhookWindowsHookEx(kbd_hook) };
+            if let Some(mh) = mouse_hook {
+                // SAFETY: `mh` was registered by this thread via `SetWindowsHookExW`.
+                unsafe { UnhookWindowsHookEx(mh) };
+            }
         })
         .map_err(|e| AppError::Other(format!("Failed to start hotkey listener thread: {}", e)))?;
 
@@ -126,7 +165,11 @@ pub(super) fn ensure_unified_hotkey_monitor(_app_handle: tauri::AppHandle) -> Re
         .map_err(AppError::Other)?;
 
     let mut guard = monitor_slot().lock();
-    *guard = Some(UnifiedHotkeyMonitor { thread_id, handle });
+    *guard = Some(UnifiedHotkeyMonitor {
+        thread_id,
+        has_mouse: need_mouse,
+        handle,
+    });
     Ok(())
 }
 
@@ -138,19 +181,24 @@ pub(super) fn force_release_hotkey(state: &UnifiedHookState) {
         unregister_reg_hotkey_id(id);
     }
     let label = state.spec.label();
-    if let Some(session_id) = state.gate.start_owner.release() {
-        handle_hotkey_stop(
-            state.app_handle.clone(),
-            label.to_string(),
-            state.trigger,
-            session_id,
-        );
+    if state.kind.is_recording_trigger() {
+        if let Some(session_id) = state.gate.start_owner.release() {
+            handle_hotkey_stop(
+                state.app_handle.clone(),
+                label.to_string(),
+                state.trigger,
+                session_id,
+            );
+        }
     }
     reset_hotkey_event_gate(&state.gate);
 }
 
 #[cfg(not(target_os = "windows"))]
-pub(super) fn ensure_unified_hotkey_monitor(_app_handle: tauri::AppHandle) -> Result<(), AppError> {
+pub(super) fn ensure_unified_hotkey_monitor(
+    _app_handle: tauri::AppHandle,
+    _need_mouse: bool,
+) -> Result<(), AppError> {
     Err(AppError::Other(
         "Low-level keyboard hook hotkeys are not supported on this OS".to_string(),
     ))
@@ -159,15 +207,17 @@ pub(super) fn ensure_unified_hotkey_monitor(_app_handle: tauri::AppHandle) -> Re
 #[cfg(target_os = "windows")]
 pub(super) fn build_hook_state(
     app_handle: tauri::AppHandle,
+    kind: HotkeyKind,
     spec: HotkeySpec,
     trigger: RecordingTrigger,
 ) -> Arc<UnifiedHookState> {
-    let backend = classify_backend(&spec);
-    build_hook_state_with_backend(app_handle, spec, trigger, backend)
+    let backend = classify_backend(kind, &spec);
+    build_hook_state_with_backend(app_handle, kind, spec, trigger, backend)
 }
 
 pub(super) fn build_hook_state_with_backend(
     app_handle: tauri::AppHandle,
+    kind: HotkeyKind,
     spec: HotkeySpec,
     trigger: RecordingTrigger,
     backend: HotkeyBackend,
@@ -176,11 +226,12 @@ pub(super) fn build_hook_state_with_backend(
         HotkeySpec::ModifierOnly {
             required_modifiers, ..
         } => required_modifiers.len(),
-        HotkeySpec::Standard { .. } => 0,
+        HotkeySpec::Standard { .. } | HotkeySpec::Mouse { .. } => 0,
     };
 
     Arc::new(UnifiedHookState {
         app_handle,
+        kind,
         backend,
         reg_hotkey_id: if backend == HotkeyBackend::RegisterHotKey {
             next_reg_hotkey_id()
@@ -203,23 +254,22 @@ pub(super) fn build_hook_state_with_backend(
 
 #[cfg(target_os = "windows")]
 pub(super) fn sync_hotkey_monitor_lifecycle(app_handle: tauri::AppHandle) -> Result<(), AppError> {
-    let (has_llkh, _has_any) = {
+    let (has_llkh, has_mouse) = {
         let guard = unified_hook_state_slot().lock();
-        let has_llkh = [
-            guard.dictation.as_ref(),
-            guard.translation.as_ref(),
-            guard.assistant.as_ref(),
-        ]
-        .iter()
-        .flatten()
-        .any(|s| s.backend == HotkeyBackend::LowLevelHook);
-        let has_any = !guard.is_empty();
-        (has_llkh, has_any)
+        let all = guard.all_states();
+        let has_llkh = all
+            .iter()
+            .flatten()
+            .any(|s| s.backend == HotkeyBackend::LowLevelHook);
+        let has_mouse = all
+            .iter()
+            .flatten()
+            .any(|s| matches!(s.spec, HotkeySpec::Mouse { .. }));
+        (has_llkh, has_mouse)
     };
 
-    // Only install LLKH when at least one hotkey actually needs it
-    if has_llkh {
-        ensure_unified_hotkey_monitor(app_handle)
+    if has_llkh || has_mouse {
+        ensure_unified_hotkey_monitor(app_handle, has_mouse)
     } else {
         stop_unified_hotkey_monitor();
         Ok(())
@@ -228,5 +278,5 @@ pub(super) fn sync_hotkey_monitor_lifecycle(app_handle: tauri::AppHandle) -> Res
 
 #[cfg(not(target_os = "windows"))]
 pub(super) fn sync_hotkey_monitor_lifecycle(app_handle: tauri::AppHandle) -> Result<(), AppError> {
-    ensure_unified_hotkey_monitor(app_handle)
+    ensure_unified_hotkey_monitor(app_handle, false)
 }

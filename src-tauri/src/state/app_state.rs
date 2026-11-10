@@ -266,6 +266,8 @@ pub struct EngineState {
     /// 在 stop/switch 的最终状态之后才抵达前端。
     pub funasr_status_commit: Arc<parking_lot::Mutex<()>>,
     pub funasr_ready: Arc<AtomicBool>,
+    pub supports_native_streaming: AtomicBool,
+    pub supports_diarization: AtomicBool,
     /// 当前 FunASR 启动所有者。0=空闲，u64::MAX=迁移期间禁止启动。
     funasr_starting_owner: AtomicU64,
     /// 引擎生命周期代数，stop_server 递增，start_server 据此检测是否被取消
@@ -285,6 +287,8 @@ impl Default for EngineState {
             engine_install_op: Default::default(),
             funasr_status_commit: Default::default(),
             funasr_ready: Default::default(),
+            supports_native_streaming: AtomicBool::new(false),
+            supports_diarization: AtomicBool::new(false),
             funasr_starting_owner: AtomicU64::new(0),
             funasr_generation: Arc::new(AtomicU64::new(0)),
             download_task: Default::default(),

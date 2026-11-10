@@ -65,10 +65,64 @@ def find_hf_snapshot_file(repo_id, filename):
     Falls back to the user's read-only model folders, which are searched only
     after the cache. Nothing is ever written to those folders.
     """
+    custom_path = os.environ.get("SPEAK_FLOW_CUSTOM_MODEL_PATH", "").strip()
+    if custom_path and os.path.isfile(custom_path):
+        return custom_path
     for snapshot_path in _snapshot_paths(repo_id):
         if _snapshot_is_ready(snapshot_path, filename):
             return os.path.join(snapshot_path, filename.replace("/", os.sep))
     return find_shared_model_file(filename)
+
+
+def scan_hf_cache_models():
+    """Zero-copy discovery of cached GGUF models under HF cache and shared model folders."""
+    results = []
+    seen = set()
+    roots = [get_hf_cache_root()]
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        try:
+            entries = sorted(os.listdir(root))
+        except OSError:
+            continue
+        for entry in entries:
+            if not entry.startswith("models--"):
+                continue
+            repo_id = entry[len("models--"):].replace("--", "/")
+            snapshots_dir = os.path.join(root, entry, "snapshots")
+            if not os.path.isdir(snapshots_dir):
+                continue
+            try:
+                snap_names = sorted(os.listdir(snapshots_dir))
+            except OSError:
+                continue
+            for snap in snap_names:
+                snap_dir = os.path.join(snapshots_dir, snap)
+                if not os.path.isdir(snap_dir):
+                    continue
+                for dirpath, _dirs, files in os.walk(snap_dir):
+                    for fname in sorted(files):
+                        if not fname.lower().endswith(".gguf"):
+                            continue
+                        full = os.path.join(dirpath, fname)
+                        real = os.path.realpath(full)
+                        if real in seen or not os.path.isfile(real):
+                            continue
+                        try:
+                            size = os.path.getsize(real)
+                        except OSError:
+                            continue
+                        if size < _MIN_WEIGHT_SIZE:
+                            continue
+                        seen.add(real)
+                        results.append({
+                            "repo_id": repo_id,
+                            "filename": fname,
+                            "path": full,
+                            "size": size,
+                        })
+    return results
 
 
 def model_search_dirs():

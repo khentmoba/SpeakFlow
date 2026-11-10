@@ -277,6 +277,14 @@ export interface UserProfile {
   last_correction_validation?: number;
   history_settings?: HistorySettings;
   app_profile_rules?: AppProfileRule[];
+  audio_behavior?: AudioBehaviorConfig;
+  output_behavior?: OutputBehaviorConfig;
+  shortcuts_behavior?: ShortcutsBehaviorConfig;
+  labs?: LabsConfig;
+  keyboard_model_switching?: boolean;
+  keyboard_model_rules?: KeyboardModelRule[];
+  meetings?: MeetingsConfig;
+  global_transformations?: string[];
 }
 
 export interface HistorySettings {
@@ -287,6 +295,12 @@ export interface HistorySettings {
 
 export type AppRuleOverride = "inherit" | "enabled" | "disabled";
 export type AppTranslationOverride = "inherit" | "disabled" | "target";
+export type AppPasteMethod =
+  | "inherit"
+  | "send_input"
+  | "clipboard"
+  | "terminal_ctrl_shift_v"
+  | "copy_only";
 
 export interface AppProfileRule {
   id: string;
@@ -294,12 +308,17 @@ export interface AppProfileRule {
   enabled: boolean;
   process_name: string;
   window_title_contains?: string | null;
+  browser_domain?: string | null;
   ai_polish: AppRuleOverride;
   translation: AppTranslationOverride;
   translation_target?: string | null;
   screen_context: AppRuleOverride;
   history: AppRuleOverride;
   custom_prompt?: string | null;
+  tone_mode?: string | null;
+  paste_method: AppPasteMethod;
+  vocabulary?: string[];
+  transformations?: string[];
 }
 
 export type PersistentHistoryStatus =
@@ -403,3 +422,202 @@ export interface SelectionAssistantConfig {
   excluded_apps: string[];
 }
 
+
+export type AudioDuckingMode = "off" | "duck" | "mute" | "pause_media";
+
+export interface AudioBehaviorConfig {
+  duckingMode: AudioDuckingMode;
+  duckVolume: number;
+  speakersOnly: boolean;
+  avoidBluetoothMicrophone: boolean;
+  releaseMicWhileIdle: boolean;
+  preRollEnabled: boolean;
+  adaptiveReleaseTail: boolean;
+}
+
+export interface OutputBehaviorConfig {
+  pasteWithShift: boolean;
+  autoTerminalCtrlShiftV: boolean;
+  keepOnClipboard: boolean;
+  copyOnly: boolean;
+}
+
+export interface ShortcutsBehaviorConfig {
+  secondDictationHotkey?: string | null;
+  terminalPasteHotkey?: string | null;
+  typedTextHotkey?: string | null;
+  meetingHotkey?: string | null;
+  shareDictationShortcut: boolean;
+}
+
+export interface LabsConfig {
+  failureNotices: boolean;
+  returnToApp: boolean;
+  smartSpacing: boolean;
+  spokenFormatting: boolean;
+  spokenSymbols: boolean;
+  skipPauses: boolean;
+  tapOrHold: boolean;
+  standaloneSpecialKeys: boolean;
+  outputFixes: boolean;
+  apiProcessing: boolean;
+  meetingFinishedEvent: boolean;
+  meetingNotesVocabulary: boolean;
+  expireMeetingAudio: boolean;
+}
+
+export interface KeyboardModelRule {
+  layoutTag: string;
+  engine: string;
+}
+
+export type MeetingAppPolicy = "ask" | "always" | "never";
+
+export interface MeetingsConfig {
+  callDetectionEnabled: boolean;
+  moreCallApps: boolean;
+  appPolicies: Record<string, MeetingAppPolicy>;
+  autoSummarize: boolean;
+  saveMarkdownTranscripts: boolean;
+  markdownOutputDir?: string | null;
+  keepAudioDays: number;
+  transcriptFontSize: number;
+}
+
+export interface MeetingSegment {
+  id: string;
+  speaker: string;
+  track: "mic" | "loopback";
+  startMs: number;
+  endMs: number;
+  text: string;
+}
+
+export interface MeetingRecord {
+  id: string;
+  title: string;
+  appName?: string | null;
+  status: "completed" | "failed";
+  startedAt: number;
+  endedAt: number;
+  durationSec: number;
+  micAudioPath?: string | null;
+  loopbackAudioPath?: string | null;
+  markdownPath?: string | null;
+  summary?: string | null;
+  transcriptText: string;
+  segments: MeetingSegment[];
+  wordCount: number;
+  speakerCount: number;
+  error?: string | null;
+}
+
+export interface MeetingStatusPayload {
+  recording: boolean;
+  processing: boolean;
+  activeId?: string | null;
+  title?: string | null;
+  appName?: string | null;
+  startedAt?: number | null;
+  durationSec: number;
+  micSamples: number;
+  loopbackSamples: number;
+}
+
+export interface CallDetectionResult {
+  active: boolean;
+  appName?: string | null;
+  processName?: string | null;
+  windowTitle?: string | null;
+  policy: MeetingAppPolicy;
+}
+
+export type MeetingExportFormat = "md" | "srt" | "vtt" | "json";
+
+export interface CustomModelEntry {
+  id: string;
+  engineKey: string;
+  name: string;
+  path: string;
+  source: "local_gguf" | "hf_cache";
+  repoId?: string | null;
+  architecture?: string | null;
+  fileSize: number;
+  addedAt: number;
+}
+
+export interface DiscoveredHfModel {
+  repoId: string;
+  filename: string;
+  path: string;
+  fileSize: number;
+  architecture?: string | null;
+  modelName?: string | null;
+  alreadyRegistered: boolean;
+}
+
+export interface SearchDocument {
+  id: string;
+  kind: "dictation" | "meeting";
+  title: string;
+  text: string;
+  snippet: string;
+  score: number;
+  createdAt: number;
+  durationSec?: number | null;
+  appName?: string | null;
+  mode?: string | null;
+  matchedTerms: string[];
+}
+
+export interface RegisteredTransform {
+  id: string;
+  label: string;
+  description?: string | null;
+  kind: "builtin" | "script";
+}
+
+export interface ScriptingStatus {
+  configDir: string;
+  configPath: string;
+  configExists: boolean;
+  valid: boolean;
+  error?: string | null;
+  scriptTransforms: RegisteredTransform[];
+  allTransforms: RegisteredTransform[];
+}
+
+export interface OutputFixEntry {
+  id: string;
+  createdAt: number;
+  original: string;
+  fixed: string;
+  rawOriginal?: string | null;
+  note?: string | null;
+  processName?: string | null;
+  windowTitle?: string | null;
+  sessionId?: number | null;
+  appliedRules: [string, string][];
+}
+
+export interface LastDictationRecord {
+  sessionId: number;
+  text: string;
+  originalText: string;
+  targetWindow?: number | null;
+  processName?: string | null;
+  windowTitle?: string | null;
+}
+
+export interface GgufInspection {
+  valid: boolean;
+  version: number;
+  tensorCount: number;
+  metadataKvCount: number;
+  architecture?: string | null;
+  modelName?: string | null;
+  fileType?: number | null;
+  fileSize: number;
+  supportedByTranscribeCpp: boolean;
+  error?: string | null;
+}

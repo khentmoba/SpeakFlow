@@ -10,6 +10,6 @@ export type RecordingOutcomeKind = "too_short" | "no_speech" | "asr_error" | "pr
 
 export type RecordingSnapshot = { sessionId: number, revision: number, phase: RecordingPhase, mode: RecordingMode, outcome?: RecordingOutcomeKind, detail?: string, };
 
-export type InputDeviceInfo = { name: string, isDefault: boolean, };
+export type InputDeviceInfo = { name: string, isDefault: boolean, isBluetooth: boolean, };
 
 export type InputDeviceListPayload = { devices: Array<InputDeviceInfo>, selectedDeviceName: string | null, };

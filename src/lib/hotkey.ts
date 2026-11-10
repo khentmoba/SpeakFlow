@@ -77,6 +77,13 @@ const MODIFIER_DISPLAY: Partial<Record<HotkeyModifier, string>> = {
   Super: "Win",
 };
 
+/** Mouse buttons share the hotkey grammar with keys: Mouse3/4/5. */
+const MOUSE_BUTTON_ALIASES: Record<string, string> = {
+  middle: "Mouse3",
+  xbutton1: "Mouse4",
+  xbutton2: "Mouse5",
+};
+
 function isModifierOnlyCombo(modifiers: HotkeyModifier[]): boolean {
   return modifiers.length > 0;
 }
@@ -88,6 +95,13 @@ function normalizeMainKeyToken(token: string): string {
   if (/^[a-z]$/i.test(value)) return value.toUpperCase();
   if (/^\d$/.test(value)) return value;
   if (/^f([1-9]|1\d|2[0-4])$/i.test(value)) return value.toUpperCase();
+
+  // Mouse buttons share the hotkey grammar with keys, so Mouse4 can be bound
+  // and displayed the same way as a keyboard shortcut.
+  const mouseButton = /^mouse([345])$/i.exec(value);
+  if (mouseButton) return `Mouse${mouseButton[1]}`;
+  const mouseAlias = MOUSE_BUTTON_ALIASES[value.toLowerCase()];
+  if (mouseAlias) return mouseAlias;
 
   return NAMED_KEY_ALIASES[value.toLowerCase()] ?? "";
 }

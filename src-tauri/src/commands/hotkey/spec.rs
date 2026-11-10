@@ -1,7 +1,25 @@
 use super::*;
 
-// HotkeySpec — describes what key combination triggers the hotkey
 // ---------------------------------------------------------------------------
+// HotkeySpec — describes what key/mouse combination triggers the hotkey
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum MouseButtonKind {
+    Middle,
+    XButton1,
+    XButton2,
+}
+
+impl MouseButtonKind {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Middle => "Mouse3",
+            Self::XButton1 => "Mouse4",
+            Self::XButton2 => "Mouse5",
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(super) enum HotkeySpec {
@@ -10,7 +28,7 @@ pub(super) enum HotkeySpec {
         label: String,
         required_modifiers: Vec<ModifierKey>,
     },
-    /// Modifier(s) + a main key (e.g. F2, Ctrl+Space)
+    /// Modifier(s) + a main key (e.g. F2, Ctrl+Space, CapsLock, NumLock)
     Standard {
         label: String,
         modifiers: ShortcutModifiers,
@@ -20,6 +38,12 @@ pub(super) enum HotkeySpec {
         /// Consume both key-down and key-up so lock keys do not change OS state.
         consume_main_key: bool,
     },
+    /// Mouse button (Mouse3/Middle, Mouse4/XButton1, Mouse5/XButton2), with optional modifiers
+    Mouse {
+        label: String,
+        modifiers: ShortcutModifiers,
+        button: MouseButtonKind,
+    },
 }
 
 impl HotkeySpec {
@@ -27,6 +51,7 @@ impl HotkeySpec {
         match self {
             Self::ModifierOnly { label, .. } => label,
             Self::Standard { label, .. } => label,
+            Self::Mouse { label, .. } => label,
         }
     }
 
@@ -34,6 +59,7 @@ impl HotkeySpec {
         matches!(
             self,
             Self::ModifierOnly { .. }
+                | Self::Mouse { .. }
                 | Self::Standard {
                     force_low_level_hook: true,
                     ..
@@ -198,11 +224,17 @@ impl ShortcutModifiers {
 }
 
 // ---------------------------------------------------------------------------
-// Event gate — deduplicates press/release across rapid repeats
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 // Key parsing
 // ---------------------------------------------------------------------------
+
+pub(super) fn parse_mouse_button(token: &str) -> Option<MouseButtonKind> {
+    match token.trim().to_ascii_lowercase().as_str() {
+        "mouse3" | "middle" | "middleclick" | "mousemiddle" => Some(MouseButtonKind::Middle),
+        "mouse4" | "xbutton1" | "mousex1" | "mouseback" => Some(MouseButtonKind::XButton1),
+        "mouse5" | "xbutton2" | "mousex2" | "mouseforward" => Some(MouseButtonKind::XButton2),
+        _ => None,
+    }
+}
 
 #[cfg(target_os = "windows")]
 pub(super) fn parse_main_key_to_vk(main_key: &str) -> Option<u16> {
@@ -223,6 +255,16 @@ pub(super) fn parse_main_key_to_vk(main_key: &str) -> Option<u16> {
         "ArrowLeft" => Some(VK_LEFT),
         "ArrowRight" => Some(VK_RIGHT),
         "CapsLock" => Some(VK_CAPITAL),
+        "NumLock" => Some(0x90),
+        "ScrollLock" => Some(0x91),
+        "Pause" => Some(0x13),
+        "PrintScreen" => Some(0x2C),
+        "ContextMenu" | "Apps" => Some(0x5D),
+        "BrowserBack" => Some(0xA6),
+        "BrowserForward" => Some(0xA7),
+        "MediaPlayPause" => Some(0xB3),
+        "VolumeMute" => Some(0xAD),
+        "Backquote" => Some(0xC0),
         _ if main_key.len() == 1 => {
             let byte = main_key.as_bytes()[0];
             if byte.is_ascii_uppercase() || byte.is_ascii_digit() {
@@ -244,13 +286,38 @@ pub(super) fn parse_main_key_to_vk(main_key: &str) -> Option<u16> {
     }
 }
 
+fn is_extended_standalone_special_key(key: &str) -> bool {
+    matches!(
+        key,
+        "NumLock"
+            | "ScrollLock"
+            | "Pause"
+            | "PrintScreen"
+            | "ContextMenu"
+            | "Apps"
+            | "BrowserBack"
+            | "BrowserForward"
+            | "MediaPlayPause"
+            | "VolumeMute"
+    )
+}
+
 // ---------------------------------------------------------------------------
 // normalize_shortcut → HotkeySpec
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
 pub(super) fn normalize_shortcut(raw: &str) -> Result<HotkeySpec, AppError> {
+    normalize_shortcut_with_options(raw, true)
+}
+
+pub(super) fn normalize_shortcut_with_options(
+    raw: &str,
+    allow_standalone_special_keys: bool,
+) -> Result<HotkeySpec, AppError> {
     let mut modifiers = ShortcutModifiers::default();
     let mut main_key: Option<String> = None;
+    let mut mouse_button: Option<MouseButtonKind> = None;
 
     for token in raw.split('+').map(str::trim) {
         if token.is_empty() {
@@ -278,8 +345,16 @@ pub(super) fn normalize_shortcut(raw: &str) -> Result<HotkeySpec, AppError> {
 
         if let Some(modifier) = modifier {
             modifiers.insert(modifier)?;
+        } else if let Some(btn) = parse_mouse_button(token) {
+            if main_key.is_some() || mouse_button.is_some() {
+                return Err(AppError::Other(
+                    "Invalid shortcut format: only one main key or mouse button is allowed"
+                        .to_string(),
+                ));
+            }
+            mouse_button = Some(btn);
         } else {
-            if main_key.is_some() {
+            if main_key.is_some() || mouse_button.is_some() {
                 return Err(AppError::Other(
                     "Invalid shortcut format: only one main key is allowed (for example Ctrl+Win+R)".to_string(),
                 ));
@@ -288,7 +363,6 @@ pub(super) fn normalize_shortcut(raw: &str) -> Result<HotkeySpec, AppError> {
         }
     }
 
-    // Build ordered label
     let mut label_parts = Vec::with_capacity(5);
     label_parts.extend(
         modifiers
@@ -296,7 +370,26 @@ pub(super) fn normalize_shortcut(raw: &str) -> Result<HotkeySpec, AppError> {
             .map(|modifier| modifier.label().to_string()),
     );
 
+    if let Some(button) = mouse_button {
+        label_parts.push(button.label().to_string());
+        return Ok(HotkeySpec::Mouse {
+            label: label_parts.join("+"),
+            modifiers,
+            button,
+        });
+    }
+
     if let Some(ref mk) = main_key {
+        if modifiers.is_empty()
+            && is_extended_standalone_special_key(mk)
+            && !allow_standalone_special_keys
+        {
+            return Err(AppError::Other(format!(
+                "Special key '{}' without modifiers requires enabling Labs > Standalone special keys",
+                mk
+            )));
+        }
+
         label_parts.push(mk.clone());
 
         #[cfg(target_os = "windows")]
@@ -306,8 +399,12 @@ pub(super) fn normalize_shortcut(raw: &str) -> Result<HotkeySpec, AppError> {
         let main_vk = 0u16;
 
         let label = label_parts.join("+");
-        let consume_main_key = mk.eq_ignore_ascii_case("CapsLock");
-        let force_low_level_hook = modifiers.has_side_specific() || consume_main_key;
+        let consume_main_key = mk.eq_ignore_ascii_case("CapsLock")
+            || mk.eq_ignore_ascii_case("NumLock")
+            || mk.eq_ignore_ascii_case("ScrollLock");
+        let force_low_level_hook = modifiers.has_side_specific()
+            || consume_main_key
+            || is_extended_standalone_special_key(mk);
         Ok(HotkeySpec::Standard {
             label,
             modifiers,
@@ -316,7 +413,6 @@ pub(super) fn normalize_shortcut(raw: &str) -> Result<HotkeySpec, AppError> {
             consume_main_key,
         })
     } else {
-        // Pure modifier-only hotkey
         if modifiers.is_empty() {
             return Err(AppError::Other(
                 "Invalid shortcut format: please specify at least one key".to_string(),

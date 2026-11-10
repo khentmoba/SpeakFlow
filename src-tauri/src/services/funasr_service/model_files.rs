@@ -281,7 +281,7 @@ pub fn installed_catalog_engines() -> Vec<String> {
 }
 
 /// 检查当前 ASR 引擎的模型文件是否已下载。
-pub(super) fn inspect_model_files_for_engine(engine: &str) -> ModelCheckResult {
+pub(crate) fn inspect_model_files_for_engine(engine: &str) -> ModelCheckResult {
     if paths::is_online_engine(engine) {
         return ModelCheckResult {
             all_present: true,
@@ -293,6 +293,44 @@ pub(super) fn inspect_model_files_for_engine(engine: &str) -> ModelCheckResult {
             missing_models: Vec::new(),
             model_state: ModelState::Ready,
             corrupt_models: Vec::new(),
+        };
+    }
+
+    if engine.starts_with("custom:") {
+        return match crate::services::custom_models::resolve_custom_model(engine) {
+            Some(entry) if std::path::Path::new(&entry.path).is_file() => ModelCheckResult {
+                all_present: true,
+                asr_model: true,
+                vad_model: true,
+                punc_model: true,
+                engine: engine.to_string(),
+                cache_path: entry.path,
+                missing_models: Vec::new(),
+                model_state: ModelState::Ready,
+                corrupt_models: Vec::new(),
+            },
+            Some(entry) => ModelCheckResult {
+                all_present: false,
+                asr_model: false,
+                vad_model: true,
+                punc_model: true,
+                engine: engine.to_string(),
+                cache_path: entry.path.clone(),
+                missing_models: vec![format!("{} ({})", entry.name, entry.path)],
+                model_state: ModelState::Missing,
+                corrupt_models: Vec::new(),
+            },
+            None => ModelCheckResult {
+                all_present: false,
+                asr_model: false,
+                vad_model: true,
+                punc_model: true,
+                engine: engine.to_string(),
+                cache_path: String::new(),
+                missing_models: vec![format!("Custom model {}", engine)],
+                model_state: ModelState::Missing,
+                corrupt_models: Vec::new(),
+            },
         };
     }
 

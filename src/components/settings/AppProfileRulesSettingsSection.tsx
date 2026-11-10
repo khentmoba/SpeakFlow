@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { setAppProfileRules } from "@/api/tauri";
 import type {
+  AppPasteMethod,
   AppProfileRule,
   AppRuleOverride,
   UserProfile,
@@ -22,13 +23,38 @@ function createRule(): AppProfileRule {
     enabled: true,
     process_name: "",
     window_title_contains: null,
+    browser_domain: null,
     ai_polish: "inherit",
     translation: "inherit",
     translation_target: null,
     screen_context: "inherit",
     history: "inherit",
     custom_prompt: null,
+    tone_mode: null,
+    paste_method: "inherit",
+    vocabulary: [],
+    transformations: [],
   };
+}
+
+function PasteMethodSelect({ value, onChange }: {
+  value: AppPasteMethod;
+  onChange: (value: AppPasteMethod) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <select
+      className="settings-input app-rule-select"
+      value={value}
+      onChange={(event) => onChange(event.target.value as AppPasteMethod)}
+    >
+      <option value="inherit">{t("settings.appRuleInherit")}</option>
+      <option value="send_input">{t("settings.appRulePasteSendInput")}</option>
+      <option value="clipboard">{t("settings.appRulePasteClipboard")}</option>
+      <option value="terminal_ctrl_shift_v">{t("settings.appRulePasteTerminal")}</option>
+      <option value="copy_only">{t("settings.appRulePasteCopyOnly")}</option>
+    </select>
+  );
 }
 
 function OverrideSelect({ value, onChange }: {
@@ -93,14 +119,71 @@ function RuleEditor({ value, onChange, onCancel, onSubmit }: {
       </label>
 
       <div className="app-rule-editor-grid">
+        <label className="settings-column app-rule-field">
+          <span>{t("settings.appRuleBrowserDomain")}</span>
+          <input
+            className="settings-input"
+            value={value.browser_domain ?? ""}
+            placeholder="docs.example.com"
+            onChange={(event) => patch({ browser_domain: event.target.value || null })}
+          />
+        </label>
 
+        <label className="settings-column app-rule-field">
+          <span>{t("settings.appRulePasteMethod")}</span>
+          <PasteMethodSelect
+            value={value.paste_method}
+            onChange={(paste_method) => patch({ paste_method })}
+          />
+        </label>
+      </div>
+
+      <div className="app-rule-editor-grid">
+        <label className="settings-column app-rule-field">
+          <span>{t("settings.appRuleToneMode")}</span>
+          <select
+            className="settings-input app-rule-select"
+            value={value.tone_mode ?? ""}
+            onChange={(event) => patch({ tone_mode: event.target.value || null })}
+          >
+            <option value="">{t("settings.appRuleInherit")}</option>
+            <option value="formal">{t("settings.toneFormal")}</option>
+            <option value="casual">{t("settings.toneCasual")}</option>
+            <option value="concise">{t("settings.toneConcise")}</option>
+            <option value="bullets">{t("settings.toneBullets")}</option>
+            <option value="email">{t("settings.toneEmail")}</option>
+          </select>
+        </label>
 
         <label className="settings-column app-rule-field">
           <span>{t("settings.appRuleHistory")}</span>
           <OverrideSelect value={value.history} onChange={(history) => patch({ history })} />
         </label>
-
       </div>
+
+      <label className="settings-column app-rule-field">
+        <span>{t("settings.appRuleVocabulary")}</span>
+        <input
+          className="settings-input"
+          value={(value.vocabulary ?? []).join(", ")}
+          placeholder="Tauri, SpeakFlow"
+          onChange={(event) => patch({
+            vocabulary: event.target.value.split(",").map((item) => item.trim()).filter(Boolean),
+          })}
+        />
+      </label>
+
+      <label className="settings-column app-rule-field">
+        <span>{t("settings.appRuleTransformations")}</span>
+        <input
+          className="settings-input"
+          value={(value.transformations ?? []).join(", ")}
+          placeholder="spoken_symbols, spoken_formatting"
+          onChange={(event) => patch({
+            transformations: event.target.value.split(",").map((item) => item.trim()).filter(Boolean),
+          })}
+        />
+      </label>
 
       <div className="app-rule-editor-actions">
         <button type="button" className="btn-ghost btn-ghost-sm" onClick={onCancel}>
@@ -109,7 +192,7 @@ function RuleEditor({ value, onChange, onCancel, onSubmit }: {
         <button
           type="button"
           className="test-btn"
-          disabled={!value.process_name.trim()}
+          disabled={!value.process_name.trim() && !(value.browser_domain ?? "").trim()}
           onClick={onSubmit}
         >
           {t("settings.appRuleSave")}
@@ -153,8 +236,12 @@ export default function AppProfileRulesSettingsSection({ profile, onSaved }: App
       name: editing.name.trim(),
       process_name: editing.process_name.trim(),
       window_title_contains: editing.window_title_contains?.trim() || null,
+      browser_domain: editing.browser_domain?.trim() || null,
       translation_target: editing.translation_target?.trim() || null,
       custom_prompt: editing.custom_prompt?.trim() || null,
+      tone_mode: editing.tone_mode?.trim() || null,
+      vocabulary: (editing.vocabulary ?? []).map((item) => item.trim()).filter(Boolean),
+      transformations: (editing.transformations ?? []).map((item) => item.trim()).filter(Boolean),
     };
     const exists = rules.some((rule) => rule.id === normalized.id);
     const next = exists
@@ -205,7 +292,7 @@ export default function AppProfileRulesSettingsSection({ profile, onSaved }: App
             </button>
             <div className="app-rule-summary">
               <strong>{rule.name || rule.process_name}</strong>
-              <span>{rule.process_name}{rule.window_title_contains ? ` · ${rule.window_title_contains}` : ""}</span>
+              <span>{rule.process_name}{rule.window_title_contains ? ` · ${rule.window_title_contains}` : ""}{rule.browser_domain ? ` · ${rule.browser_domain}` : ""}</span>
             </div>
             <div className="app-rule-actions">
               <button type="button" className="btn-ghost app-rule-icon-button" aria-label={t("settings.appRuleMoveUp")} disabled={saving || index === 0} onClick={() => move(index, -1)}>

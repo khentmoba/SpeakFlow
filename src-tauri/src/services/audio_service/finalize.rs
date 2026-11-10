@@ -172,20 +172,15 @@ fn resolve_recording_app_profile(
 ) -> ResolvedAppProfile {
     match foreground_app {
         Some(app) if !app.process_name.trim().is_empty() => {
-            let direct = profile.resolve_app_profile(&app.process_name, &app.window_title);
-            if direct.rule_name.is_some() {
-                return direct;
-            }
-            if let Some(domain) = crate::services::browser_domain::detect_active_browser_domain(
+            let domain = crate::services::browser_domain::detect_active_browser_domain(
                 &app.process_name,
                 &app.window_title,
-            ) {
-                let domain_profile = profile.resolve_app_profile(&domain, &app.window_title);
-                if domain_profile.rule_name.is_some() {
-                    return domain_profile;
-                }
-            }
-            direct
+            );
+            profile.resolve_app_profile_with_domain(
+                &app.process_name,
+                &app.window_title,
+                domain.as_deref(),
+            )
         }
         // 无法确认进程身份时，不能确定用户是否为该应用配置了隐私规则。
         // 仅关闭会捕获或持久化内容的功能；听写和显式助手请求仍可继续。
@@ -197,6 +192,138 @@ fn resolve_recording_app_profile(
     }
 }
 
+/// Adaptive post-release speech tail: keeps capture open up to `1500ms` (with a
+/// minimum `200ms` post-release grace) until `160ms` of quiet 20ms frames or
+/// another recording begins, preventing clipped trailing syllables.
+async fn wait_adaptive_release_tail(
+    state: &AppState,
+    stop_flag: &std::sync::atomic::AtomicBool,
+    stop_notify: &tokio::sync::Notify,
+    samples: &parking_lot::Mutex<Vec<i16>>,
+    sample_rate: u32,
+) {
+    if stop_flag.load(Ordering::Acquire) {
+        return;
+    }
+    let started = Instant::now();
+    let min_tail = Duration::from_millis(200);
+    let max_tail = Duration::from_millis(1500);
+    let frame_len = ((sample_rate as usize) * 20 / 1000).max(160);
+    let mut quiet_streak = 0usize;
+
+    loop {
+        if stop_flag.load(Ordering::Acquire) || state.recording.recording.lock().is_some() {
+            break;
+        }
+        let elapsed = started.elapsed();
+        if elapsed >= max_tail {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        if elapsed >= min_tail {
+            let rms = {
+                let guard = samples.lock();
+                if guard.len() < frame_len {
+                    0.0f32
+                } else {
+                    let slice = &guard[guard.len() - frame_len..];
+                    let sum_sq: f32 = slice
+                        .iter()
+                        .map(|&s| {
+                            let f = s as f32 / 32768.0;
+                            f * f
+                        })
+                        .sum();
+                    (sum_sq / slice.len() as f32).sqrt()
+                }
+            };
+            if rms < 0.008 {
+                quiet_streak += 1;
+                if quiet_streak >= 8 {
+                    break;
+                }
+            } else {
+                quiet_streak = 0;
+            }
+        }
+    }
+
+    stop_flag.store(true, Ordering::Release);
+    stop_notify.notify_waiters();
+}
+
+/// Compresses extended silence spans (`>= 650ms` below `0.008` RMS) down to
+/// `180ms` when `labs.skip_pauses` is active.
+pub(crate) fn compress_audio_pauses(samples: &[i16], sample_rate: u32) -> Vec<i16> {
+    if samples.is_empty() || sample_rate == 0 {
+        return samples.to_vec();
+    }
+    let frame_len = ((sample_rate as usize) * 20 / 1000).max(1);
+    let min_silence_frames = 33usize; // ~660ms
+    let keep_frames_each_side = 4usize; // 80ms + 80ms = 160ms padding
+    if samples.len() <= frame_len * min_silence_frames {
+        return samples.to_vec();
+    }
+
+    let mut frame_silent = Vec::with_capacity(samples.len() / frame_len + 1);
+    for chunk in samples.chunks(frame_len) {
+        let sum_sq: f32 = chunk
+            .iter()
+            .map(|&s| {
+                let f = s as f32 / 32768.0;
+                f * f
+            })
+            .sum();
+        let rms = (sum_sq / chunk.len() as f32).sqrt();
+        frame_silent.push(rms < 0.008);
+    }
+
+    let mut out = Vec::with_capacity(samples.len());
+    let mut idx = 0usize;
+    let total_frames = frame_silent.len();
+    while idx < total_frames {
+        if !frame_silent[idx] {
+            let start = idx * frame_len;
+            let end = ((idx + 1) * frame_len).min(samples.len());
+            out.extend_from_slice(&samples[start..end]);
+            idx += 1;
+            continue;
+        }
+        let run_start = idx;
+        while idx < total_frames && frame_silent[idx] {
+            idx += 1;
+        }
+        let run_len = idx - run_start;
+        if run_len >= min_silence_frames {
+            let head_end = ((run_start + keep_frames_each_side) * frame_len).min(samples.len());
+            let head_start = run_start * frame_len;
+            out.extend_from_slice(&samples[head_start..head_end]);
+            let tail_start = ((idx - keep_frames_each_side) * frame_len).min(samples.len());
+            let tail_end = (idx * frame_len).min(samples.len());
+            out.extend_from_slice(&samples[tail_start..tail_end]);
+        } else {
+            let start = run_start * frame_len;
+            let end = (idx * frame_len).min(samples.len());
+            out.extend_from_slice(&samples[start..end]);
+        }
+    }
+    out
+}
+
+pub(crate) fn restart_idle_preroll_if_eligible(state: &AppState) {
+    if state.recording.recording.lock().is_some() {
+        return;
+    }
+    let (audio_behavior, labs, selected) = state.with_profile(|p| {
+        (
+            p.audio_behavior.clone(),
+            p.labs.clone(),
+            state.selected_input_device_name(),
+        )
+    });
+    super::capture::start_preroll_if_eligible(selected, &audio_behavior, &labs, false);
+}
+
 pub async fn finalize_recording(app_handle: tauri::AppHandle, session: RecordingSession) {
     let RecordingSession {
         context_capture,
@@ -204,6 +331,8 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
         session_id,
         subtitle_show_gen,
         trigger,
+        stop_flag,
+        stop_notify,
         sample_rate,
         audio_thread,
         interim_task,
@@ -213,10 +342,14 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
         foreground_app,
         paste_target,
         edit_grab,
-        ..
     } = session;
     let finalize_start = Instant::now();
     let state = app_handle.state::<AppState>();
+
+    wait_adaptive_release_tail(&state, &stop_flag, &stop_notify, &samples, sample_rate).await;
+    // Restore ducking only after the release tail, so the tail is captured
+    // against the ducked background instead of the restored one.
+    crate::services::audio_service::restore_audio();
 
     if let Some(h) = audio_thread {
         let _ = tokio::task::spawn_blocking(move || {
@@ -345,6 +478,7 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
             None,
         );
         flush_pending_paste(&app_handle);
+        restart_idle_preroll_if_eligible(state.inner());
         return;
     }
 
@@ -359,6 +493,22 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
     } else {
         None
     };
+
+    let skip_pauses = state.with_profile(|p| p.labs.skip_pauses);
+    if skip_pauses && native_result.is_none() {
+        let compressed = {
+            let guard = samples.lock();
+            compress_audio_pauses(&guard, sample_rate)
+        };
+        if compressed.len() < final_count {
+            log::debug!(
+                "Skip pauses compressed audio {} -> {} samples",
+                final_count,
+                compressed.len()
+            );
+            *samples.lock() = compressed;
+        }
+    }
 
     let history_workflow = if mode == RecordingMode::Assistant {
         "assistant"
@@ -550,8 +700,28 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
                 );
                 if !result.is_empty() {
                     let app = app_handle.clone();
+                    let (output_behavior, labs) =
+                        state.with_profile(|p| (p.output_behavior.clone(), p.labs.clone()));
+                    let edit_paste_opts = super::output::PasteDeliveryOptions {
+                        process_name: foreground_app.as_ref().map(|a| a.process_name.clone()),
+                        paste_method_override: app_profile.paste_method,
+                        copy_only: output_behavior.copy_only,
+                        keep_on_clipboard: output_behavior.keep_on_clipboard,
+                        paste_with_shift: output_behavior.paste_with_shift,
+                        auto_terminal_ctrl_shift_v: output_behavior.auto_terminal_ctrl_shift_v,
+                        return_to_app: labs.return_to_app,
+                        smart_spacing: labs.smart_spacing,
+                    };
                     tokio::spawn(async move {
-                        do_paste(&app, &result, session_id, paste_target, false).await;
+                        do_paste(
+                            &app,
+                            &result,
+                            session_id,
+                            paste_target,
+                            false,
+                            edit_paste_opts,
+                        )
+                        .await;
                     });
                 } else {
                     flush_pending_paste(&app_handle);
@@ -808,6 +978,13 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
                 session_id
             );
         }
+        let (output_behavior, labs, profile_transforms) = state.with_profile(|profile| {
+            (
+                profile.output_behavior.clone(),
+                profile.labs.clone(),
+                profile.global_transformations.clone(),
+            )
+        });
         let polish_start = Instant::now();
         let polish_result = ai_polish_service::polish_text_with_overrides_detailed(
             state.inner(),
@@ -819,6 +996,8 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
                 allow_jev_gate: references.is_empty(),
                 translation_target: translation_override,
                 custom_prompt: app_profile.custom_prompt.clone(),
+                tone_mode_override: app_profile.tone_mode.clone(),
+                app_vocabulary: app_profile.vocabulary.clone(),
                 screen_context_enabled: Some(allow_screen_context),
                 screen_context_explicit: app_profile.screen_context_enabled.is_some(),
                 screen_context_foreground: foreground_app.clone(),
@@ -842,6 +1021,43 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
             }
         };
         let polished = text != original;
+        let text = crate::services::spoken_formatting::apply(
+            &text,
+            crate::services::spoken_formatting::SpokenFormattingOptions {
+                spoken_formatting: labs.spoken_formatting,
+                spoken_symbols: labs.spoken_symbols,
+            },
+        );
+        let active_transforms: &[String] = if app_profile.transformations.is_empty() {
+            &profile_transforms
+        } else {
+            &app_profile.transformations
+        };
+        let text = if active_transforms.is_empty() {
+            text
+        } else {
+            let detected_domain = foreground_app.as_ref().and_then(|a| {
+                crate::services::browser_domain::detect_active_browser_domain(
+                    &a.process_name,
+                    &a.window_title,
+                )
+            });
+            let transform_ctx = crate::services::scripting_service::TransformContext {
+                app_name: app_profile.rule_name.clone(),
+                app_process: foreground_app.as_ref().map(|a| a.process_name.clone()),
+                window_title: foreground_app.as_ref().map(|a| a.window_title.clone()),
+                domain: detected_domain,
+                mode_name: Some(mode.as_str().to_string()),
+                tone: app_profile.tone_mode.clone(),
+                raw_text: original.clone(),
+                language: lang_ref.map(str::to_string),
+            };
+            crate::services::scripting_service::apply_transformations(
+                &text,
+                active_transforms,
+                &transform_ctx,
+            )
+        };
         // Local tools run after polish so a saved snippet is never rewritten by
         // the model, and a spoken command is read from the final wording.
         let tools = crate::services::dictation_tools::OutputTools::load();
@@ -862,6 +1078,7 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
                 None,
             );
             flush_pending_paste(&app_handle);
+            restart_idle_preroll_if_eligible(state.inner());
             return;
         }
         let press_enter =
@@ -924,10 +1141,40 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
             Some(timing),
         );
 
+        let paste_options = super::output::PasteDeliveryOptions {
+            process_name: foreground_app.as_ref().map(|a| a.process_name.clone()),
+            paste_method_override: app_profile.paste_method,
+            copy_only: output_behavior.copy_only,
+            keep_on_clipboard: output_behavior.keep_on_clipboard,
+            paste_with_shift: output_behavior.paste_with_shift,
+            auto_terminal_ctrl_shift_v: output_behavior.auto_terminal_ctrl_shift_v,
+            return_to_app: labs.return_to_app,
+            smart_spacing: labs.smart_spacing,
+        };
+
+        crate::commands::clipboard::set_last_dictation_record(
+            crate::commands::clipboard::LastDictationRecord {
+                session_id,
+                text: text.clone(),
+                original_text: original.clone(),
+                target_window: paste_target,
+                process_name: foreground_app.as_ref().map(|a| a.process_name.clone()),
+                window_title: foreground_app.as_ref().map(|a| a.window_title.clone()),
+            },
+        );
+
         if !text.is_empty() {
             let app = app_handle.clone();
             tokio::spawn(async move {
-                do_paste(&app, &text, session_id, paste_target, press_enter).await;
+                do_paste(
+                    &app,
+                    &text,
+                    session_id,
+                    paste_target,
+                    press_enter,
+                    paste_options,
+                )
+                .await;
             });
         } else if press_enter {
             // "press enter" on its own has no text to deliver, so the key press
@@ -943,6 +1190,7 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
             flush_pending_paste(&app_handle);
         }
     }
+    restart_idle_preroll_if_eligible(state.inner());
 }
 
 pub async fn discard_recording(session: RecordingSession) {
@@ -1151,6 +1399,7 @@ fn emit_transcription_result(
     if let Some(timing) = timing {
         payload["timing"] = serde_json::json!(timing);
     }
+    crate::services::http_api_service::publish_stream_event("dictation.completed", payload.clone());
     let _ = app.emit("transcription-result", payload);
 }
 
@@ -1263,7 +1512,21 @@ pub(crate) fn flush_pending_paste(app: &tauri::AppHandle) {
                 async move {
                     let state = app.state::<AppState>();
                     let generation = crate::services::external_correction_service::cancel();
-                    let before = if state.with_profile(|p| p.external_correction_learning) {
+                    if output.options.return_to_app && !output.options.copy_only {
+                        if let Some(target_hwnd) = output.target_window {
+                            if crate::services::selection_service::foreground_window_id()
+                                != Some(target_hwnd)
+                            {
+                                let _ = tokio::task::spawn_blocking(move || {
+                                    crate::commands::clipboard::focus_window(target_hwnd)
+                                })
+                                .await;
+                            }
+                        }
+                    }
+                    let before = if state.with_profile(|p| p.external_correction_learning)
+                        && !output.options.copy_only
+                    {
                         tokio::task::spawn_blocking(
                             crate::services::external_correction_service::capture,
                         )
@@ -1273,25 +1536,42 @@ pub(crate) fn flush_pending_paste(app: &tauri::AppHandle) {
                     } else {
                         None
                     };
-                    crate::commands::clipboard::paste_text_to_target(
+                    let delivered_text = if output.options.smart_spacing
+                        && !output.options.copy_only
+                    {
+                        let target_win = output.target_window;
+                        let prev_char = tokio::task::spawn_blocking(move || {
+                            crate::commands::clipboard::grab_preceding_char_for_target(target_win)
+                        })
+                        .await
+                        .ok()
+                        .flatten();
+                        super::output::apply_smart_spacing(&output.text, prev_char)
+                    } else {
+                        output.text.clone()
+                    };
+                    let strategy = super::output::resolve_paste_strategy(&method, &output.options);
+                    crate::commands::clipboard::paste_text_with_strategy(
                         &app,
-                        &output.text,
-                        &method,
+                        &delivered_text,
+                        strategy,
                         output.target_window,
                     )
                     .await
                     .map_err(|error| error.to_string())?;
-                    if output.press_enter {
+                    if output.press_enter && !output.options.copy_only {
                         crate::commands::clipboard::press_enter(output.target_window)
                             .await
                             .map_err(|error| error.to_string())?;
                     }
-                    if state.with_profile(|p| p.external_correction_learning) {
+                    if state.with_profile(|p| p.external_correction_learning)
+                        && !output.options.copy_only
+                    {
                         crate::services::external_correction_service::watch(
                             app,
                             output.target_window,
                             before,
-                            output.text,
+                            delivered_text,
                             generation,
                         );
                     }
@@ -1335,7 +1615,23 @@ where
     };
     let mut recoveries = Vec::new();
     for output in outputs {
-        let reason = if !output.target_matches(current_window()) {
+        let mut active_window = current_window();
+        if !output.options.copy_only
+            && output.options.return_to_app
+            && !output.target_matches(active_window)
+        {
+            if let Some(target_hwnd) = output.target_window {
+                let focused = tokio::task::spawn_blocking(move || {
+                    crate::commands::clipboard::focus_window(target_hwnd)
+                })
+                .await
+                .unwrap_or(false);
+                if focused {
+                    active_window = current_window();
+                }
+            }
+        }
+        let reason = if !output.options.copy_only && !output.target_matches(active_window) {
             Some(if output.target_window.is_none() {
                 "target_unknown"
             } else {
@@ -1347,11 +1643,13 @@ where
                 output.session_id,
                 error
             );
-            Some(if output.target_matches(current_window()) {
-                "paste_failed"
-            } else {
-                "target_changed"
-            })
+            Some(
+                if output.options.copy_only || output.target_matches(current_window()) {
+                    "paste_failed"
+                } else {
+                    "target_changed"
+                },
+            )
         } else {
             None
         };
@@ -1368,6 +1666,7 @@ async fn do_paste(
     session_id: u64,
     target_window: Option<isize>,
     press_enter: bool,
+    options: super::output::PasteDeliveryOptions,
 ) {
     crate::commands::clipboard::set_last_pasted_text(text);
     let state = app.state::<AppState>();
@@ -1382,6 +1681,7 @@ async fn do_paste(
                 target_window,
                 text: text.to_string(),
                 press_enter,
+                options,
             });
     }
     flush_pending_paste(app);
@@ -1504,7 +1804,7 @@ mod tests {
             .find("let polished = text != original;")
             .expect("dictation should resolve AI polish before pasting");
         let paste = dictation_branch
-            .find("do_paste(&app, &text,")
+            .find("do_paste(")
             .expect("dictation should paste the final text");
 
         assert!(
@@ -1516,6 +1816,27 @@ mod tests {
             1,
             "normal dictation must have exactly one paste path"
         );
+    }
+
+    #[test]
+    fn compress_audio_pauses_shortens_long_silence_spans() {
+        let rate = 16_000u32;
+        let speech = vec![4_000i16; 16_000 / 5]; // 200ms speech
+        let long_silence = vec![0i16; 16_000]; // 1000ms silence
+        let mut clip = Vec::new();
+        clip.extend_from_slice(&speech);
+        clip.extend_from_slice(&long_silence);
+        clip.extend_from_slice(&speech);
+
+        let compressed = compress_audio_pauses(&clip, rate);
+        assert!(
+            compressed.len() < clip.len(),
+            "long silence should be shortened: {} vs {}",
+            compressed.len(),
+            clip.len()
+        );
+        // Should still preserve at least the speech + edge room tone padding.
+        assert!(compressed.len() >= speech.len() * 2);
     }
 
     #[test]

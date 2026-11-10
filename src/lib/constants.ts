@@ -10,3 +10,5 @@ export const RECORDING_MODE_KEY = "speak-flow-recording-mode";
 export const MIC_LEVEL_MONITOR_ENABLED_KEY = "speak-flow-mic-level-monitor-enabled";
 export const ONBOARDING_DISMISSED_KEY = "speak-flow-onboarding-dismissed";
 export const LANGUAGE_STORAGE_KEY = "speak-flow-language";
+export const LABS_FAILURE_NOTICES_KEY = "speak-flow-labs-failure-notices";
+export const LABS_OUTPUT_FIXES_KEY = "speak-flow-labs-output-fixes";

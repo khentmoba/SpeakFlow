@@ -35,6 +35,8 @@ pub(crate) const EDIT_GRAB_WAIT_MS: u64 = 650;
 pub struct InputDeviceInfo {
     pub name: String,
     pub is_default: bool,
+    #[serde(default)]
+    pub is_bluetooth: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -94,9 +96,18 @@ mod windows_capture;
 // 保持外部引用点零改动：
 // `use crate::services::audio_service::X` 在拆分前后语义相同。
 
-pub use audio_ducking::{duck_audio, restore_audio};
-pub use capture::{list_input_devices_sync, spawn_audio_capture_thread, spawn_waveform_emitter};
+#[allow(unused_imports)]
+pub use audio_ducking::{
+    duck_audio_with_config, restore_audio, update_audio_behavior, PreventSleep,
+};
+#[allow(unused_imports)]
+pub use capture::{
+    is_bluetooth_mic_name, list_input_devices_sync, set_avoid_bluetooth_microphone,
+    spawn_audio_capture_thread, spawn_audio_capture_thread_with_preroll, spawn_waveform_emitter,
+    start_preroll_if_eligible, stop_preroll, stop_preroll_and_take,
+};
 pub(crate) use finalize::flush_pending_paste;
+pub(crate) use finalize::restart_idle_preroll_if_eligible;
 pub use finalize::{discard_recording, finalize_recording};
 pub use interim::spawn_interim_loop;
 pub use monitor::{

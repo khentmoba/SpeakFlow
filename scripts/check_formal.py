@@ -131,7 +131,8 @@ def tlc(jar: Path, model: str, config: Path, source: Path, directory: Path,
         ], cwd=source.parent, text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=480)
     (directory / "tlc.log").write_text(result.stdout + result.stderr, encoding="utf-8")
     if expected_violation:
-        if result.returncode != 12 or f"Invariant {expected_violation} is violated" not in result.stdout:
+        violation_message = f"Invariant {expected_violation} is violated"
+        if result.returncode != 12 or violation_message not in result.stdout:
             raise ValueError(f"negative check did not expose {expected_violation}: {directory / 'tlc.log'}")
     elif result.returncode or "Model checking completed. No error has been found." not in result.stdout:
         raise ValueError(f"TLC did not pass: {directory / 'tlc.log'}")

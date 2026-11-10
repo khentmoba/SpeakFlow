@@ -1,8 +1,10 @@
 import React, { Suspense, lazy, useState, useRef, useCallback, useEffect } from "react";
 import ReactDOM from "react-dom/client";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { CircleCheck, CircleAlert, Info, TriangleAlert, LoaderCircle } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
+import { getMeetingStatus, startMeetingRecording, stopMeetingRecording } from "./api/tauri";
 import { RecordingProvider } from "./contexts/RecordingContext";
 import { prefersReducedMotion } from "./lib/motion";
 import MainPage from "./pages/MainPage";
@@ -19,13 +21,15 @@ import "./styles/pages.css";
 import "./styles/workspace.css";
 import "./styles/signal.css";
 
-type View = "main" | "settings" | "history" | "updates";
+type View = "main" | "settings" | "history" | "updates" | "meetings";
 const loadUpdatesPage = () => import("./pages/UpdatesPage");
 const UpdatesPage = lazy(loadUpdatesPage);
 const loadSettingsPage = () => import("./pages/SettingsPage");
 const loadHistoryPage = () => import("./pages/HistoryPage");
+const loadMeetingsPage = () => import("./pages/MeetingsPage");
 const SettingsPage = lazy(loadSettingsPage);
 const HistoryPage = lazy(loadHistoryPage);
+const MeetingsPage = lazy(loadMeetingsPage);
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -73,6 +77,73 @@ function AppWorkspace() {
   useTheme();
   useProfileSaveNotifications();
 
+  // Rust emits these for hotkey and API actions that run outside the React
+  // tree. Without a listener the user action looks like it did nothing.
+  useEffect(() => {
+    const unlisteners: Array<() => void> = [];
+    let disposed = false;
+
+    const register = async (event: string, handler: (payload: unknown) => void) => {
+      const unlisten = await listen(event, (incoming) => handler(incoming.payload));
+      if (disposed) unlisten();
+      else unlisteners.push(unlisten);
+    };
+
+    const toggleMeeting = async () => {
+      try {
+        const status = await getMeetingStatus();
+        if (status.recording) {
+          await stopMeetingRecording();
+          toast.success(i18n.t("meetingsStop"));
+        } else {
+          await startMeetingRecording();
+          toast.success(i18n.t("meetingsStart"));
+        }
+      } catch {
+        toast.error(i18n.t("meetingsToggleFailed"));
+      }
+    };
+
+    void (async () => {
+      await register("meeting-hotkey-toggle", () => { void toggleMeeting(); });
+      await register("meeting-call-detected", (payload) => {
+        const appName = (payload as { appName?: string | null } | null)?.appName;
+        toast.info(
+          i18n.t("meetingsCallDetected", {
+            app: appName ?? i18n.t("meetingsCallDetectedUnknown"),
+          }),
+          {
+            action: {
+              label: i18n.t("meetingsStart"),
+              onClick: () => { void startMeetingRecording(appName ?? null, appName ?? null); },
+            },
+          },
+        );
+      });
+      // The typed-text hotkey only reaches here when nothing was selected, so
+      // bring the window forward instead of dropping the key press.
+      await register("open-typed-text", () => {
+        const window = getCurrentWindow();
+        void window.show().then(() => window.setFocus()).catch(() => undefined);
+      });
+      await register("keyboard-engine-switched", (payload) => {
+        const switched = payload as { locale?: string; engine?: string } | null;
+        if (!switched?.engine) return;
+        toast.info(
+          i18n.t("toastEngineSwitched", {
+            engine: switched.engine,
+            locale: switched.locale ?? "",
+          }),
+        );
+      });
+    })();
+
+    return () => {
+      disposed = true;
+      for (const unlisten of unlisteners) unlisten();
+    };
+  }, []);
+
   useEffect(() => {
     const preloadTimer = window.setTimeout(() => {
       void loadSettingsPage().catch((error) => {
@@ -117,7 +188,13 @@ function AppWorkspace() {
     };
 
     if (target !== "main") {
-      const loadTarget = target === "settings" ? loadSettingsPage : target === "updates" ? loadUpdatesPage : loadHistoryPage;
+      const loadTarget = target === "settings"
+        ? loadSettingsPage
+        : target === "updates"
+          ? loadUpdatesPage
+          : target === "meetings"
+            ? loadMeetingsPage
+            : loadHistoryPage;
       void loadTarget().then(startTransition).catch((error) => {
         isTransitioning.current = false;
         console.error(`${target} page load failed:`, error);
@@ -159,6 +236,8 @@ function AppWorkspace() {
               <SettingsPage onNavigate={navigateTo} active animClass={animClass} />
             ) : view === "updates" ? (
               <UpdatesPage animClass={animClass} />
+            ) : view === "meetings" ? (
+              <MeetingsPage animClass={animClass} />
             ) : (
               <HistoryPage onNavigate={navigateTo} animClass={animClass} />
             )}

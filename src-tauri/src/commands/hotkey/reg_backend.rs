@@ -256,8 +256,12 @@ pub(super) fn unregister_via_reg_hotkey(kind: HotkeyKind) {
     let bundle = get_unified_hook_states();
     let state = match kind {
         HotkeyKind::Dictation => bundle.dictation,
+        HotkeyKind::SecondDictation => bundle.second_dictation,
         HotkeyKind::Translation => bundle.translation,
         HotkeyKind::Assistant => bundle.assistant,
+        HotkeyKind::TerminalPaste => bundle.terminal_paste,
+        HotkeyKind::TypedText => bundle.typed_text,
+        HotkeyKind::MeetingToggle => bundle.meeting_toggle,
     };
     if let Some(id) = state.and_then(|state| state.reg_hotkey_id) {
         unregister_reg_hotkey_id(id);

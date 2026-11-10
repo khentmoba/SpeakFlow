@@ -58,8 +58,8 @@ mod ipc_recovery_tests;
 #[cfg(test)]
 use installation::{engine_install_fingerprint_matches, replace_engine_dir};
 pub use installation::{find_engine, EngineRuntime};
-pub use protocol::ServerCommand;
 use protocol::{read_json_response, read_json_response_matching, ServerResponse};
+pub use protocol::{DiarizeSegment, ServerCommand};
 
 // ============================================================
 // 数据结构定义

@@ -77,8 +77,31 @@ pub enum ServerCommand {
     SetModelDirs {
         dirs: Vec<String>,
     },
+    /// Run speaker diarization on an audio buffer/path when the loaded model supports it.
+    Diarize {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        audio_path: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        audio_base64: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        audio_format: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sample_rate: Option<u32>,
+    },
     /// 退出服务器
     Exit,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiarizeSegment {
+    #[serde(alias = "t0_ms")]
+    pub t0_ms: u64,
+    #[serde(alias = "t1_ms")]
+    pub t1_ms: u64,
+    #[serde(alias = "speaker_id")]
+    pub speaker_id: u32,
+    pub p: f64,
 }
 
 /// Python 服务器的 JSON 响应
@@ -90,8 +113,12 @@ pub(super) struct ServerResponse {
     pub(super) tentative_text: Option<String>,
     pub(super) session_id: Option<u64>,
     pub(super) sample_count: Option<usize>,
-    #[serde(rename = "final")]
+    #[serde(rename = "final", alias = "is_final")]
     pub(super) is_final: Option<bool>,
+    pub(super) supports_streaming: Option<bool>,
+    pub(super) supports_diarization: Option<bool>,
+    pub(super) supported: Option<bool>,
+    pub(super) segments: Option<Vec<DiarizeSegment>>,
     /// 请求 ID；新协议用于丢弃取消/超时后迟到的旧响应
     pub(super) request_id: Option<u64>,
     /// 操作是否成功

@@ -302,6 +302,34 @@ pub fn should_restore_clipboard_after_paste(
 }
 
 static LAST_PASTED_TEXT: parking_lot::Mutex<Option<String>> = parking_lot::Mutex::new(None);
+static LAST_PASTED_TRAIL: parking_lot::Mutex<Option<(Option<isize>, char)>> =
+    parking_lot::Mutex::new(None);
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LastDictationRecord {
+    pub session_id: u64,
+    pub text: String,
+    pub original_text: String,
+    pub target_window: Option<isize>,
+    pub process_name: Option<String>,
+    pub window_title: Option<String>,
+}
+
+static LAST_DICTATION_RECORD: parking_lot::Mutex<Option<LastDictationRecord>> =
+    parking_lot::Mutex::new(None);
+
+pub fn set_last_dictation_record(record: LastDictationRecord) {
+    set_last_pasted_text(&record.text);
+    // The pasted trail is recorded by `paste_text_with_strategy` once delivery
+    // succeeds. Writing it here would make the smart-spacing probe read this
+    // dictation's own last character as the preceding one.
+    *LAST_DICTATION_RECORD.lock() = Some(record);
+}
+
+pub fn get_last_dictation_record() -> Option<LastDictationRecord> {
+    LAST_DICTATION_RECORD.lock().clone()
+}
 
 pub fn set_last_pasted_text(text: &str) {
     if !text.trim().is_empty() {
@@ -313,6 +341,99 @@ pub fn get_last_pasted_text() -> Option<String> {
     LAST_PASTED_TEXT.lock().clone()
 }
 
+/// Restores focus to `target_hwnd` when `return_to_app` is enabled and another
+/// window stole focus while transcription/polish was finishing.
+pub fn focus_window(target_hwnd: isize) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::Foundation::HWND;
+        use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindow, SetForegroundWindow,
+            ShowWindow, SW_RESTORE,
+        };
+
+        let hwnd = target_hwnd as HWND;
+        // SAFETY: IsWindow validates hwnd before any window APIs inspect it.
+        if hwnd.is_null() || unsafe { IsWindow(hwnd) } == 0 {
+            return false;
+        }
+        // SAFETY: GetForegroundWindow has no preconditions and returns the current foreground HWND or null.
+        let fg = unsafe { GetForegroundWindow() };
+        if fg == hwnd {
+            return true;
+        }
+        // SAFETY: `hwnd` was verified by `IsWindow` above, and AttachThreadInput detaches before return.
+        unsafe {
+            if IsIconic(hwnd) != 0 {
+                ShowWindow(hwnd, SW_RESTORE);
+            }
+            let fg_thread = if fg.is_null() {
+                0
+            } else {
+                GetWindowThreadProcessId(fg, std::ptr::null_mut())
+            };
+            let current_thread = GetCurrentThreadId();
+            let attached = fg_thread != 0
+                && fg_thread != current_thread
+                && AttachThreadInput(current_thread, fg_thread, 1) != 0;
+            let ok = SetForegroundWindow(hwnd) != 0;
+            if attached {
+                AttachThreadInput(current_thread, fg_thread, 0);
+            }
+            if ok {
+                std::thread::sleep(std::time::Duration::from_millis(35));
+            }
+            GetForegroundWindow() == hwnd
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = target_hwnd;
+        false
+    }
+}
+
+/// Reads the single character immediately preceding the active caret via UIA,
+/// falling back to the cached trailing char if this same window just received dictation.
+pub fn grab_preceding_char_for_target(target_hwnd: Option<isize>) -> Option<char> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(ch) = grab_preceding_char_uia() {
+            return Some(ch);
+        }
+    }
+    let cached = *LAST_PASTED_TRAIL.lock();
+    if let Some((cached_hwnd, ch)) = cached {
+        if cached_hwnd.is_some() && cached_hwnd == target_hwnd {
+            return Some(ch);
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn grab_preceding_char_uia() -> Option<char> {
+    use uiautomation::patterns::UITextPattern;
+    use uiautomation::types::TextPatternRangeEndpoint;
+    use uiautomation::types::TextUnit;
+    use uiautomation::UIAutomation;
+
+    let automation = UIAutomation::new().ok()?;
+    let focused = automation.get_focused_element().ok()?;
+    let pattern: UITextPattern = focused.get_pattern().ok()?;
+    let ranges = pattern.get_selection().ok()?;
+    let range = ranges.first()?.clone();
+    let moved = range
+        .move_endpoint_by_unit(TextPatternRangeEndpoint::Start, TextUnit::Character, -1)
+        .ok()?;
+    if moved == 0 {
+        return None;
+    }
+    let prev_text = range.get_text(1).ok()?;
+    prev_text.chars().last()
+}
+
 #[tauri::command]
 pub async fn paste_last_dictation(app_handle: tauri::AppHandle) -> Result<bool, AppError> {
     let text = match get_last_pasted_text() {
@@ -320,6 +441,24 @@ pub async fn paste_last_dictation(app_handle: tauri::AppHandle) -> Result<bool, 
         None => return Ok(false),
     };
     paste_text_impl(&app_handle, &text, "sendInput").await?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn paste_last_as_terminal(app_handle: tauri::AppHandle) -> Result<bool, AppError> {
+    let text = match get_last_pasted_text() {
+        Some(t) => t,
+        None => return Ok(false),
+    };
+    paste_text_with_strategy(
+        &app_handle,
+        &text,
+        crate::services::audio_service::output::ResolvedPasteStrategy::ClipboardCtrlShiftV {
+            restore_clipboard: true,
+        },
+        None,
+    )
+    .await?;
     Ok(true)
 }
 
@@ -372,10 +511,59 @@ pub(crate) async fn paste_text_to_target(
     method: &str,
     target: Option<isize>,
 ) -> Result<String, AppError> {
+    let strategy = if method == "clipboard" {
+        crate::services::audio_service::output::ResolvedPasteStrategy::ClipboardCtrlV {
+            restore_clipboard: true,
+        }
+    } else if method == "clipboardCtrlShiftV" {
+        crate::services::audio_service::output::ResolvedPasteStrategy::ClipboardCtrlShiftV {
+            restore_clipboard: true,
+        }
+    } else if method == "copyOnly" {
+        crate::services::audio_service::output::ResolvedPasteStrategy::CopyOnly
+    } else {
+        crate::services::audio_service::output::ResolvedPasteStrategy::SendInput
+    };
+    paste_text_with_strategy(app_handle, text, strategy, target).await
+}
+
+pub(crate) async fn paste_text_with_strategy(
+    app_handle: &tauri::AppHandle,
+    text: &str,
+    strategy: crate::services::audio_service::output::ResolvedPasteStrategy,
+    target: Option<isize>,
+) -> Result<String, AppError> {
+    use crate::services::audio_service::output::ResolvedPasteStrategy;
+
+    if matches!(strategy, ResolvedPasteStrategy::CopyOnly) {
+        write_text_to_clipboard(app_handle, text)?;
+        if let Some(last_ch) = text.chars().last() {
+            *LAST_PASTED_TRAIL.lock() = Some((target, last_ch));
+        }
+        log::info!("已复制 {} 个字符到剪贴板（仅复制模式）", text.len());
+        return Ok("Copied to clipboard".to_string());
+    }
+
     #[cfg(target_os = "windows")]
     {
         ensure_paste_target(target)?;
-        let use_clipboard = method == "clipboard";
+        let use_clipboard = matches!(
+            strategy,
+            ResolvedPasteStrategy::ClipboardCtrlV { .. }
+                | ResolvedPasteStrategy::ClipboardCtrlShiftV { .. }
+                | ResolvedPasteStrategy::ClipboardShiftInsert { .. }
+        );
+        let use_shift = matches!(strategy, ResolvedPasteStrategy::ClipboardCtrlShiftV { .. });
+        let use_shift_insert =
+            matches!(strategy, ResolvedPasteStrategy::ClipboardShiftInsert { .. });
+        let restore_clipboard = match strategy {
+            ResolvedPasteStrategy::ClipboardCtrlV { restore_clipboard }
+            | ResolvedPasteStrategy::ClipboardCtrlShiftV { restore_clipboard }
+            | ResolvedPasteStrategy::ClipboardShiftInsert { restore_clipboard } => {
+                restore_clipboard
+            }
+            _ => true,
+        };
 
         if use_clipboard {
             use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -393,7 +581,11 @@ pub(crate) async fn paste_text_to_target(
                 })
             }
 
-            let clipboard_snapshot = capture_clipboard_snapshot()?;
+            let clipboard_snapshot = if restore_clipboard {
+                Some(capture_clipboard_snapshot()?)
+            } else {
+                None
+            };
 
             app_handle
                 .clipboard()
@@ -407,30 +599,54 @@ pub(crate) async fn paste_text_to_target(
                 std::thread::sleep(std::time::Duration::from_millis(20));
 
                 const VK_CONTROL: u16 = 0x11;
+                const VK_SHIFT: u16 = 0x10;
                 const VK_V: u16 = 0x56;
-                let inputs = [
-                    make_key_input(VK_CONTROL, 0, 0),
-                    make_key_input(VK_V, 0, 0),
-                    make_key_input(VK_V, 0, KEYEVENTF_KEYUP),
-                    make_key_input(VK_CONTROL, 0, KEYEVENTF_KEYUP),
-                ];
-                send_inputs_to_target(&inputs, target)
+                const VK_INSERT: u16 = 0x2D;
+                if use_shift_insert {
+                    let inputs = [
+                        make_key_input(VK_SHIFT, 0, 0),
+                        make_key_input(VK_INSERT, 0, 0),
+                        make_key_input(VK_INSERT, 0, KEYEVENTF_KEYUP),
+                        make_key_input(VK_SHIFT, 0, KEYEVENTF_KEYUP),
+                    ];
+                    send_inputs_to_target(&inputs, target)
+                } else if use_shift {
+                    let inputs = [
+                        make_key_input(VK_CONTROL, 0, 0),
+                        make_key_input(VK_SHIFT, 0, 0),
+                        make_key_input(VK_V, 0, 0),
+                        make_key_input(VK_V, 0, KEYEVENTF_KEYUP),
+                        make_key_input(VK_SHIFT, 0, KEYEVENTF_KEYUP),
+                        make_key_input(VK_CONTROL, 0, KEYEVENTF_KEYUP),
+                    ];
+                    send_inputs_to_target(&inputs, target)
+                } else {
+                    let inputs = [
+                        make_key_input(VK_CONTROL, 0, 0),
+                        make_key_input(VK_V, 0, 0),
+                        make_key_input(VK_V, 0, KEYEVENTF_KEYUP),
+                        make_key_input(VK_CONTROL, 0, KEYEVENTF_KEYUP),
+                    ];
+                    send_inputs_to_target(&inputs, target)
+                }
             })();
 
             if paste_result.is_ok() {
                 std::thread::sleep(std::time::Duration::from_millis(CLIPBOARD_RESTORE_DELAY_MS));
             }
 
-            let current_clipboard_text = app_handle.clipboard().read_text().ok();
-            if should_restore_clipboard_after_paste(current_clipboard_text.as_deref(), text) {
-                if let Err(e) = restore_clipboard_snapshot(clipboard_snapshot) {
-                    log::warn!("{}", e);
-                    if paste_result.is_ok() {
-                        return Err(e);
+            if let Some(clipboard_snapshot) = clipboard_snapshot {
+                let current_clipboard_text = app_handle.clipboard().read_text().ok();
+                if should_restore_clipboard_after_paste(current_clipboard_text.as_deref(), text) {
+                    if let Err(e) = restore_clipboard_snapshot(clipboard_snapshot) {
+                        log::warn!("{}", e);
+                        if paste_result.is_ok() {
+                            return Err(e);
+                        }
                     }
+                } else {
+                    log::debug!("剪贴板内容已变化，跳过恢复以保留用户的新剪贴板内容");
                 }
-            } else {
-                log::debug!("剪贴板内容已变化，跳过恢复以保留用户的新剪贴板内容");
             }
 
             paste_result?;
@@ -530,6 +746,9 @@ pub(crate) async fn paste_text_to_target(
     }
 
     log::info!("已输入 {} 个字符", text.len());
+    if let Some(last_ch) = text.chars().last() {
+        *LAST_PASTED_TRAIL.lock() = Some((target, last_ch));
+    }
     Ok("Text entered".to_string())
 }
 

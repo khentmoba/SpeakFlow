@@ -78,7 +78,10 @@ pub fn local_asr_engines() -> impl Iterator<Item = &'static str> {
 }
 
 pub fn is_local_engine(engine: &str) -> bool {
-    engine == R2T2_ENGINE || super::asr_catalog::is_catalog_engine(engine)
+    engine == R2T2_ENGINE
+        || super::asr_catalog::is_catalog_engine(engine)
+        || (engine.starts_with("custom:")
+            && crate::services::custom_models::is_registered_custom_engine(engine))
 }
 
 pub const ONLINE_ASR_ENGINES: &[&str] = &["glm-asr", "alibaba-asr"];
@@ -100,7 +103,7 @@ pub fn is_supported_engine(engine: &str) -> bool {
 
 /// Local engines served by `qwen3_asr_server.py` (transcribe.cpp GGUF models).
 pub fn is_transcribe_cpp_engine(engine: &str) -> bool {
-    super::asr_catalog::is_catalog_engine(engine)
+    super::asr_catalog::is_catalog_engine(engine) || engine.starts_with("custom:")
 }
 
 pub fn is_online_engine(engine: &str) -> bool {

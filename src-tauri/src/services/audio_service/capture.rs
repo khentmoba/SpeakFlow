@@ -19,18 +19,240 @@ pub(crate) const MAX_RECORD_SAMPLES: usize = 30 * 60 * 48_000;
 const AUDIO_CAPTURE_TIMEOUT_JOIN_MS: u64 = 500;
 
 /// Pre-roll 缓冲时长（毫秒）。避免用户按键和开口之间的极短延迟导致首音节被裁切。
-#[allow(dead_code)]
-pub(crate) const PRE_ROLL_DURATION_MS: u32 = 300;
+pub(crate) const PRE_ROLL_DURATION_MS: u32 = 450;
+
+static AVOID_BLUETOOTH_MIC: AtomicBool = AtomicBool::new(true);
+
+pub fn set_avoid_bluetooth_microphone(enabled: bool) {
+    AVOID_BLUETOOTH_MIC.store(enabled, Ordering::Release);
+}
+
+pub(crate) fn should_avoid_bluetooth_mic() -> bool {
+    AVOID_BLUETOOTH_MIC.load(Ordering::Acquire)
+}
+
+/// Heuristic Bluetooth hands-free/headset microphone classifier for Windows
+/// WASAPI/CPAL device names without misclassifying wired USB headsets.
+pub fn is_bluetooth_mic_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.contains("bluetooth")
+        || lower.contains("hands-free")
+        || lower.contains("ag audio")
+        || lower.contains("bthhfenum")
+        || lower.contains("(hfp)")
+        || lower.contains("airpods")
+        || lower.contains("galaxy buds")
+        || lower.contains("pixel buds")
+}
+
+struct PreRollWorker {
+    stop_flag: Arc<AtomicBool>,
+    handle: Option<std::thread::JoinHandle<()>>,
+    buffer: Arc<parking_lot::Mutex<PreRollBuffer>>,
+    sample_rate: u32,
+}
+
+static PRE_ROLL_WORKER: parking_lot::Mutex<Option<PreRollWorker>> = parking_lot::Mutex::new(None);
+
+/// Clears the registered worker when it is the one identified by `thread_stop`.
+/// A worker that exits without being taken (unplug, exclusive-mode conflict,
+/// resume from sleep) would otherwise keep the slot occupied, so the next
+/// start would early-return on a dead ring.
+fn release_slot_if_self(thread_stop: &Arc<AtomicBool>) {
+    let mut slot = PRE_ROLL_WORKER.lock();
+    let is_self = slot
+        .as_ref()
+        .is_some_and(|worker| Arc::ptr_eq(&worker.stop_flag, thread_stop));
+    if is_self {
+        slot.take();
+    }
+}
+
+/// Runs the slot cleanup on the normal exit path and on unwind.
+struct PrerollSlotGuard(Arc<AtomicBool>);
+
+impl Drop for PrerollSlotGuard {
+    fn drop(&mut self) {
+        release_slot_if_self(&self.0);
+    }
+}
+
+/// Starts an idle background 450ms pre-roll ring listener when Pre-roll is
+/// enabled and neither `release_mic_while_idle` nor audio ducking prevents idle capture.
+pub fn start_preroll_if_eligible(
+    selected_device_name: Option<String>,
+    audio_behavior: &crate::state::user_profile::AudioBehaviorConfig,
+    _labs: &crate::state::user_profile::LabsConfig,
+    meeting_active: bool,
+) {
+    if !audio_behavior.pre_roll_enabled || audio_behavior.release_mic_while_idle || meeting_active {
+        stop_preroll();
+        return;
+    }
+
+    let mut guard = PRE_ROLL_WORKER.lock();
+    if guard.is_some() {
+        return;
+    }
+
+    let (device, _device_name) = match resolve_input_device(selected_device_name.as_deref()) {
+        Ok(r) => r,
+        Err(err) => {
+            log::debug!("Pre-roll listener skipped (no input device): {err}");
+            return;
+        }
+    };
+    let config = match load_best_input_config(&device) {
+        Ok(c) => c,
+        Err(err) => {
+            log::debug!("Pre-roll listener skipped (config unavailable): {err}");
+            return;
+        }
+    };
+    let sample_rate = config.sample_rate().0;
+    let channels = config.channels() as usize;
+    let sample_format = config.sample_format();
+    let buffer = Arc::new(parking_lot::Mutex::new(PreRollBuffer::new(
+        sample_rate,
+        PRE_ROLL_DURATION_MS,
+    )));
+    let stop_flag = Arc::new(AtomicBool::new(false));
+    let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<(), String>>(1);
+
+    let thread_stop = stop_flag.clone();
+    let thread_buf = buffer.clone();
+    let handle = match std::thread::Builder::new()
+        .name("audio-preroll".into())
+        .spawn(move || {
+            use cpal::traits::StreamTrait;
+            // Clear this worker's slot on every exit path, including a panic, so
+            // an unexpected stream close cannot leave a dead worker behind.
+            let _slot_guard = PrerollSlotGuard(thread_stop.clone());
+            let stop_err = thread_stop.clone();
+            let err_cb = move |e: cpal::StreamError| {
+                log::debug!("Pre-roll audio stream closed: {e}");
+                stop_err.store(true, Ordering::Relaxed);
+            };
+            let push_i16 = {
+                let buf = thread_buf.clone();
+                let stop = thread_stop.clone();
+                move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                    if stop.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    let mut mono = Vec::with_capacity(data.len() / channels.max(1) + 1);
+                    mix_to_mono_capped_i16(data, channels, &mut mono, data.len().max(1));
+                    buf.lock().push_samples(&mono);
+                }
+            };
+            let push_f32 = {
+                let buf = thread_buf.clone();
+                let stop = thread_stop.clone();
+                move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                    if stop.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    let mut mono = Vec::with_capacity(data.len() / channels.max(1) + 1);
+                    mix_to_mono_capped_f32(data, channels, &mut mono, data.len().max(1));
+                    buf.lock().push_samples(&mono);
+                }
+            };
+            let push_u16 = {
+                let buf = thread_buf.clone();
+                let stop = thread_stop.clone();
+                move |data: &[u16], _: &cpal::InputCallbackInfo| {
+                    if stop.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    let mut mono = Vec::with_capacity(data.len() / channels.max(1) + 1);
+                    mix_to_mono_capped_u16(data, channels, &mut mono, data.len().max(1));
+                    buf.lock().push_samples(&mono);
+                }
+            };
+            let stream = match build_input_stream_dispatch!(
+                device,
+                config,
+                sample_format,
+                err_cb,
+                push_i16,
+                push_f32,
+                push_u16
+            ) {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = ready_tx.send(Err(e.to_string()));
+                    return;
+                }
+            };
+            if let Err(e) = stream.play() {
+                let _ = ready_tx.send(Err(e.to_string()));
+                return;
+            }
+            let _ = ready_tx.send(Ok(()));
+            while !thread_stop.load(Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_millis(40));
+            }
+            drop(stream);
+        }) {
+        Ok(h) => h,
+        Err(err) => {
+            log::debug!("Failed to spawn pre-roll listener: {err}");
+            return;
+        }
+    };
+
+    match ready_rx.recv_timeout(std::time::Duration::from_millis(600)) {
+        Ok(Ok(())) => {
+            *guard = Some(PreRollWorker {
+                stop_flag,
+                handle: Some(handle),
+                buffer,
+                sample_rate,
+            });
+            log::debug!(
+                "Pre-roll audio ring started ({}Hz, {}ms)",
+                sample_rate,
+                PRE_ROLL_DURATION_MS
+            );
+        }
+        _ => {
+            stop_flag.store(true, Ordering::Release);
+            drop(handle);
+        }
+    }
+}
+
+pub fn stop_preroll() {
+    let worker = PRE_ROLL_WORKER.lock().take();
+    if let Some(mut worker) = worker {
+        worker.stop_flag.store(true, Ordering::Release);
+        if let Some(handle) = worker.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+pub fn stop_preroll_and_take() -> Option<(Vec<i16>, u32)> {
+    let worker = PRE_ROLL_WORKER.lock().take()?;
+    worker.stop_flag.store(true, Ordering::Release);
+    if let Some(handle) = worker.handle {
+        let _ = handle.join();
+    }
+    let samples = worker.buffer.lock().take();
+    if samples.is_empty() {
+        None
+    } else {
+        Some((samples, worker.sample_rate))
+    }
+}
 
 /// 环形 Pre-roll 缓冲区，保留最新的固定时长音频样本。
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct PreRollBuffer {
     buffer: Vec<i16>,
     capacity: usize,
 }
 
-#[allow(dead_code)]
 impl PreRollBuffer {
     pub fn new(sample_rate: u32, duration_ms: u32) -> Self {
         let capacity = ((sample_rate as usize) * (duration_ms as usize)) / 1000;
@@ -61,12 +283,9 @@ impl PreRollBuffer {
         std::mem::take(&mut self.buffer)
     }
 
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.buffer.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.buffer.is_empty()
     }
 }
 
@@ -289,6 +508,24 @@ pub(super) fn resolve_input_device(
         .default_input_device()
         .ok_or_else(|| AppError::Audio("No available audio input device found".into()))?;
     let name = device.name().unwrap_or_else(|_| "Unknown Device".into());
+
+    if should_avoid_bluetooth_mic() && is_bluetooth_mic_name(&name) {
+        if let Ok(devices) = host.input_devices() {
+            for candidate in devices {
+                if let Ok(candidate_name) = candidate.name() {
+                    if !is_bluetooth_mic_name(&candidate_name) {
+                        log::info!(
+                            "Avoided Bluetooth default microphone '{}' in favor of '{}'",
+                            name,
+                            candidate_name
+                        );
+                        return Ok((candidate, candidate_name));
+                    }
+                }
+            }
+        }
+    }
+
     Ok((device, name))
 }
 
@@ -346,6 +583,7 @@ pub fn list_input_devices_sync(
         .filter_map(|d| {
             d.name().ok().map(|name| InputDeviceInfo {
                 is_default: default_name.as_deref() == Some(&name),
+                is_bluetooth: is_bluetooth_mic_name(&name),
                 name,
             })
         })
@@ -533,6 +771,33 @@ pub fn spawn_audio_capture_thread(
     samples: Arc<parking_lot::Mutex<Vec<i16>>>,
     selected_device_name: Option<String>,
 ) -> Result<(std::thread::JoinHandle<()>, u32), AppError> {
+    spawn_audio_capture_thread_with_preroll(stop_flag, samples, selected_device_name, None)
+}
+
+fn resample_preroll_to_rate(preroll: Vec<i16>, from_rate: u32, to_rate: u32) -> Vec<i16> {
+    if preroll.is_empty() || from_rate == to_rate || from_rate == 0 || to_rate == 0 {
+        return preroll;
+    }
+    let ratio = to_rate as f64 / from_rate as f64;
+    let out_len = ((preroll.len() as f64) * ratio).round() as usize;
+    let mut out = Vec::with_capacity(out_len);
+    for idx in 0..out_len {
+        let src = (idx as f64) / ratio;
+        let i0 = (src.floor() as usize).min(preroll.len().saturating_sub(1));
+        let i1 = (i0 + 1).min(preroll.len().saturating_sub(1));
+        let frac = src - (i0 as f64);
+        let sample = (preroll[i0] as f64) * (1.0 - frac) + (preroll[i1] as f64) * frac;
+        out.push(sample.round().clamp(i16::MIN as f64, i16::MAX as f64) as i16);
+    }
+    out
+}
+
+pub fn spawn_audio_capture_thread_with_preroll(
+    stop_flag: Arc<AtomicBool>,
+    samples: Arc<parking_lot::Mutex<Vec<i16>>>,
+    selected_device_name: Option<String>,
+    preroll: Option<(Vec<i16>, u32)>,
+) -> Result<(std::thread::JoinHandle<()>, u32), AppError> {
     // 每个新录音会话重置警告 latch；否则进程级一次警告之后，后续会话即便
     // 再次撞上限也不会写日志，丢失诊断信息。
     RECORD_CAP_WARNED.store(false, Ordering::Relaxed);
@@ -548,8 +813,22 @@ pub fn spawn_audio_capture_thread(
         .spawn(move || {
             use cpal::traits::StreamTrait;
 
+            let preroll_seed = preroll;
+
             #[cfg(target_os = "windows")]
             {
+                if let Some((ref pre_samples, pre_rate)) = preroll_seed {
+                    if !pre_samples.is_empty() {
+                        let resampled = resample_preroll_to_rate(
+                            pre_samples.clone(),
+                            pre_rate,
+                            TARGET_SAMPLE_RATE,
+                        );
+                        let mut locked = samples.lock();
+                        let remaining = MAX_RECORD_SAMPLES.saturating_sub(locked.len());
+                        locked.extend(resampled.into_iter().take(remaining));
+                    }
+                }
                 if run_windows_native_capture(
                     stop.clone(),
                     samples.clone(),
@@ -557,6 +836,10 @@ pub fn spawn_audio_capture_thread(
                     &rate_tx,
                 ) {
                     return;
+                }
+                if preroll_seed.is_some() {
+                    // Clear 16k seed if native capture fell back to CPAL, so CPAL seeds at native sample_rate.
+                    samples.lock().clear();
                 }
             }
 
@@ -587,6 +870,15 @@ pub fn spawn_audio_capture_thread(
                 channels,
                 sample_format
             );
+
+            if let Some((pre_samples, pre_rate)) = preroll_seed {
+                if !pre_samples.is_empty() {
+                    let resampled = resample_preroll_to_rate(pre_samples, pre_rate, sample_rate);
+                    let mut locked = samples.lock();
+                    let remaining = MAX_RECORD_SAMPLES.saturating_sub(locked.len());
+                    locked.extend(resampled.into_iter().take(remaining));
+                }
+            }
 
             let stop_for_err = stop.clone();
             let err_cb = move |e: cpal::StreamError| {
@@ -1093,5 +1385,43 @@ mod cap_tests {
         eprintln!("entrypoint_sample_rate={sample_rate} entrypoint_frames={frame_count}");
         assert_eq!(sample_rate, super::TARGET_SAMPLE_RATE);
         assert!(frame_count >= sample_rate as usize / 4);
+    }
+}
+
+#[cfg(test)]
+mod preroll_slot_tests {
+    use super::*;
+
+    fn worker(flag: &Arc<AtomicBool>) -> PreRollWorker {
+        PreRollWorker {
+            stop_flag: flag.clone(),
+            handle: None,
+            buffer: Arc::new(parking_lot::Mutex::new(PreRollBuffer::new(
+                16_000,
+                PRE_ROLL_DURATION_MS,
+            ))),
+            sample_rate: 16_000,
+        }
+    }
+
+    // The only test that touches PRE_ROLL_WORKER, and it leaves the slot empty,
+    // so it does not race other tests in this binary.
+    #[test]
+    fn release_slot_clears_only_the_owning_worker() {
+        let own = Arc::new(AtomicBool::new(false));
+        let foreign = Arc::new(AtomicBool::new(false));
+        *PRE_ROLL_WORKER.lock() = Some(worker(&own));
+
+        release_slot_if_self(&foreign);
+        assert!(
+            PRE_ROLL_WORKER.lock().is_some(),
+            "a foreign worker must keep its slot"
+        );
+
+        release_slot_if_self(&own);
+        assert!(
+            PRE_ROLL_WORKER.lock().is_none(),
+            "the owning worker must clear its slot"
+        );
     }
 }

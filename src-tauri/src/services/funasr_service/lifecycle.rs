@@ -140,6 +140,20 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
     if gpu_idle_at_spawn > 0 {
         cmd.env("SPEAK_FLOW_GPU_IDLE_SECONDS", gpu_idle_at_spawn.to_string());
     }
+    if ticket.engine.starts_with("custom:") {
+        let custom = crate::services::custom_models::resolve_custom_model(&ticket.engine)
+            .ok_or_else(|| {
+                AppError::Asr(format!("Custom model {} is not registered", ticket.engine))
+            })?;
+        if !std::path::Path::new(&custom.path).is_file() {
+            return Err(AppError::Asr(format!(
+                "Custom model file missing on disk: {}",
+                custom.path
+            )));
+        }
+        cmd.env("SPEAK_FLOW_CUSTOM_MODEL_PATH", &custom.path);
+        cmd.env("SPEAK_FLOW_CUSTOM_MODEL_NAME", &custom.name);
+    }
 
     // Windows 上隐藏控制台窗口
     #[cfg(target_os = "windows")]
@@ -272,6 +286,18 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
                 )));
             }
         }
+        let supports_streaming = response
+            .supports_streaming
+            .unwrap_or(ticket.engine == paths::R2T2_ENGINE);
+        let supports_diarization = response.supports_diarization.unwrap_or(false);
+        state
+            .engine
+            .supports_native_streaming
+            .store(supports_streaming, Ordering::Release);
+        state
+            .engine
+            .supports_diarization
+            .store(supports_diarization, Ordering::Release);
         state.set_funasr_ready(true);
         let _ = app_handle.emit("funasr-status", ready_status);
     } else {
@@ -417,6 +443,18 @@ pub async fn check_status(
             let initialized = response.initialized.unwrap_or(false) || model_loaded;
             if initialized {
                 state.set_funasr_ready(true);
+                if let Some(s) = response.supports_streaming {
+                    state
+                        .engine
+                        .supports_native_streaming
+                        .store(s, Ordering::Release);
+                }
+                if let Some(d) = response.supports_diarization {
+                    state
+                        .engine
+                        .supports_diarization
+                        .store(d, Ordering::Release);
+                }
             }
 
             let ready = state.is_funasr_ready() || initialized;
@@ -513,6 +551,14 @@ pub async fn stop_server(state: &AppState) -> Result<(), AppError> {
 
     // 更新状态
     state.set_funasr_ready(false);
+    state
+        .engine
+        .supports_native_streaming
+        .store(false, Ordering::Release);
+    state
+        .engine
+        .supports_diarization
+        .store(false, Ordering::Release);
     state.set_inline_audio_transport(None);
 
     log::info!("FunASR 服务器已停止");

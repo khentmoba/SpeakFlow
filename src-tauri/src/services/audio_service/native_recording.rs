@@ -68,8 +68,8 @@ impl NativeRecording {
         }
         self.task
             .await
-            .map_err(|_| AppError::Asr("R2T2 recording task ended abnormally".into()))??
-            .ok_or_else(|| AppError::Asr("R2T2 recording was cancelled".into()))
+            .map_err(|_| AppError::Asr("Native recording task ended abnormally".into()))??
+            .ok_or_else(|| AppError::Asr("Native recording was cancelled".into()))
     }
 
     pub(crate) async fn cancel(mut self) -> Result<(), AppError> {
@@ -78,7 +78,7 @@ impl NativeRecording {
         }
         self.task
             .await
-            .map_err(|_| AppError::Asr("R2T2 recording task ended abnormally".into()))??;
+            .map_err(|_| AppError::Asr("Native recording task ended abnormally".into()))??;
         Ok(())
     }
 }
@@ -118,7 +118,15 @@ pub(crate) fn spawn_native_recording(
 ) -> NativeRecording {
     let state = app.state::<AppState>();
     let owner = state.engine.native_asr_owner.clone();
-    let config = state.with_profile(|profile| profile.r2t2.clone());
+    let engine = crate::utils::paths::read_engine_config();
+    let (context, language) = if engine == crate::utils::paths::R2T2_ENGINE {
+        state.with_profile(|profile| (profile.r2t2.context.clone(), profile.r2t2.language.clone()))
+    } else {
+        (
+            String::new(),
+            crate::utils::paths::read_asr_transcription_config().language,
+        )
+    };
     let (sender, mut control) = oneshot::channel();
     let task = tokio::spawn(async move {
         // Preserve the mutex queue position if Finish arrives before ownership.
@@ -150,8 +158,8 @@ pub(crate) fn spawn_native_recording(
             app.state::<AppState>().inner(),
             Some(&app),
             native_id,
-            config.context,
-            config.language,
+            context,
+            language,
         )
         .await?;
         let sink = AppSink {
@@ -164,6 +172,10 @@ pub(crate) fn spawn_native_recording(
             if let Some(payload) =
                 next_caption_update(&mut previous_caption.lock(), &update, recording_id)
             {
+                crate::services::http_api_service::publish_stream_event(
+                    "dictation.interim",
+                    payload.clone(),
+                );
                 let _ = caption_app.emit("transcription-result", payload);
             }
         })

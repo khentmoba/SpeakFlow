@@ -39,6 +39,14 @@ import SettingsNav from "@/components/settings/SettingsNav";
 import AppProfileRulesSettingsSection from "@/components/settings/AppProfileRulesSettingsSection";
 import HistorySettingsSection from "@/components/settings/HistorySettingsSection";
 import DictationToolsSettingsSection from "@/components/settings/DictationToolsSettingsSection";
+import AudioBehaviorSettingsSection from "@/components/settings/AudioBehaviorSettingsSection";
+import OutputBehaviorSettingsSection from "@/components/settings/OutputBehaviorSettingsSection";
+import ShortcutsBehaviorSettingsSection from "@/components/settings/ShortcutsBehaviorSettingsSection";
+import LabsSettingsSection from "@/components/settings/LabsSettingsSection";
+import MeetingsSettingsSection from "@/components/settings/MeetingsSettingsSection";
+import ScriptingSettingsSection from "@/components/settings/ScriptingSettingsSection";
+import KeyboardModelSwitchingSettingsSection from "@/components/settings/KeyboardModelSwitchingSettingsSection";
+import CustomModelsSettingsSection from "@/components/settings/CustomModelsSettingsSection";
 import GpuIdleUnloadControl from "@/components/settings/GpuIdleUnloadControl";
 import { SettingsReveal } from "@/components/settings/SettingsReveal";
 import R2T2SettingsSection from "@/components/settings/R2T2SettingsSection";
@@ -91,15 +99,22 @@ export default function SettingsPage({
   const navSections = useMemo(() => [
     { id: "appearance", labelKey: "settings.appearance" },
     { id: "engine", labelKey: "settings.engine" },
+    { id: "custom-models", labelKey: "settings.customModels" },
     { id: "ai-models", labelKey: "settings.aiModels" },
     { id: "hotkey", labelKey: "settings.hotkeySection" },
+    { id: "shortcuts-behavior", labelKey: "settings.shortcutsBehavior" },
     { id: "microphone", labelKey: "settings.microphone" },
+    { id: "audio-behavior", labelKey: "settings.audioBehavior" },
     { id: "input", labelKey: "settings.inputMethod" },
+    { id: "output-behavior", labelKey: "settings.outputBehavior" },
     { id: "dictation-tools", labelKey: "settings.dictationTools" },
+    { id: "scripting", labelKey: "settings.scripting" },
     { id: "app-profiles", labelKey: "settings.appProfiles" },
+    { id: "meetings", labelKey: "settings.meetings" },
     { id: "history-settings", labelKey: "settings.historySettings" },
     { id: "vocabulary", labelKey: "settings.vocabulary" },
     { id: "startup", labelKey: "settings.startup" },
+    { id: "labs", labelKey: "settings.labs" },
     { id: "updates", labelKey: "settings.update" },
     { id: "support", labelKey: "settings.support" },
   ] as const, []);
@@ -932,6 +947,8 @@ export default function SettingsPage({
             </div>
           </section>
 
+          <CustomModelsSettingsSection />
+
           <AiModelsSettingsSection
             profile={profile}
             allProviderOptions={allProviderOptions}
@@ -1044,6 +1061,11 @@ export default function SettingsPage({
               {hotkeyStatusError && <p className="settings-error">{hotkeyStatusError}</p>}
             </div>
           </section>
+
+          <ShortcutsBehaviorSettingsSection
+            profile={profile}
+            onSaved={() => { void refreshProfile(); }}
+          />
 
           {/* Microphone */}
           <section
@@ -1163,6 +1185,11 @@ export default function SettingsPage({
             </div>
           </section>
 
+          <AudioBehaviorSettingsSection
+            profile={profile}
+            onSaved={() => { void refreshProfile(); }}
+          />
+
           {/* Input Method */}
           <section className="settings-card" data-nav-id="input">
             <div className="settings-section-header">
@@ -1208,9 +1235,28 @@ export default function SettingsPage({
             </div>
           </section>
 
+          <OutputBehaviorSettingsSection
+            profile={profile}
+            onSaved={() => { void refreshProfile(); }}
+          />
+
           <DictationToolsSettingsSection />
 
+          <ScriptingSettingsSection
+            profile={profile}
+            onSaved={() => { void refreshProfile(); }}
+          />
+
+          <KeyboardModelSwitchingSettingsSection
+            profile={profile}
+            onSaved={() => { void refreshProfile(); }}
+          />
+
           <AppProfileRulesSettingsSection
+            profile={profile}
+            onSaved={() => { void refreshProfile(); }}
+          />
+          <MeetingsSettingsSection
             profile={profile}
             onSaved={() => { void refreshProfile(); }}
           />
@@ -1346,6 +1392,11 @@ export default function SettingsPage({
               </div>
             </div>
           </section>
+
+          <LabsSettingsSection
+            profile={profile}
+            onSaved={() => { void refreshProfile(); }}
+          />
 
           <SystemSettingsSections
             lastExportPath={lastExportPath}

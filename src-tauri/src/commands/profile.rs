@@ -1,6 +1,7 @@
 use crate::utils::AppError;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
+use tauri::Emitter;
 
 use crate::services::llm_client::{LlmRequestOptions, LlmUserInput};
 use crate::services::{
@@ -305,9 +306,12 @@ pub async fn set_app_profile_rules(
             profile_service::MAX_APP_PROFILE_RULES
         )));
     }
-    if rules.iter().any(|rule| rule.process_name.trim().is_empty()) {
+    if rules
+        .iter()
+        .any(|rule| rule.process_name.trim().is_empty() && rule.browser_domain.is_none())
+    {
         return Err(AppError::Other(
-            "Every app rule must have a process name".into(),
+            "Every app rule needs a process name or a browser domain".into(),
         ));
     }
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
@@ -1120,6 +1124,310 @@ fn parse_invalid_indices(raw: &str) -> Vec<usize> {
         }
     }
     Vec::new()
+}
+
+#[tauri::command]
+pub async fn set_audio_behavior(
+    state: tauri::State<'_, AppState>,
+    audio_behavior: AudioBehaviorConfig,
+) -> Result<(), AppError> {
+    let mut sanitized = audio_behavior;
+    sanitized.duck_volume = sanitized.duck_volume.clamp(0.0, 1.0);
+    let (labs, selected_device, is_idle) = state.with_profile(|p| {
+        (
+            p.labs.clone(),
+            state.selected_input_device_name(),
+            state.recording.recording.lock().is_none(),
+        )
+    });
+    profile_service::update_profile_and_schedule(state.inner(), |profile| {
+        profile.audio_behavior = sanitized.clone();
+    });
+    crate::services::audio_service::update_audio_behavior(sanitized.clone());
+    crate::services::audio_service::set_avoid_bluetooth_microphone(
+        sanitized.avoid_bluetooth_microphone,
+    );
+    if is_idle {
+        crate::services::audio_service::start_preroll_if_eligible(
+            selected_device,
+            &sanitized,
+            &labs,
+            false,
+        );
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_output_behavior(
+    state: tauri::State<'_, AppState>,
+    output_behavior: OutputBehaviorConfig,
+) -> Result<(), AppError> {
+    profile_service::update_profile_and_schedule(state.inner(), |profile| {
+        profile.output_behavior = output_behavior;
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_shortcuts_behavior(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    shortcuts_behavior: ShortcutsBehaviorConfig,
+) -> Result<(), AppError> {
+    let labs = state.with_profile(|p| p.labs.clone());
+    profile_service::update_profile_and_schedule(state.inner(), |profile| {
+        profile.shortcuts_behavior = shortcuts_behavior.clone();
+    });
+    crate::commands::hotkey::sync_extended_hotkeys(&app_handle, &shortcuts_behavior, &labs)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_labs_config(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    labs: LabsConfig,
+) -> Result<(), AppError> {
+    let sanitized = labs;
+    let (audio_behavior, shortcuts_behavior, selected_device, is_idle) = state.with_profile(|p| {
+        (
+            p.audio_behavior.clone(),
+            p.shortcuts_behavior.clone(),
+            state.selected_input_device_name(),
+            state.recording.recording.lock().is_none(),
+        )
+    });
+    profile_service::update_profile_and_schedule(state.inner(), |profile| {
+        profile.labs = sanitized.clone();
+    });
+    if is_idle {
+        crate::services::audio_service::start_preroll_if_eligible(
+            selected_device,
+            &audio_behavior,
+            &sanitized,
+            false,
+        );
+    }
+    let _ = crate::commands::hotkey::sync_extended_hotkeys(
+        &app_handle,
+        &shortcuts_behavior,
+        &sanitized,
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_keyboard_model_switching(
+    state: tauri::State<'_, AppState>,
+    enabled: bool,
+    rules: Vec<KeyboardModelRule>,
+) -> Result<(), AppError> {
+    let sanitized: Vec<KeyboardModelRule> = rules
+        .into_iter()
+        .filter(|r| !r.layout_tag.trim().is_empty() && !r.engine.trim().is_empty())
+        .map(|mut r| {
+            r.layout_tag = r.layout_tag.trim().to_string();
+            r.engine = r.engine.trim().to_string();
+            r
+        })
+        .collect();
+    profile_service::update_profile_and_schedule(state.inner(), |profile| {
+        profile.keyboard_model_switching = enabled;
+        profile.keyboard_model_rules = sanitized;
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_global_transformations(
+    state: tauri::State<'_, AppState>,
+    transformations: Vec<String>,
+) -> Result<(), AppError> {
+    let sanitized: Vec<String> = transformations
+        .into_iter()
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+        .collect();
+    profile_service::update_profile_and_schedule(state.inner(), |profile| {
+        profile.global_transformations = sanitized;
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_active_keyboard_locale() -> Result<Option<String>, AppError> {
+    Ok(crate::services::keyboard_layout::detect_active_keyboard_language())
+}
+
+#[tauri::command]
+pub async fn get_scripting_status(
+) -> Result<crate::services::scripting_service::ScriptingStatus, AppError> {
+    tokio::task::spawn_blocking(crate::services::scripting_service::status)
+        .await
+        .map_err(|e| AppError::Other(format!("Failed to inspect scripting status: {e}")))
+}
+
+#[tauri::command]
+pub async fn scaffold_script_config(
+) -> Result<crate::services::scripting_service::ScriptingStatus, AppError> {
+    tokio::task::spawn_blocking(|| {
+        crate::services::scripting_service::scaffold_config_files()?;
+        Ok::<_, String>(crate::services::scripting_service::status())
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("Failed to scaffold script config: {e}")))?
+    .map_err(AppError::Other)
+}
+
+#[tauri::command]
+pub async fn read_script_config() -> Result<String, AppError> {
+    tokio::task::spawn_blocking(crate::services::scripting_service::read_config_source)
+        .await
+        .map_err(|e| AppError::Other(format!("Failed to read script config: {e}")))?
+        .map_err(AppError::Other)
+}
+
+#[tauri::command]
+pub async fn save_script_config(
+    source: String,
+) -> Result<crate::services::scripting_service::ScriptingStatus, AppError> {
+    tokio::task::spawn_blocking(move || {
+        crate::services::scripting_service::save_config_source(&source)
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("Failed to save script config: {e}")))?
+    .map_err(AppError::Other)
+}
+
+#[tauri::command]
+pub async fn test_script_transformations(
+    source: String,
+    transform_ids: Vec<String>,
+    text: String,
+    app_process: Option<String>,
+    window_title: Option<String>,
+    domain: Option<String>,
+) -> Result<String, AppError> {
+    let ctx = crate::services::scripting_service::TransformContext {
+        app_name: app_process.clone(),
+        app_process,
+        window_title,
+        domain,
+        mode_name: None,
+        tone: None,
+        raw_text: text.clone(),
+        language: None,
+    };
+    tokio::task::spawn_blocking(move || {
+        crate::services::scripting_service::test_config_source(&source, &transform_ids, &text, &ctx)
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("Failed to evaluate script transforms: {e}")))?
+    .map_err(AppError::Other)
+}
+
+#[tauri::command]
+pub async fn get_last_dictation_record(
+) -> Result<Option<crate::commands::clipboard::LastDictationRecord>, AppError> {
+    Ok(crate::commands::clipboard::get_last_dictation_record())
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn submit_output_fix(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    original: String,
+    fixed: String,
+    raw_original: Option<String>,
+    note: Option<String>,
+    session_id: Option<u64>,
+    process_name: Option<String>,
+    window_title: Option<String>,
+) -> Result<profile_service::OutputFixEntry, AppError> {
+    let orig_trimmed = original.trim().to_string();
+    let fixed_trimmed = fixed.trim().to_string();
+    if orig_trimmed.is_empty() || fixed_trimmed.is_empty() || orig_trimmed == fixed_trimmed {
+        return Err(AppError::Other(
+            "An output fix requires changed, non-empty text".to_string(),
+        ));
+    }
+
+    let mut baselines = Vec::with_capacity(2);
+    if let Some(raw) = raw_original.as_deref() {
+        if !raw.trim().is_empty() {
+            baselines.push(raw.trim());
+        }
+    }
+    baselines.push(orig_trimmed.as_str());
+
+    let mut pairs = if !orig_trimmed.contains(char::is_whitespace)
+        && !fixed_trimmed.contains(char::is_whitespace)
+        && orig_trimmed.chars().count() <= 24
+        && fixed_trimmed.chars().count() <= 24
+    {
+        vec![(orig_trimmed.clone(), fixed_trimmed.clone())]
+    } else {
+        let via_llm = extract_corrections_via_llm(
+            &app_handle,
+            &state,
+            raw_original.as_deref(),
+            &orig_trimmed,
+            &fixed_trimmed,
+        )
+        .await;
+        if via_llm.is_empty() {
+            profile_service::collect_diff_correction_pairs(&baselines, &fixed_trimmed)
+        } else {
+            via_llm
+        }
+    };
+
+    if pairs.is_empty() && orig_trimmed.chars().count() <= 24 && fixed_trimmed.chars().count() <= 24
+    {
+        pairs.push((orig_trimmed.clone(), fixed_trimmed.clone()));
+    }
+
+    if !pairs.is_empty() {
+        let pairs_clone = pairs.clone();
+        profile_service::update_profile_and_schedule(state.inner(), |profile| {
+            for (orig, corr) in &pairs_clone {
+                profile_service::add_manual_correction(profile, orig, corr);
+            }
+        });
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let entry = profile_service::OutputFixEntry {
+        id: format!("fix-{now}-{}", session_id.unwrap_or(0)),
+        created_at: now,
+        original: orig_trimmed,
+        fixed: fixed_trimmed,
+        raw_original: raw_original.filter(|s| !s.trim().is_empty()),
+        note: note.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()),
+        process_name,
+        window_title,
+        session_id,
+        applied_rules: pairs,
+    };
+
+    let saved = tokio::task::spawn_blocking(move || profile_service::record_output_fix(entry))
+        .await
+        .map_err(|e| AppError::Other(format!("Failed to record output fix: {e}")))?
+        .map_err(AppError::Other)?;
+    let _ = app_handle.emit("output-fix-saved", &saved);
+    Ok(saved)
+}
+
+#[tauri::command]
+pub async fn list_output_fixes() -> Result<Vec<profile_service::OutputFixEntry>, AppError> {
+    tokio::task::spawn_blocking(profile_service::load_output_fixes)
+        .await
+        .map_err(|e| AppError::Other(format!("Failed to list output fixes: {e}")))
 }
 
 #[cfg(test)]

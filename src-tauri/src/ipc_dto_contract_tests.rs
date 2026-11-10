@@ -181,6 +181,7 @@ fn ipc_dtos_preserve_serde_names_numbers_nullability_and_unicode() {
         devices: vec![InputDeviceInfo {
             name: "内置麦克风 🎙️".to_string(),
             is_default: true,
+            is_bluetooth: false,
         }],
         selected_device_name: None,
     })

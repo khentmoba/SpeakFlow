@@ -1,4 +1,8 @@
-use crate::services::audio_service::output::{PendingPaste, PendingPasteQueue};
+use crate::services::audio_service::output::{
+    apply_smart_spacing, is_terminal_process, resolve_paste_strategy, PasteDeliveryOptions,
+    PendingPaste, PendingPasteQueue, ResolvedPasteStrategy,
+};
+use crate::state::user_profile::AppPasteMethod;
 
 fn output(session_id: u64, target_window: Option<isize>, text: &str) -> PendingPaste {
     PendingPaste {
@@ -6,7 +10,61 @@ fn output(session_id: u64, target_window: Option<isize>, text: &str) -> PendingP
         target_window,
         text: text.into(),
         press_enter: false,
+        options: PasteDeliveryOptions::default(),
     }
+}
+
+#[test]
+fn paste_strategy_handles_terminals_copy_only_and_overrides() {
+    assert!(is_terminal_process(Some("WindowsTerminal.exe")));
+    assert!(is_terminal_process(Some("pwsh.exe")));
+    assert!(!is_terminal_process(Some("Code.exe")));
+
+    assert_eq!(
+        resolve_paste_strategy(
+            "sendInput",
+            &PasteDeliveryOptions {
+                copy_only: true,
+                ..Default::default()
+            }
+        ),
+        ResolvedPasteStrategy::CopyOnly
+    );
+    assert_eq!(
+        resolve_paste_strategy(
+            "sendInput",
+            &PasteDeliveryOptions {
+                process_name: Some("wt.exe".into()),
+                auto_terminal_ctrl_shift_v: true,
+                ..Default::default()
+            }
+        ),
+        ResolvedPasteStrategy::ClipboardCtrlShiftV {
+            restore_clipboard: true
+        }
+    );
+    assert_eq!(
+        resolve_paste_strategy(
+            "sendInput",
+            &PasteDeliveryOptions {
+                paste_method_override: AppPasteMethod::Clipboard,
+                keep_on_clipboard: true,
+                ..Default::default()
+            }
+        ),
+        ResolvedPasteStrategy::ClipboardCtrlV {
+            restore_clipboard: false
+        }
+    );
+}
+
+#[test]
+fn smart_spacing_inserts_space_between_english_words_and_skips_cjk_pairs() {
+    assert_eq!(apply_smart_spacing("world", Some('o')), " world");
+    assert_eq!(apply_smart_spacing("World", Some('.')), " World");
+    assert_eq!(apply_smart_spacing(" world", Some(' ')), "world");
+    assert_eq!(apply_smart_spacing("!", Some('o')), "!");
+    assert_eq!(apply_smart_spacing("世界", Some('好')), "世界");
 }
 
 #[test]

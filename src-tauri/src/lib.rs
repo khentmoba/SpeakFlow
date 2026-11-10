@@ -11,6 +11,11 @@ mod ipc_dto_contract_tests;
 use state::{AppState, RecordingSlot};
 use tauri::{Emitter, Manager};
 
+pub fn cli_entry(args: Vec<String>) -> i32 {
+    // `args` is the raw process argv, so drop the executable path before dispatch.
+    services::cli_service::run_cli(args.into_iter().skip(1).collect())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -99,7 +104,25 @@ pub fn run() {
                         }
                     }
                 }
-                state.update_profile_mut(|profile| *profile = loaded);
+                state.update_profile_mut(|profile| *profile = loaded.clone());
+                services::audio_service::update_audio_behavior(loaded.audio_behavior.clone());
+                services::audio_service::set_avoid_bluetooth_microphone(
+                    loaded.audio_behavior.avoid_bluetooth_microphone,
+                );
+                let selected_device = state.selected_input_device_name();
+                services::audio_service::start_preroll_if_eligible(
+                    selected_device,
+                    &loaded.audio_behavior,
+                    &loaded.labs,
+                    false,
+                );
+                if let Err(err) = commands::hotkey::sync_extended_hotkeys(
+                    &app_handle,
+                    &loaded.shortcuts_behavior,
+                    &loaded.labs,
+                ) {
+                    log::warn!("启动同步扩展热键失败: {err}");
+                }
                 log::info!("已加载用户画像");
             }
 
@@ -241,6 +264,15 @@ pub fn run() {
             }
             spawn_subtitle_prewarm(app_handle.clone());
             spawn_profile_maintenance(app_handle.clone());
+            // Labs > "Local API and CLI" is the opt-in for the loopback surface,
+            // so the server only listens when the user turned it on.
+            if app_handle
+                .state::<AppState>()
+                .with_profile(|profile| profile.labs.api_processing)
+            {
+                services::http_api_service::start_server(app_handle.clone());
+            }
+            spawn_meeting_call_monitor(app_handle.clone());
             if let Err(error) = services::selection_service::create_selection_window(&app_handle) {
                 log::warn!("划词助手窗口预创建失败，首次使用时会重试: {error}");
             }
@@ -415,9 +447,43 @@ pub fn run() {
             commands::selection::cancel_selection_action,
             commands::history::list_transcription_history,
             commands::history::get_transcription_history_stats,
+            commands::history::search_transcripts,
             commands::history::delete_transcription_history,
             commands::history::export_transcription_history,
             commands::history::reprocess_transcription_history,
+            commands::clipboard::paste_last_as_terminal,
+            commands::hotkey::register_extended_hotkeys,
+            commands::funasr::inspect_gguf_model,
+            commands::funasr::list_custom_models,
+            commands::funasr::add_custom_model,
+            commands::funasr::remove_custom_model,
+            commands::funasr::scan_hf_cache_models,
+            commands::funasr::pick_gguf_file,
+            commands::profile::set_audio_behavior,
+            commands::profile::set_output_behavior,
+            commands::profile::set_shortcuts_behavior,
+            commands::profile::set_labs_config,
+            commands::profile::set_keyboard_model_switching,
+            commands::profile::set_global_transformations,
+            commands::profile::get_active_keyboard_locale,
+            commands::profile::get_scripting_status,
+            commands::profile::scaffold_script_config,
+            commands::profile::read_script_config,
+            commands::profile::save_script_config,
+            commands::profile::test_script_transformations,
+            commands::profile::get_last_dictation_record,
+            commands::profile::submit_output_fix,
+            commands::profile::list_output_fixes,
+            commands::meeting::get_meeting_status,
+            commands::meeting::detect_meeting_call,
+            commands::meeting::start_meeting_recording,
+            commands::meeting::stop_meeting_recording,
+            commands::meeting::list_meetings,
+            commands::meeting::get_meeting,
+            commands::meeting::delete_meeting,
+            commands::meeting::export_meeting,
+            commands::meeting::reprocess_meeting,
+            commands::meeting::set_meetings_config,
             commands::support::get_diagnostics,
             commands::support::open_logs_folder,
             commands::support::get_free_disk_space,
@@ -492,6 +558,47 @@ fn spawn_subtitle_prewarm(app_handle: tauri::AppHandle) {
         match commands::window::create_subtitle_window(app_handle).await {
             Ok(_) => log::info!("字幕窗口预创建成功"),
             Err(err) => log::warn!("字幕窗口预创建失败（首次录音会重试）: {}", err),
+        }
+    });
+}
+
+fn spawn_meeting_call_monitor(app_handle: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let mut last_detected: Option<(String, String)> = None;
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(4));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        loop {
+            interval.tick().await;
+            if services::meeting_service::is_meeting_recording() {
+                continue;
+            }
+            let cfg = app_handle
+                .state::<AppState>()
+                .with_profile(|p| p.meetings.clone());
+            if !cfg.call_detection_enabled {
+                last_detected = None;
+                continue;
+            }
+            let Ok(hit) = tokio::task::spawn_blocking(move || {
+                services::meeting_service::detect_active_call(&cfg)
+            })
+            .await
+            else {
+                continue;
+            };
+            if hit.active {
+                let key = (
+                    hit.app_name.clone().unwrap_or_default(),
+                    hit.window_title.clone().unwrap_or_default(),
+                );
+                if last_detected.as_ref() != Some(&key) {
+                    last_detected = Some(key);
+                    let _ = app_handle.emit("meeting-call-detected", &hit);
+                }
+            } else {
+                last_detected = None;
+            }
         }
     });
 }

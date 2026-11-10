@@ -1,8 +1,9 @@
-import { AudioLines, History, Settings, RefreshCw } from "lucide-react";
-export type AppView = "main" | "history" | "settings" | "updates";
+import { AudioLines, History, Settings, RefreshCw, Users } from "lucide-react";
+export type AppView = "main" | "history" | "settings" | "updates" | "meetings";
 
 const destinations = [
   { view: "main", label: "Dictation", icon: AudioLines },
+  { view: "meetings", label: "Meetings", icon: Users },
   { view: "history", label: "History", icon: History },
   { view: "settings", label: "Settings", icon: Settings },
   { view: "updates", label: "Updates", icon: RefreshCw },
