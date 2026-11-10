@@ -84,8 +84,11 @@ class NativeRuntime:
             raise
 
     def _bind(self):
-        H, S, I, P = ct.c_void_p, ct.c_char_p, ct.c_int, ct.POINTER
-        version = self.lib.audiocpp_abi_version
+        lib = self.lib
+        if lib is None:
+            raise RuntimeError('audio.cpp library is not loaded')
+        H, S, INT, P = ct.c_void_p, ct.c_char_p, ct.c_int, ct.POINTER
+        version = lib.audiocpp_abi_version
         version.restype, version.argtypes = ct.c_uint32, []
         abi = version()
         if abi >> 16 != 0 or (abi >> 8) & 0xff < 3:
@@ -99,25 +102,25 @@ class NativeRuntime:
         signatures = {
             'abi_version': (ct.c_uint32, []),
             'last_error': (S, []),
-            'registry_create': (I, [S, P(H)]),
-            'model_load': (I, [H, S, P(_ModelConfig), H, P(H)]),
+            'registry_create': (INT, [S, P(H)]),
+            'model_load': (INT, [H, S, P(_ModelConfig), H, P(H)]),
             'options_create': (H, []),
-            'options_set': (I, [H, S, S]),
-            'session_create': (I, [H, S, S, P(_BackendConfig), H, P(H)]),
+            'options_set': (INT, [H, S, S]),
+            'session_create': (INT, [H, S, S, P(_BackendConfig), H, P(H)]),
             'request_create': (H, []),
-            'request_set_text': (I, [H, S, S]),
-            'stream_start': (I, [H, H]),
-            'stream_push': (I, [H, P(ct.c_float), ct.c_size_t, I, I, ct.c_int64, P(H)]),
-            'stream_finish': (I, [H, P(H)]),
-            'stream_reset': (I, [H]),
+            'request_set_text': (INT, [H, S, S]),
+            'stream_start': (INT, [H, H]),
+            'stream_push': (INT, [H, P(ct.c_float), ct.c_size_t, INT, INT, ct.c_int64, P(H)]),
+            'stream_finish': (INT, [H, P(H)]),
+            'stream_reset': (INT, [H]),
             'event_as_result': (H, [H]),
-            'result_text': (I, [H, P(S), P(S)]),
-            'result_preview_text': (I, [H, P(S)]),
+            'result_text': (INT, [H, P(S), P(S)]),
+            'result_preview_text': (INT, [H, P(S)]),
         }
         for kind in ('registry', 'model', 'session', 'options', 'request', 'result', 'event'):
             signatures[kind + '_free'] = (None, [H])
         for name, (result, arguments) in signatures.items():
-            function = getattr(self.lib, 'audiocpp_' + name)
+            function = getattr(lib, 'audiocpp_' + name)
             function.restype, function.argtypes = result, arguments
             self.functions[name] = function
 
