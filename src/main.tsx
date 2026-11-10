@@ -6,8 +6,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { RecordingProvider } from "./contexts/RecordingContext";
 import { prefersReducedMotion } from "./lib/motion";
 import MainPage from "./pages/MainPage";
-import TitleBar from "./components/TitleBar";
-import ShellStatusBar from "./components/ShellStatusBar";
+import TitleBar, { SpeakFlowBrandIcon } from "./components/TitleBar";
+import AppNavigation from "./components/AppNavigation";
+import SidebarFooter from "./components/SidebarFooter";
+import { handleWindowDrag } from "./hooks/useWindowDrag";
 import { AppUpdateProvider, useAppUpdates } from "./contexts/AppUpdateContext";
 import { useTheme } from "./hooks/useTheme";
 import { useProfileSaveNotifications } from "./hooks/useProfileSaveNotifications";
@@ -130,14 +132,26 @@ function AppWorkspace() {
     <RecordingProvider>
       <div className="app-shell">
         <a className="skip-link" href="#main-content">{i18n.t("app.skipToContent")}</a>
-        <div className="app-workspace" id="main-content" tabIndex={-1}>
-          <TitleBar
-            title={i18n.t(`viewTitle.${view}`)}
+        <aside className="app-sidebar">
+          {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+          <div className="app-sidebar-header" onMouseDown={handleWindowDrag}>
+            <SpeakFlowBrandIcon height={16} className="app-sidebar-logo" />
+            <span className="app-sidebar-name">SpeakFlow</span>
+          </div>
+          <AppNavigation
             view={view}
             onNavigate={navigateTo}
             updateAvailable={Boolean(latestAvailableVersion)}
             updateInstalling={updateInstalling}
           />
+          <SidebarFooter
+            onNavigate={navigateTo}
+            updateAvailable={Boolean(latestAvailableVersion)}
+            latestVersion={latestAvailableVersion}
+          />
+        </aside>
+        <div className="app-workspace" id="main-content" tabIndex={-1}>
+          <TitleBar title={i18n.t(`viewTitle.${view}`)} />
           <Suspense fallback={<div className="workspace-loading" role="status">Loading workspace…</div>}>
             {view === "main" ? (
               <MainPage onNavigate={navigateTo} animClass={animClass} />
@@ -150,7 +164,6 @@ function AppWorkspace() {
             )}
           </Suspense>
         </div>
-        <ShellStatusBar />
       </div>
       <Toaster
         className="app-toaster"

@@ -409,9 +409,7 @@
   display: flex;
   flex-direction: column;
   padding: 12px 14px 0;
-  background:
-    linear-gradient(180deg, var(--color-accent-muted), transparent 92px),
-    var(--color-bg-primary);
+  background: transparent;
 }
 
 .history-command-bar {
@@ -524,13 +522,13 @@
 
 .history-metrics {
   display: grid;
-  grid-template-columns: 1.25fr repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   overflow: hidden;
   margin-bottom: 9px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-  box-shadow: var(--shadow-xs);
+  border: 1px solid var(--color-hairline);
+  border-radius: 12px;
+  background: var(--color-surface-card);
+  box-shadow: var(--shadow-sm);
   flex-shrink: 0;
 }
 

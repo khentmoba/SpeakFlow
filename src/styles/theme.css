@@ -32,6 +32,11 @@
   --color-border: #D4D4CE;
   --color-border-subtle: rgba(0, 0, 0, 0.08);
   --color-border-accent: rgba(168, 98, 0, 0.32);
+  --color-surface-raised: #FFFFFF;
+  --color-surface-card: #F9F9F7;
+  --color-hairline: rgba(0, 0, 0, 0.08);
+  --color-hairline-accent: rgba(168, 98, 0, 0.28);
+  --color-kbd-bg: #F0F0ED;
 
   /* Status */
   --color-success: #15803D;
@@ -165,6 +170,11 @@
   --color-border: #1A1A1A;
   --color-border-subtle: rgba(255, 255, 255, 0.07);
   --color-border-accent: rgba(255, 176, 32, 0.35);
+  --color-surface-raised: #141418;
+  --color-surface-card: #17171C;
+  --color-hairline: rgba(255, 255, 255, 0.08);
+  --color-hairline-accent: rgba(255, 176, 32, 0.22);
+  --color-kbd-bg: #18181D;
 
   --color-success: #4ADE80;
   --color-success-bg: rgba(74, 222, 128, 0.10);

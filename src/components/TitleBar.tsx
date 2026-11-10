@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Minus, Square, X } from "lucide-react";
 import { hideMainWindow } from "@/api/tauri";
-import AppNavigation, { type AppView } from "./AppNavigation";
+import { handleWindowDrag } from "@/hooks/useWindowDrag";
 
 export function SpeakFlowBrandIcon({ height = 14, className }: { height?: number; className?: string }) {
   const width = Math.round(((height * 394) / 228) * 100) / 100;
@@ -30,70 +30,47 @@ export function SpeakFlowBrandIcon({ height = 14, className }: { height?: number
 
 interface TitleBarProps {
   title: string;
-  view: AppView;
-  onNavigate: (view: AppView) => void;
-  updateAvailable?: boolean;
-  updateInstalling?: boolean;
 }
 
-export default function TitleBar({
-  title, view, onNavigate, updateAvailable = false, updateInstalling = false,
-}: TitleBarProps) {
+export default function TitleBar({ title }: TitleBarProps) {
   const { t } = useTranslation();
-
-  const startDrag = (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-
-    const target = e.target as HTMLElement;
-    if (
-      target.closest("button") ||
-      target.closest("input") ||
-      target.closest("select") ||
-      target.closest("textarea") ||
-      target.closest("a") ||
-      target.closest("[data-no-drag]")
-    ) {
-      return;
-    }
-
-    e.preventDefault();
-    getCurrentWindow().startDragging();
-  };
 
   return (
     // Window dragging is a pointer-only desktop affordance; keyboard actions
     // remain on the real buttons rendered in the action slots.
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
-    <header onMouseDown={startDrag} className="title-bar">
+    <header onMouseDown={handleWindowDrag} className="title-bar">
       <div className="title-bar-brand">
-        <SpeakFlowBrandIcon height={14} className="title-bar-logo" />
-        <span className="title-bar-name">SpeakFlow</span>
-        <span className="title-bar-div" aria-hidden="true" />
-        <span className="title-bar-doc">{title}</span>
+        <h1 className="title-bar-doc">{title}</h1>
       </div>
-
-      <AppNavigation
-        view={view}
-        onNavigate={onNavigate}
-        updateAvailable={updateAvailable}
-        updateInstalling={updateInstalling}
-      />
 
       <div className="title-bar-actions">
         <div className="window-controls">
           <button
             type="button"
             aria-label={t("common.minimize")}
-            onClick={() => void getCurrentWindow().minimize()}
+            onClick={() => {
+              try {
+                void getCurrentWindow().minimize();
+              } catch {
+                // non-Tauri preview fallback
+              }
+            }}
           >
-            <Minus size={10} strokeWidth={1.1} />
+            <Minus size={11} strokeWidth={1.2} />
           </button>
           <button
             type="button"
             aria-label={t("common.maximize")}
-            onClick={() => { void getCurrentWindow().toggleMaximize?.().catch(() => undefined); }}
+            onClick={() => {
+              try {
+                void getCurrentWindow().toggleMaximize?.().catch(() => undefined);
+              } catch {
+                // non-Tauri preview fallback
+              }
+            }}
           >
-            <Square size={9} strokeWidth={1.1} />
+            <Square size={10} strokeWidth={1.2} />
           </button>
           <button
             type="button"
@@ -101,7 +78,7 @@ export default function TitleBar({
             aria-label={t("common.close")}
             onClick={() => void hideMainWindow()}
           >
-            <X size={11} strokeWidth={1.1} />
+            <X size={12} strokeWidth={1.2} />
           </button>
         </div>
       </div>
