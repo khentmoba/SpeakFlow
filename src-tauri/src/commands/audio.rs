@@ -654,10 +654,14 @@ pub async fn set_input_device(
     state: tauri::State<'_, AppState>,
     name: Option<String>,
 ) -> Result<(), AppError> {
-    state.set_selected_input_device_name(name);
-    // The idle ring is bound to the old device, so stop it and rebuild it for
-    // the new one; the restart is a no-op while a worker is still running.
-    audio_service::stop_preroll();
+    let previous = state.selected_input_device_name();
+    state.set_selected_input_device_name(name.clone());
+    // Only tear down the ring when the device actually changed. The frontend
+    // re-sends the stored device on every launch, and rebuilding a healthy
+    // ring there leaves a window where a dictation gets no pre-roll.
+    if previous != name {
+        audio_service::stop_preroll();
+    }
     audio_service::restart_idle_preroll_if_eligible(state.inner());
     Ok(())
 }
