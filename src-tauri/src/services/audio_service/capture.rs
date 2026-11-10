@@ -54,6 +54,29 @@ struct PreRollWorker {
 
 static PRE_ROLL_WORKER: parking_lot::Mutex<Option<PreRollWorker>> = parking_lot::Mutex::new(None);
 
+/// Clears the registered worker when it is the one identified by `thread_stop`.
+/// A worker that exits without being taken (unplug, exclusive-mode conflict,
+/// resume from sleep) would otherwise keep the slot occupied, so the next
+/// start would early-return on a dead ring.
+fn release_slot_if_self(thread_stop: &Arc<AtomicBool>) {
+    let mut slot = PRE_ROLL_WORKER.lock();
+    let is_self = slot
+        .as_ref()
+        .is_some_and(|worker| Arc::ptr_eq(&worker.stop_flag, thread_stop));
+    if is_self {
+        slot.take();
+    }
+}
+
+/// Runs the slot cleanup on the normal exit path and on unwind.
+struct PrerollSlotGuard(Arc<AtomicBool>);
+
+impl Drop for PrerollSlotGuard {
+    fn drop(&mut self) {
+        release_slot_if_self(&self.0);
+    }
+}
+
 /// Starts an idle background 450ms pre-roll ring listener when Pre-roll is
 /// enabled and neither `release_mic_while_idle` nor audio ducking prevents idle capture.
 pub fn start_preroll_if_eligible(
@@ -102,6 +125,9 @@ pub fn start_preroll_if_eligible(
         .name("audio-preroll".into())
         .spawn(move || {
             use cpal::traits::StreamTrait;
+            // Clear this worker's slot on every exit path, including a panic, so
+            // an unexpected stream close cannot leave a dead worker behind.
+            let _slot_guard = PrerollSlotGuard(thread_stop.clone());
             let stop_err = thread_stop.clone();
             let err_cb = move |e: cpal::StreamError| {
                 log::debug!("Pre-roll audio stream closed: {e}");
@@ -167,16 +193,6 @@ pub fn start_preroll_if_eligible(
                 std::thread::sleep(std::time::Duration::from_millis(40));
             }
             drop(stream);
-            // An unexpected close (unplug, exclusive-mode conflict, resume from
-            // sleep) leaves this worker registered but dead. Drop the slot so a
-            // later start rebuilds the ring instead of early-returning on it.
-            let mut slot = PRE_ROLL_WORKER.lock();
-            let is_self = slot
-                .as_ref()
-                .is_some_and(|worker| Arc::ptr_eq(&worker.stop_flag, &thread_stop));
-            if is_self {
-                slot.take();
-            }
         }) {
         Ok(h) => h,
         Err(err) => {
@@ -1369,5 +1385,43 @@ mod cap_tests {
         eprintln!("entrypoint_sample_rate={sample_rate} entrypoint_frames={frame_count}");
         assert_eq!(sample_rate, super::TARGET_SAMPLE_RATE);
         assert!(frame_count >= sample_rate as usize / 4);
+    }
+}
+
+#[cfg(test)]
+mod preroll_slot_tests {
+    use super::*;
+
+    fn worker(flag: &Arc<AtomicBool>) -> PreRollWorker {
+        PreRollWorker {
+            stop_flag: flag.clone(),
+            handle: None,
+            buffer: Arc::new(parking_lot::Mutex::new(PreRollBuffer::new(
+                16_000,
+                PRE_ROLL_DURATION_MS,
+            ))),
+            sample_rate: 16_000,
+        }
+    }
+
+    // The only test that touches PRE_ROLL_WORKER, and it leaves the slot empty,
+    // so it does not race other tests in this binary.
+    #[test]
+    fn release_slot_clears_only_the_owning_worker() {
+        let own = Arc::new(AtomicBool::new(false));
+        let foreign = Arc::new(AtomicBool::new(false));
+        *PRE_ROLL_WORKER.lock() = Some(worker(&own));
+
+        release_slot_if_self(&foreign);
+        assert!(
+            PRE_ROLL_WORKER.lock().is_some(),
+            "a foreign worker must keep its slot"
+        );
+
+        release_slot_if_self(&own);
+        assert!(
+            PRE_ROLL_WORKER.lock().is_none(),
+            "the owning worker must clear its slot"
+        );
     }
 }
