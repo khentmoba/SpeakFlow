@@ -1,20 +1,21 @@
-/* SpeakFlow shell — pure black chrome, hairline structure, one amber signal. */
+/* SpeakFlow shell — Hex-inspired matte black sidebar + raised rounded workspace with signature yellowish outlines. */
 
 :root {
-  --chrome-height: 32px;
+  --chrome-height: 38px;
   --status-height: 24px;
   --hairline: var(--color-border);
   --signal: var(--color-accent);
 }
 
 .app-shell {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) var(--status-height);
+  display: flex;
+  flex-direction: row;
   height: 100dvh;
   width: 100%;
   background: var(--color-bg-primary);
   font-size: var(--text-base);
   overflow: hidden;
+  position: relative;
 }
 
 .skip-link {
@@ -30,14 +31,212 @@
   transition: top 120ms ease-out;
 }
 .skip-link:focus { top: 8px; }
-.app-workspace:focus { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 
-.app-workspace {
-  min-width: 0;
-  min-height: 0;
+/* ── Left Sidebar (Hex style) ──────────────────────────────── */
+
+.app-sidebar {
+  width: 200px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   background: var(--color-bg-primary);
+  padding: 10px 8px 12px 10px;
+  user-select: none;
+  min-height: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.app-sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  margin-bottom: 8px;
+  -webkit-app-region: drag;
+  cursor: default;
+}
+
+.app-sidebar-logo {
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.app-sidebar-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
+}
+
+/* ── Navigation (Hex style vertical pills) ─────────────────── */
+
+.app-navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.app-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm, 8px);
+  color: var(--color-text-secondary);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  background: transparent;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.app-nav-item svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+  color: inherit;
+}
+
+.app-nav-item:hover {
+  color: var(--color-text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.app-nav-item[aria-current="page"] {
+  color: #FFFFFF;
+  background: #1C1C22;
+  border: 1px solid rgba(255, 176, 32, 0.55);
+  box-shadow: 0 0 0 1px rgba(255, 176, 32, 0.2), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.app-nav-item[aria-current="page"] svg {
+  opacity: 1;
+  color: var(--color-accent);
+}
+
+.update-nav-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.app-nav-item[aria-current="page"] .update-nav-dot {
+  background: var(--color-accent);
+  box-shadow: 0 0 6px rgba(var(--color-accent-rgb), 0.8);
+}
+
+/* ── Sidebar Footer (Hex style bottom stats & updates) ─────── */
+
+.app-sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 6px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.app-sidebar-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.app-sidebar-status .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+.app-sidebar-status .status-dot[data-state="ready"] {
+  background: var(--color-accent);
+  box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.7);
+}
+
+.app-sidebar-status .status-dot[data-state="recording"] {
+  background: var(--color-accent);
+  box-shadow: 0 0 10px rgba(var(--color-accent-rgb), 0.9);
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+
+.app-sidebar-status .status-dot[data-state="error"] {
+  background: var(--color-error);
+}
+
+.app-sidebar-status-text {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-sidebar-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.app-sidebar-link {
+  color: var(--color-text-tertiary);
+  text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11px;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.app-sidebar-link:hover {
+  color: var(--color-accent);
+}
+
+/* ── Raised Rounded Content Panel (Hex style) ─────────────── */
+
+.app-workspace {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  margin: 6px 6px 6px 0;
+  border-radius: 14px;
+  background: var(--color-bg-elevated);
+  border: 1px solid rgba(255, 176, 32, 0.16);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.app-workspace:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
 }
 
 .workspace-loading {
@@ -48,18 +247,17 @@
   font-size: 12px;
 }
 
-/* ── Title bar ─────────────────────────────────────────────── */
+/* ── Title bar inside raised panel ─────────────────────────── */
 
 .title-bar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
   height: var(--chrome-height);
   flex: none;
-  padding: 0 0 0 10px;
-  border-bottom: 1px solid var(--hairline);
-  background: var(--color-bg-primary);
-  backdrop-filter: none;
+  padding: 0 0 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
   -webkit-app-region: drag;
   user-select: none;
 }
@@ -67,48 +265,37 @@
 .title-bar-brand {
   display: flex;
   align-items: center;
-  gap: 7px;
-  flex: none;
+  gap: 8px;
 }
-.title-bar-logo { color: var(--color-text-primary); flex: none; }
-.title-bar-name {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--color-text-primary);
-  letter-spacing: 0.005em;
-}
-.title-bar-div {
-  width: 1px;
-  height: 12px;
-  background: var(--color-border);
-  margin: 0 2px;
-  flex: none;
-}
+
 .title-bar-doc {
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
+  margin: 0;
 }
+
 .title-bar-actions {
-  margin-left: auto;
   display: flex;
   align-items: center;
   height: 100%;
-  gap: 2px;
 }
 
 .window-controls {
   display: flex;
   height: 100%;
-  margin-left: 6px;
   -webkit-app-region: no-drag;
 }
 .window-controls button {
-  width: 46px;
+  width: 44px;
   height: 100%;
   display: grid;
   place-items: center;
   color: var(--color-text-secondary);
+  border: none;
+  background: transparent;
+  cursor: pointer;
   transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 .window-controls button:focus-visible {
@@ -116,7 +303,7 @@
   outline-offset: -2px;
 }
 .window-controls button:hover {
-  background: var(--color-bg-tertiary);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--color-text-primary);
 }
 .window-controls button[data-close]:hover {
@@ -124,63 +311,15 @@
   color: #FFFFFF;
 }
 
-/* ── Horizontal navigation ─────────────────────────────────── */
-
-.app-navigation {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  -webkit-app-region: no-drag;
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.app-nav-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 22px;
-  padding: 0 9px;
-  color: var(--color-text-tertiary);
-  font-family: var(--font-display);
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  transition: color var(--transition-fast), background-color var(--transition-fast);
-}
-.app-nav-item svg { flex: none; opacity: 0.75; }
-.app-nav-item:hover {
-  color: var(--color-text-primary);
-  background: var(--color-bg-tertiary);
-}
-.app-nav-item[aria-current="page"] {
-  color: var(--color-text-inverse);
-  background: var(--signal);
-}
-.app-nav-item[aria-current="page"] svg { opacity: 1; }
-
-.update-nav-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--signal);
-  flex: none;
-}
-.app-nav-item[aria-current="page"] .update-nav-dot { background: var(--color-text-inverse); }
-
 /* ── Status bar ────────────────────────────────────────────── */
 
 .app-statusbar {
   display: flex;
   align-items: center;
   height: var(--status-height);
-  padding: 0 10px;
-  border-top: 1px solid var(--hairline);
-  background: var(--color-bg-primary);
+  padding: 0 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
   color: var(--color-text-tertiary);
   font-size: 10.5px;
   overflow: hidden;
@@ -193,7 +332,7 @@
   padding: 0 10px;
   white-space: nowrap;
 }
-.app-statusbar .status-seg + .status-seg { border-left: 1px solid var(--hairline); }
+.app-statusbar .status-seg + .status-seg { border-left: 1px solid rgba(255, 255, 255, 0.06); }
 .app-statusbar .status-seg:first-child { padding-left: 0; }
 .app-statusbar .status-seg:last-child { margin-left: auto; padding-right: 0; border-left: 0; }
 .app-statusbar .status-dot {
