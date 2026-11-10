@@ -152,6 +152,7 @@ h2.signal-label { margin: 0; }
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
   min-width: 0;
   overflow: hidden;
 }
@@ -223,8 +224,14 @@ h2.signal-label { margin: 0; }
 .transcript-panel {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  flex: 1;
+  min-height: 180px;
   min-width: 0;
+  border-radius: 12px;
+  border: 1px solid var(--color-hairline);
+  background: var(--color-surface-card);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 
 .transcript-head {
@@ -250,9 +257,10 @@ h2.signal-label { margin: 0; }
   gap: 6px;
 }
 .signal-select select {
-  height: 20px;
-  padding: 0 18px 0 6px;
+  height: 22px;
+  padding: 0 18px 0 8px;
   border: 1px solid var(--color-border);
+  border-radius: 6px;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
   font-size: 10.5px;
@@ -288,9 +296,13 @@ h2.signal-label { margin: 0; }
 .rundown-panel {
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  background: var(--color-bg-secondary);
-  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+  min-height: 112px;
+  border-radius: 12px;
+  border: 1px solid var(--color-hairline);
+  background: var(--color-surface-card);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 
 .rundown-head {
@@ -702,14 +714,15 @@ h2.signal-label { margin: 0; }
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
   min-width: 0;
 }
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 18px;
-  padding: 0 6px;
+  height: 20px;
+  padding: 0 8px;
   border: 1px solid var(--color-border);
   background: none;
   color: var(--color-text-secondary);
@@ -719,7 +732,7 @@ h2.signal-label { margin: 0; }
   letter-spacing: 0.15em;
   text-transform: uppercase;
   white-space: nowrap;
-  border-radius: 0;
+  border-radius: 999px;
 }
 .chip[data-state="ready"] {
   border-color: var(--color-border-accent);
@@ -1234,6 +1247,9 @@ h2.signal-label { margin: 0; }
 
 .settings-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: 18px 20px 22px;
   border: 1px solid var(--color-hairline);
   border-radius: 12px;
@@ -1254,7 +1270,7 @@ h2.signal-label { margin: 0; }
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 0;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--color-hairline);
 }
@@ -1319,10 +1335,10 @@ h2.signal-label { margin: 0; }
 .settings-card input[type="password"],
 .settings-card select,
 .settings-card textarea {
-  height: 24px;
+  height: 26px;
   padding: 0 8px;
   border: 1px solid var(--color-border);
-  border-radius: 0;
+  border-radius: 8px;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
   font-size: 11px;
@@ -1343,9 +1359,9 @@ h2.signal-label { margin: 0; }
   flex-direction: column;
   align-items: flex-start;
   gap: 3px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid var(--color-border);
-  border-radius: 0;
+  border-radius: 8px;
   background: none;
   color: var(--color-text-secondary);
   text-align: left;
@@ -1373,10 +1389,10 @@ h2.signal-label { margin: 0; }
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 30px;
+  min-height: 34px;
   padding: 0 10px;
   border: 1px solid var(--color-border);
-  border-radius: 0;
+  border-radius: 8px;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
   text-align: left;
