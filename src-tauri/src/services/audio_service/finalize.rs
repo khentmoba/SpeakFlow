@@ -310,7 +310,7 @@ pub(crate) fn compress_audio_pauses(samples: &[i16], sample_rate: u32) -> Vec<i1
     out
 }
 
-fn restart_idle_preroll_if_eligible(state: &AppState) {
+pub(crate) fn restart_idle_preroll_if_eligible(state: &AppState) {
     if state.recording.recording.lock().is_some() {
         return;
     }

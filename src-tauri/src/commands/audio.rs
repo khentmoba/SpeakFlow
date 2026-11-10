@@ -313,6 +313,9 @@ pub(crate) async fn start_recording_with_start_owner(
             })
             .await;
         }
+        // The ring was consumed by this attempt; arm it again so the next
+        // dictation still has its pre-roll.
+        audio_service::restart_idle_preroll_if_eligible(state);
         crate::commands::window::schedule_subtitle_hide(
             &app_handle,
             session_id,
@@ -369,6 +372,7 @@ pub(crate) async fn start_recording_with_start_owner(
                     audio_service::RESULT_HIDE_DELAY_MS,
                 );
             }
+            audio_service::restart_idle_preroll_if_eligible(state);
             return Err(error);
         }
     };
@@ -460,6 +464,7 @@ pub(crate) async fn start_recording_with_start_owner(
         s.stop_flag.store(true, Ordering::Relaxed);
         s.stop_notify.notify_waiters();
         audio_service::discard_recording(s).await;
+        audio_service::restart_idle_preroll_if_eligible(state);
         crate::commands::window::schedule_subtitle_hide(
             &app_handle,
             session_id,
@@ -648,6 +653,8 @@ pub async fn set_input_device(
     name: Option<String>,
 ) -> Result<(), AppError> {
     state.set_selected_input_device_name(name);
+    // The idle ring is bound to the old device, so rebuild it for the new one.
+    audio_service::restart_idle_preroll_if_eligible(state.inner());
     Ok(())
 }
 

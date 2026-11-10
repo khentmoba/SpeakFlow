@@ -157,6 +157,10 @@ fn dispatch_channel() -> &'static std::sync::mpsc::Sender<DispatchEvent> {
                                     }
                                 }
                                 crate::services::audio_service::restore_audio();
+                                // The ring was consumed by this attempt; arm it again.
+                                crate::services::audio_service::restart_idle_preroll_if_eligible(
+                                    &app.state::<crate::state::AppState>(),
+                                );
                                 crate::commands::window::hide_subtitle_window_inner(&app).ok();
                             });
                         }

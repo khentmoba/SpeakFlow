@@ -3,8 +3,16 @@ use crate::state::user_profile::AppPasteMethod;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResolvedPasteStrategy {
     SendInput,
-    ClipboardCtrlV { restore_clipboard: bool },
-    ClipboardCtrlShiftV { restore_clipboard: bool },
+    ClipboardCtrlV {
+        restore_clipboard: bool,
+    },
+    ClipboardCtrlShiftV {
+        restore_clipboard: bool,
+    },
+    /// Shift+Insert, for editors that ignore Ctrl+V but accept the X11-style paste.
+    ClipboardShiftInsert {
+        restore_clipboard: bool,
+    },
     CopyOnly,
 }
 
@@ -65,7 +73,7 @@ pub(crate) fn resolve_paste_strategy(
         AppPasteMethod::SendInput => ResolvedPasteStrategy::SendInput,
         AppPasteMethod::Clipboard => {
             if options.paste_with_shift {
-                ResolvedPasteStrategy::ClipboardCtrlShiftV { restore_clipboard }
+                ResolvedPasteStrategy::ClipboardShiftInsert { restore_clipboard }
             } else {
                 ResolvedPasteStrategy::ClipboardCtrlV { restore_clipboard }
             }
@@ -75,9 +83,10 @@ pub(crate) fn resolve_paste_strategy(
         }
         AppPasteMethod::CopyOnly => ResolvedPasteStrategy::CopyOnly,
         AppPasteMethod::Inherit => {
-            if options.paste_with_shift
-                || (options.auto_terminal_ctrl_shift_v
-                    && is_terminal_process(options.process_name.as_deref()))
+            if options.paste_with_shift {
+                ResolvedPasteStrategy::ClipboardShiftInsert { restore_clipboard }
+            } else if options.auto_terminal_ctrl_shift_v
+                && is_terminal_process(options.process_name.as_deref())
             {
                 ResolvedPasteStrategy::ClipboardCtrlShiftV { restore_clipboard }
             } else if default_method == "clipboard" {

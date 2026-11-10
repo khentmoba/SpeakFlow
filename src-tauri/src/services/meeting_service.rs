@@ -538,8 +538,16 @@ pub fn start_meeting(
         TARGET_SAMPLE_RATE as usize * 60,
     )));
     let (mic_thread, mic_sample_rate) =
-        spawn_audio_capture_thread(stop_flag.clone(), mic_samples.clone(), selected_device)
-            .map_err(|e| format!("Failed to start meeting microphone capture: {e}"))?;
+        match spawn_audio_capture_thread(stop_flag.clone(), mic_samples.clone(), selected_device) {
+            Ok(result) => result,
+            Err(error) => {
+                // The idle ring was consumed above; put it back before bailing.
+                crate::services::audio_service::restart_idle_preroll_if_eligible(state);
+                return Err(format!(
+                    "Failed to start meeting microphone capture: {error}"
+                ));
+            }
+        };
 
     let loopback_samples = Arc::new(Mutex::new(Vec::with_capacity(
         TARGET_SAMPLE_RATE as usize * 60,

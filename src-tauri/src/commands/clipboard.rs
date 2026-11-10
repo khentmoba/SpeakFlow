@@ -551,11 +551,17 @@ pub(crate) async fn paste_text_with_strategy(
             strategy,
             ResolvedPasteStrategy::ClipboardCtrlV { .. }
                 | ResolvedPasteStrategy::ClipboardCtrlShiftV { .. }
+                | ResolvedPasteStrategy::ClipboardShiftInsert { .. }
         );
         let use_shift = matches!(strategy, ResolvedPasteStrategy::ClipboardCtrlShiftV { .. });
+        let use_shift_insert =
+            matches!(strategy, ResolvedPasteStrategy::ClipboardShiftInsert { .. });
         let restore_clipboard = match strategy {
             ResolvedPasteStrategy::ClipboardCtrlV { restore_clipboard }
-            | ResolvedPasteStrategy::ClipboardCtrlShiftV { restore_clipboard } => restore_clipboard,
+            | ResolvedPasteStrategy::ClipboardCtrlShiftV { restore_clipboard }
+            | ResolvedPasteStrategy::ClipboardShiftInsert { restore_clipboard } => {
+                restore_clipboard
+            }
             _ => true,
         };
 
@@ -595,7 +601,16 @@ pub(crate) async fn paste_text_with_strategy(
                 const VK_CONTROL: u16 = 0x11;
                 const VK_SHIFT: u16 = 0x10;
                 const VK_V: u16 = 0x56;
-                if use_shift {
+                const VK_INSERT: u16 = 0x2D;
+                if use_shift_insert {
+                    let inputs = [
+                        make_key_input(VK_SHIFT, 0, 0),
+                        make_key_input(VK_INSERT, 0, 0),
+                        make_key_input(VK_INSERT, 0, KEYEVENTF_KEYUP),
+                        make_key_input(VK_SHIFT, 0, KEYEVENTF_KEYUP),
+                    ];
+                    send_inputs_to_target(&inputs, target)
+                } else if use_shift {
                     let inputs = [
                         make_key_input(VK_CONTROL, 0, 0),
                         make_key_input(VK_SHIFT, 0, 0),

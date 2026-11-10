@@ -107,6 +107,7 @@ pub use capture::{
     start_preroll_if_eligible, stop_preroll, stop_preroll_and_take,
 };
 pub(crate) use finalize::flush_pending_paste;
+pub(crate) use finalize::restart_idle_preroll_if_eligible;
 pub use finalize::{discard_recording, finalize_recording};
 pub use interim::spawn_interim_loop;
 pub use monitor::{

@@ -17,6 +17,10 @@ interface KeyboardModelSwitchingSettingsSectionProps {
  * Switches the ASR engine when the active keyboard layout changes, e.g. a
  * Chinese layout selecting a Chinese-tuned model. The backend reads the rules
  * from the profile, so this card is the only place they are authored.
+ *
+ * A new row is held locally until it has a layout tag: the backend drops rules
+ * with an empty tag, so persisting an empty row would make it vanish before the
+ * user could type into it.
  */
 export default function KeyboardModelSwitchingSettingsSection({
   profile,
@@ -25,6 +29,7 @@ export default function KeyboardModelSwitchingSettingsSection({
   const { t } = useTranslation();
   const [enabled, setEnabled] = useState(profile?.keyboard_model_switching ?? false);
   const [rules, setRules] = useState<KeyboardModelRule[]>(profile?.keyboard_model_rules ?? []);
+  const [draft, setDraft] = useState<KeyboardModelRule | null>(null);
   const [activeLocale, setActiveLocale] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -61,6 +66,14 @@ export default function KeyboardModelSwitchingSettingsSection({
     void persist(enabled, next);
   };
 
+  /** Persist the draft once it is complete, otherwise leave it local. */
+  const commitDraft = (candidate: KeyboardModelRule | null) => {
+    if (!candidate) return;
+    if (!candidate.layoutTag.trim() || !candidate.engine.trim()) return;
+    setDraft(null);
+    void persist(enabled, [...rules, candidate]);
+  };
+
   return (
     <section className="settings-card" data-nav-id="keyboard-models">
       <SettingsSectionHeader
@@ -82,12 +95,15 @@ export default function KeyboardModelSwitchingSettingsSection({
           hint={t("settings.keyboardModelsEnabledHint")}
           checked={enabled}
           disabled={saving}
-          onChange={(value) => { void persist(value, rules); }}
+          onChange={(value) => {
+            if (!value) setDraft(null);
+            void persist(value, rules);
+          }}
         />
 
         {enabled && (
           <>
-            {rules.length === 0 ? (
+            {rules.length === 0 && draft === null ? (
               <div className="app-rules-empty">{t("settings.keyboardModelsEmpty")}</div>
             ) : (
               rules.map((rule, index) => (
@@ -132,17 +148,57 @@ export default function KeyboardModelSwitchingSettingsSection({
               ))
             )}
 
+            {draft !== null && (
+              <div className="app-rule-card">
+                <div className="settings-row">
+                  <input
+                    className="settings-input"
+                    aria-label={t("settings.keyboardModelsLayout")}
+                    placeholder={t("settings.keyboardModelsLayoutPlaceholder")}
+                    autoFocus
+                    value={draft.layoutTag}
+                    onChange={(event) => {
+                      setDraft({ ...draft, layoutTag: event.target.value });
+                    }}
+                    onBlur={() => commitDraft(draft)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") commitDraft(draft);
+                      if (event.key === "Escape") setDraft(null);
+                    }}
+                  />
+                  <select
+                    className="settings-input"
+                    aria-label={t("settings.keyboardModelsEngine")}
+                    value={draft.engine}
+                    onChange={(event) => {
+                      const next = { ...draft, engine: event.target.value };
+                      setDraft(next);
+                    }}
+                  >
+                    {engineOptions.map((option) => (
+                      <option key={option.key} value={option.key}>{option.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn-ghost app-rule-icon-button app-rule-delete"
+                    aria-label={t("settings.keyboardModelsRemove")}
+                    onClick={() => setDraft(null)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="settings-row">
               <span className="history-action-spacer" />
               <button
                 type="button"
                 className="btn-ghost btn-ghost-sm"
-                disabled={saving}
+                disabled={saving || draft !== null}
                 onClick={() => {
-                  void persist(enabled, [
-                    ...rules,
-                    { layoutTag: "", engine: engineOptions[0]?.key ?? "" },
-                  ]);
+                  setDraft({ layoutTag: "", engine: engineOptions[0]?.key ?? "" });
                 }}
               >
                 <Plus size={12} aria-hidden="true" /> {t("settings.keyboardModelsAdd")}
