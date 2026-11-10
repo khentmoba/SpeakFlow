@@ -21,12 +21,14 @@ Write the README, documentation and release notes in concise English.
 From the repository root:
 
 ```bash
-bash scripts/release.sh 1.6.0 "Concise English release notes." --rebuild-engine
+bash scripts/release.sh 1.6.0 "Concise English release notes."
 ```
 
-The script updates all six version files, runs the local CI checks, builds the engine and installer, validates both archives, and prints the installer SHA-256. It then pushes a candidate commit and waits for that exact commit's `Frontend`, `Python`, `Rust` and `Application formal contracts` CI jobs. Every job must exist and succeed; skipped jobs block publication. Only after all succeed and `origin/main` still matches does it publish the annotated tag and GitHub Release.
+The script updates all six version files, runs quick local checks (lockfiles, Rust formatting, whitespace), and pushes the version bump as the candidate commit. While CI checks that exact commit, it builds the engine and installer, validates both archives, and prints the installer SHA-256. It then requires the candidate's `Frontend`, `Python`, `Rust` and `Application formal contracts` CI jobs to exist and succeed; skipped jobs block publication. Only after the build and CI both succeed and `origin/main` still matches does it publish the annotated tag and GitHub Release.
 
-Use `--reuse-engine` only when the packaged Python code, native libraries and dependencies are unchanged and the existing archive has been verified. Release builds reject missing or invalid engine archives. Development/debug builds can use a placeholder.
+The full checks run once, in CI. If the build or CI fails, the version bump stays on `main` without a tag. Fix the cause and rerun the same command: an unchanged version reuses the existing candidate commit.
+
+The default engine mode, `--auto-engine`, reuses `engine.tar.xz` only when `scripts/engine_fingerprint.py --check` matches the fingerprint stored beside it after its last build. The fingerprint covers the packaged Python sources, `pyproject.toml` and `uv.lock` (ignoring the app version), the engine build scripts and patches, and the R2T2 native manifests. Otherwise it rebuilds. `--rebuild-engine` always rebuilds. Use `--reuse-engine` only when the packaged Python code, native libraries and dependencies are unchanged and the existing archive has been verified. Release builds reject missing or invalid engine archives. Development/debug builds can use a placeholder.
 
 For a manual release, follow the same gates: [local checks](development.md#checks), verified engine and installer, candidate commit, matching remote CI, then tag and Release. For multiline notes, use `gh release create --notes-file <file> --verify-tag`. Do not publish a tag for a failed candidate.
 

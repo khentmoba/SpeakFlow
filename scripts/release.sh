@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # 在本机完成完整验证和打包，候选提交的 CI 通过后才创建 tag 和 GitHub Release。
 # 用法:
-#   bash scripts/release.sh 1.6.0 "Concise English release notes." [--rebuild-engine|--reuse-engine]
+#   bash scripts/release.sh 1.6.0 "Concise English release notes." [--auto-engine|--rebuild-engine|--reuse-engine]
 #   bash scripts/release.sh 1.6.0 --generate-notes --reuse-engine
 
 set -euo pipefail
 
 VERSION="${1:-}"
 RELEASE_NOTES="${2:---generate-notes}"
-ENGINE_MODE="${3:---rebuild-engine}"
+ENGINE_MODE="${3:---auto-engine}"
 TAG="${RELEASE_TAG:-${VERSION}}"
 RELEASE_BRANCH="${RELEASE_BRANCH:-main}"
 CI_WORKFLOW="${CI_WORKFLOW:-ci.yml}"
@@ -33,7 +33,7 @@ RELEASE_FILES=(
 )
 
 usage() {
-    echo "用法: bash scripts/release.sh <X.Y.Z> [发布说明|--generate-notes] [--rebuild-engine|--reuse-engine]"
+    echo "用法: bash scripts/release.sh <X.Y.Z> [发布说明|--generate-notes] [--auto-engine|--rebuild-engine|--reuse-engine]"
 }
 
 fail() {
@@ -51,7 +51,7 @@ preflight() {
         usage
         fail "版本号必须是 X.Y.Z"
     }
-    [[ "$ENGINE_MODE" == "--rebuild-engine" || "$ENGINE_MODE" == "--reuse-engine" ]] || {
+    [[ "$ENGINE_MODE" == "--auto-engine" || "$ENGINE_MODE" == "--rebuild-engine" || "$ENGINE_MODE" == "--reuse-engine" ]] || {
         usage
         fail "未知引擎模式: $ENGINE_MODE"
     }
@@ -141,34 +141,36 @@ PY
 }
 
 run_local_checks() {
-    echo "[2/9] 运行与 CI 一致的本地完整检查"
+    echo "[2/9] 运行快速本地检查"
     pnpm install --frozen-lockfile
-    pnpm check
-    pnpm audit --prod --audit-level high
-
     uv lock --check
     uv sync --frozen
-    uv run --no-sync python -m compileall -q scripts src-tauri/resources
-    uv run --no-sync python -m unittest discover -s src-tauri/resources -p "test_*.py"
-    uv run --no-sync python scripts/test_build_engine_atomicity.py
-    uv run --no-sync python scripts/test_release_ci.py
-    uv run --no-sync python scripts/test_generate_update_manifest.py
-
     cargo fmt --manifest-path "$CARGO_TOML" --all -- --check
-    cargo clippy --manifest-path "$CARGO_TOML" --all-targets --locked -- -D warnings
-    cargo test --manifest-path "$CARGO_TOML" --all-targets --locked -- \
-        --skip services::qwen_hotword_service::tests::hotword_correction_p95_stays_below_one_millisecond
-
     git diff --check
 }
 
+ENGINE_REBUILT=false
+
 prepare_engine() {
-    echo "[3/9] 准备 Python 引擎"
-    if [[ "$ENGINE_MODE" == "--rebuild-engine" ]]; then
-        uv run --locked python scripts/build_engine.py
-    else
-        echo "复用现有引擎归档；仅适用于 Python ASR 运行时代码未变化的补丁版本。"
-    fi
+    echo "[4/9] 准备 Python 引擎"
+    case "$ENGINE_MODE" in
+        --reuse-engine)
+            echo "按要求复用现有引擎归档。"
+            ;;
+        --auto-engine)
+            if [[ -s "$ENGINE_ARCHIVE" ]] && python scripts/engine_fingerprint.py --check; then
+                echo "引擎输入未变化，复用现有归档。"
+            else
+                echo "引擎输入已变化或缺少指纹，重新构建。"
+                uv run --locked python scripts/build_engine.py
+                ENGINE_REBUILT=true
+            fi
+            ;;
+        *)
+            uv run --locked python scripts/build_engine.py
+            ENGINE_REBUILT=true
+            ;;
+    esac
 }
 
 find_seven_zip() {
@@ -186,26 +188,33 @@ find_seven_zip() {
 }
 
 verify_engine_archive() {
-    echo "[4/9] 验证引擎归档"
+    echo "[5/9] 验证引擎归档"
     node scripts/verify_engine_archive.mjs "$ENGINE_ARCHIVE"
     local seven_zip
     seven_zip="$(find_seven_zip)"
     "$seven_zip" t "$ENGINE_ARCHIVE"
+    if [[ "$ENGINE_REBUILT" == true ]]; then
+        python scripts/engine_fingerprint.py --write
+    fi
 }
 
 build_installer() {
-    echo "[5/9] 在本机构建安装包"
+    echo "[6/9] 在本机构建安装包"
     pnpm tauri build
 }
 
 verify_installer() {
-    echo "[6/9] 验证安装包"
+    echo "[7/9] 验证安装包"
     [[ -f "$INSTALLER" && -s "$INSTALLER" ]] || fail "安装包不存在或为空: $INSTALLER"
     local seven_zip
     seven_zip="$(find_seven_zip)"
     "$seven_zip" t "$INSTALLER"
     sha256sum "$INSTALLER"
     python scripts/generate_update_manifest.py "$VERSION" "$TAG" "$INSTALLER"
+    [[ -z "$(git status --porcelain)" ]] || {
+        git status --short >&2
+        fail "构建产生了范围外改动或未跟踪文件"
+    }
 }
 
 assert_expected_release_diff() {
@@ -242,7 +251,7 @@ assert_expected_release_diff() {
 }
 
 commit_candidate() {
-    echo "[7/9] 创建并推送候选提交"
+    echo "[3/9] 创建并推送候选提交"
     assert_expected_release_diff
     git add -- "${RELEASE_FILES[@]}"
     git diff --cached --check
@@ -259,7 +268,7 @@ wait_for_ci() {
     local deadline=$((SECONDS + CI_DISCOVERY_TIMEOUT_SECONDS))
     local run_id=""
 
-    echo "[8/9] 等待候选提交 ${candidate_sha} 的 CI"
+    echo "等待候选提交 ${candidate_sha} 的 CI"
     while (( SECONDS < deadline )); do
         run_id="$(
             gh run list \
@@ -329,15 +338,27 @@ main() {
     echo "=== 准备发布 ${TAG} ==="
     update_versions
     run_local_checks
+    commit_candidate
+
+    local candidate_sha ci_log ci_pid
+    candidate_sha="$(git rev-parse HEAD)"
+    ci_log="$(mktemp)"
+    wait_for_ci "$candidate_sha" >"$ci_log" 2>&1 &
+    ci_pid=$!
+    trap 'kill "$ci_pid" 2>/dev/null || true' EXIT
+
     prepare_engine
     verify_engine_archive
     build_installer
     verify_installer
-    commit_candidate
 
-    local candidate_sha
-    candidate_sha="$(git rev-parse HEAD)"
-    wait_for_ci "$candidate_sha"
+    echo "[8/9] 等待候选提交 ${candidate_sha} 的 CI"
+    if ! wait "$ci_pid"; then
+        cat "$ci_log" >&2
+        fail "候选提交 ${candidate_sha} 的 CI 未通过"
+    fi
+    trap - EXIT
+    tail -n 20 "$ci_log"
     publish_release "$candidate_sha"
     echo "=== 发布完成: https://github.com/khentmoba/SpeakFlow/releases/tag/${TAG} ==="
 }
