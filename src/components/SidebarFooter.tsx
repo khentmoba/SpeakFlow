@@ -8,11 +8,13 @@ import type { AppView } from "./AppNavigation";
 interface SidebarFooterProps {
   onNavigate: (view: AppView) => void;
   updateAvailable?: boolean;
+  latestVersion?: string | null;
 }
 
 export default function SidebarFooter({
   onNavigate,
   updateAvailable = false,
+  latestVersion = null,
 }: SidebarFooterProps) {
   const { t } = useTranslation();
   const [version, setVersion] = useState("");
@@ -62,7 +64,9 @@ export default function SidebarFooter({
           className="app-sidebar-link"
           onClick={() => onNavigate("updates")}
         >
-          {updateAvailable ? t("settings.newVersionAvailable", { version: "" }).trim() : t("settings.checkUpdate")}
+          {updateAvailable && latestVersion
+            ? t("settings.newVersionAvailable", { version: latestVersion })
+            : t("settings.checkUpdate")}
         </button>
       </div>
     </footer>

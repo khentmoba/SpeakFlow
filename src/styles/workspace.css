@@ -434,10 +434,12 @@
   .app-sidebar {
     width: 52px;
     padding: 8px 4px;
+    overflow: hidden;
   }
   .app-sidebar-name,
-  .app-nav-item span,
+  .app-nav-item span:not(.update-nav-dot),
   .app-sidebar-status-text,
+  .app-sidebar-key,
   .app-sidebar-meta {
     display: none;
   }
@@ -448,6 +450,12 @@
   .app-nav-item {
     justify-content: center;
     padding: 0;
+  }
+  .app-nav-item .update-nav-dot {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    margin-left: 0;
   }
   .app-sidebar-status {
     justify-content: center;

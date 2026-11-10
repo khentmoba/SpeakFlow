@@ -1039,7 +1039,7 @@ h2.signal-label { margin: 0; }
 .settings-section,
 .settings-group {
   border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-sm);
 }
 
 @media (max-width: 900px) {
@@ -1184,12 +1184,12 @@ h2.signal-label { margin: 0; }
 }
 .settings-nav-tab:hover {
   color: var(--color-text-primary);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-bg-tertiary);
 }
 .settings-nav-tab[data-active="true"] {
-  color: #FFFFFF;
-  background: rgba(255, 176, 32, 0.12);
-  border-color: rgba(255, 176, 32, 0.45);
+  color: var(--color-text-primary);
+  background: var(--color-accent-subtle);
+  border-color: var(--color-border-accent);
 }
 .settings-nav-index {
   font-family: var(--font-mono);

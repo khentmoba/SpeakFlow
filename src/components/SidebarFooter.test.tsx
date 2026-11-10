@@ -32,6 +32,14 @@ describe("SidebarFooter", () => {
     expect(screen.getByRole("button", { name: "Check for Updates" })).toBeInTheDocument();
   });
 
+  it("renders new version message when an update is available", async () => {
+    await act(async () => {
+      render(<SidebarFooter onNavigate={vi.fn()} updateAvailable latestVersion="1.3.0" />);
+    });
+
+    expect(screen.getByRole("button", { name: "New version v1.3.0 available." })).toBeInTheDocument();
+  });
+
   it("uses valid en i18n strings for update actions", () => {
     expect(en.settings.checkUpdate).toBe("Check for Updates");
     expect(en.settings.newVersionAvailable).toContain("{{version}}");

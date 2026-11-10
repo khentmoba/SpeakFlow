@@ -147,6 +147,7 @@ function AppWorkspace() {
           <SidebarFooter
             onNavigate={navigateTo}
             updateAvailable={Boolean(latestAvailableVersion)}
+            latestVersion={latestAvailableVersion}
           />
         </aside>
         <div className="app-workspace" id="main-content" tabIndex={-1}>
