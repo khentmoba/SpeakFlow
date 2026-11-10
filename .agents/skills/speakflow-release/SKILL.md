@@ -31,9 +31,10 @@ the source of truth for release gates, signing and the updater endpoint.
   generating a replacement would break trust for installed clients. If the key
   is unavailable, stop and ask the maintainer to provision it securely outside
   the repository.
-- Rebuild the engine by default. Reuse only with evidence that the archive matches
-  unchanged packaged Python code, native libraries and dependencies. If R2T2
-  native inputs changed, follow `../../../docs/r2t2-native.md` first.
+- Use the default engine mode, `--auto-engine`: it rebuilds unless the stored
+  input fingerprint matches (`python scripts/engine_fingerprint.py --check`).
+  Pass `--rebuild-engine` when in doubt. If R2T2 native inputs changed, follow
+  `../../../docs/r2t2-native.md` first.
 
 Done when the version, notes, candidate checkout and engine mode are established,
 and the release can run without bypassing a preflight check.
@@ -43,12 +44,14 @@ and the release can run without bypassing a preflight check.
 Run the existing script with the confirmed version and notes:
 
 ```bash
-bash scripts/release.sh <X.Y.Z> "<English release notes>" --rebuild-engine
+bash scripts/release.sh <X.Y.Z> "<English release notes>"
 ```
 
-Use `--reuse-engine` only when established in step 1. This script builds locally,
-updates version metadata, validates the artifacts, pushes the candidate commit,
-waits for that exact commit's required CI jobs, then publishes the tag and assets.
+Add an engine flag only when step 1 established one. The script updates version
+metadata, pushes the candidate commit, builds and validates the artifacts locally
+while CI checks that exact commit, requires every CI job to pass, then publishes
+the tag and assets. The candidate commit reaches `main` before the build, so a
+failed run leaves an untagged version bump; rerunning the same version reuses it.
 A tag push or workflow dispatch alone does not build or publish this app.
 
 Stop on any failure and report the last successful stage, candidate SHA, CI URL

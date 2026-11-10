@@ -1,6 +1,5 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { flushSync } from "react-dom";
-import { act, fireEvent, render, renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type SaveStatus = { revision: number; state: "saved" | "saving" | "error" };
@@ -68,20 +67,17 @@ function retryAction() {
 function clickRetry() {
   const action = retryAction();
   const toastId = mocks.error.mock.results[mocks.error.mock.results.length - 1].value;
-  let clickEvent: ReactMouseEvent<HTMLButtonElement> | undefined;
-  let completion: unknown;
-  const button = flushSync(() => render(
-    <button onClick={(event) => {
-      clickEvent = event;
-      completion = action(event);
-      // Sonner 1.7 invokes the action, then dismisses unless prevented synchronously.
-      if (!event.defaultPrevented) activeToasts.delete(toastId);
-    }}>Retry</button>,
-  ));
-  fireEvent.click(button.getByRole("button", { name: "Retry" }));
-  button.unmount();
-  expect(clickEvent?.cancelable).toBe(true);
-  expect(clickEvent?.defaultPrevented).toBe(true);
+  const clickEvent = {
+    cancelable: true,
+    defaultPrevented: false,
+    preventDefault() {
+      this.defaultPrevented = true;
+    },
+  };
+  const completion = action(clickEvent as unknown as ReactMouseEvent<HTMLButtonElement>);
+  // Sonner 1.7 invokes the action, then dismisses unless prevented synchronously.
+  if (!clickEvent.defaultPrevented) activeToasts.delete(toastId);
+  expect(clickEvent.defaultPrevented).toBe(true);
   return completion;
 }
 

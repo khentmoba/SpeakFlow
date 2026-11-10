@@ -102,7 +102,9 @@ CI also runs the [TLA+ and Lean contracts](../formal/README.md), including verif
 regressions and intentional counterexamples, and uploads the proof logs. The
 release gate requires this job to succeed for the exact candidate commit.
 Multi-command PowerShell steps stop on any native command failure. Rust caches
-use OS, compiler, lockfile and source hashes; cache hits still run every check.
+key on OS, compiler and lockfile; cache hits still run every check. The formal job
+caches TLC results and reruns only models whose source, config or TLC hash changed;
+negative runs and Lean always run.
 
 ## Troubleshooting
 

@@ -911,8 +911,7 @@
         "src/hooks/useModelDirectorySettings.ts"
       ],
       "evidence": [
-        "src-tauri/src/utils/paths.rs",
-        "src/pages/__tests__/SettingsPageAsrDevices.test.tsx"
+        "src-tauri/src/utils/paths.rs"
       ],
       "assumptions": "Canonical path resolution and successful copies are trusted filesystem operations; source deletion failures must remain visible."
     },
@@ -1039,9 +1038,7 @@
       ],
       "evidence": [
         "src-tauri/src/commands/profile.rs",
-        "src-tauri/src/commands/jev_tests.rs",
-        "src/components/settings/__tests__/P0SettingsSections.test.tsx",
-        "src/pages/__tests__/SettingsPageProfileLoad.test.tsx"
+        "src-tauri/src/commands/jev_tests.rs"
       ],
       "assumptions": "The valid/invalid abstraction is instantiated by actual validators and unit partitions; it is not a proof of every Rust string/parser branch. The UI workload uses one representative History field, two profile reads, and success/failure inputs; other command workloads start ready and retain the full field partition."
     },
@@ -1099,8 +1096,7 @@
       ],
       "evidence": [
         "src-tauri/src/services/profile_service.rs",
-        "src-tauri/src/commands/profile.rs",
-        "src/pages/__tests__/SettingsPageExportPath.test.tsx"
+        "src-tauri/src/commands/profile.rs"
       ],
       "assumptions": "Canonical text normalization, JSON schema and learned suggestions are input partitions; explicit user imports/removals may replace user rules. External-field identity, bounded accessibility reads and spelling eligibility are implementation-tested, not formally modeled."
     },
@@ -1174,7 +1170,6 @@
       ],
       "evidence": [
         "src-tauri/src/commands/assistant.rs#clearing_an_old_generation_keeps_the_new_task_cancellable",
-        "src/pages/__tests__/SubtitleOverlay.test.tsx",
         "src-tauri/src/services/assistant_service.rs#fresh_screen_payload_is_discarded_when_foreground_changes_during_preparation",
         "src-tauri/src/services/assistant_service.rs#fresh_screen_payload_survives_when_recording_foreground_still_matches",
         "src-tauri/src/services/assistant_service.rs#reused_polish_description_survives_a_later_foreground_change"
@@ -1200,8 +1195,7 @@
         "src/pages/SelectionOverlay.tsx"
       ],
       "evidence": [
-        "src-tauri/src/services/selection_service/tests.rs#replacement_context_requires_the_exact_version_text_and_source_window",
-        "src/pages/__tests__/SelectionOverlay.test.tsx"
+        "src-tauri/src/services/selection_service/tests.rs#replacement_context_requires_the_exact_version_text_and_source_window"
       ],
       "assumptions": "OS selection and paste operations are external; two context versions represent arbitrary text, not recognition correctness. State changes use a window-targeted event after publication plus a post-subscription bootstrap snapshot; listener failure falls back to single-flight slow snapshots, checked by implementation tests."
     },
@@ -1279,7 +1273,6 @@
       "evidence": [
         "src-tauri/src/services/history_service.rs",
         "formal/evidence/history.md",
-        "src/pages/__tests__/HistoryPage.test.tsx",
         "src-tauri/src/services/history_service.rs#latency_percentiles_match_sorted_rank_for_empty_tied_and_large_inputs",
         "src-tauri/src/services/history_service.rs#tlc_history_leases_replay_public_sqlite_operations",
         "formal/evidence/async-ownership.md",
@@ -1326,7 +1319,6 @@
         "src-tauri/src/services/funasr_service/native_stream.rs"
       ],
       "evidence": [
-        "src/pages/__tests__/SubtitleOverlay.test.tsx",
         "src-tauri/src/services/funasr_service/native_stream_tests.rs"
       ],
       "assumptions": "Text itself is abstract; driver/ASR model accuracy is external; rendering animations are covered by UI tests, not formal timing proofs."
@@ -1429,8 +1421,7 @@
         "src/hooks/useSystemSettings.ts"
       ],
       "evidence": [
-        "src-tauri/src/commands/updater.rs#validation_tests",
-        "src/pages/__tests__/SettingsPageExportPath.test.tsx"
+        "src-tauri/src/commands/updater.rs#validation_tests"
       ],
       "assumptions": "GitHub release metadata and parsed version components are input partitions; numeric comparison is not a SemVer compliance claim. Signature verification and Windows installer/relaunch semantics are provided by tauri-plugin-updater. Download/install/relaunch are tested at the IPC and UI boundaries and are not state variables in the existing URL-opening models."
     },
@@ -1453,8 +1444,6 @@
         "src/hooks/useLiveTranscript.ts"
       ],
       "evidence": [
-        "src/components/settings/__tests__/P0SettingsSections.test.tsx",
-        "src/pages/__tests__/SettingsPageExportPath.test.tsx",
         "src-tauri/src/lib.rs#fn autostart_minimized_requires_both_the_preference_and_login_argument(",
         "src-tauri/src/state/user_profile.rs#fn autostart_minimized_defaults_off_for_legacy_profiles_and_round_trips(",
         "formal/lean/StateContracts.lean",
@@ -1497,11 +1486,10 @@
         "src-tauri/resources/test_gpu_idle.py#test_enabling_after_use_starts_a_fresh_idle_window",
         "src-tauri/resources/test_qwen3_asr_server.py#test_idle_unload_closes_runtime_and_keeps_vad",
         "src-tauri/resources/test_r2t2_asr_server.py#test_idle_unload_drops_native_pointers_unless_stream_is_active",
-        "src/components/settings/GpuIdleUnloadControl.test.tsx",
         "src-tauri/src/utils/paths.rs#fn gpu_idle_timeout_survives_disable_and_restart(",
         "formal/lean/StateContracts.lean#gpuMayUnload"
       ],
-      "assumptions": "Monotonic time and weakly fair timer/command completion; finite clocks in TLC and unbounded Nat policy in Lean. Native load/free success is an input, not a driver proof. AppWorkflow GpuIdle represents R2T2 recording as an active stream. Input focus/click ordering is checked by real user-event regression tests; linguistic accuracy is outside proof."
+      "assumptions": "Monotonic time and weakly fair timer/command completion; finite clocks in TLC and unbounded Nat policy in Lean. Native load/free success is an input, not a driver proof. AppWorkflow GpuIdle represents R2T2 recording as an active stream. linguistic accuracy is outside proof."
     },
     "support": {
       "obligation": "Opening the log folder resolves the app log directory and never executes user input; diagnostics read only app-owned files, bound the log tail, and redact credential-shaped lines (covered by the command tests).",

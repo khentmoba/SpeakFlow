@@ -1,7 +1,9 @@
 """The formal gate must distinguish checked properties from reached actions."""
 
-import tempfile
+import hashlib
+import json
 import re
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -12,9 +14,10 @@ import check_formal
 class ToolPinTests(unittest.TestCase):
     def test_ci_and_verifier_require_the_same_tlc_binary(self):
         workflow = (check_formal.ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        pins = [re.search(r"[0-9a-f]{64}", line).group(0)
+        pins = [match.group(0)
                 for line in workflow.splitlines()
-                if '"$RUNNER_TEMP/tla2tools.jar" | sha256sum --check' in line]
+                if '"$RUNNER_TEMP/tla2tools.jar" | sha256sum --check' in line
+                and (match := re.search(r"[0-9a-f]{64}", line))]
         self.assertEqual(pins, [check_formal.TLC_SHA256])
 
 
@@ -121,6 +124,39 @@ class ModelBindingTests(unittest.TestCase):
                     r"unexercised/unasserted obligations in Fixture: \['ReadSnapshot'\]",
                 ):
                     check_formal.check_inventory(manifest)
+
+    def test_reusable_requires_matching_source_config_tlc_and_pass_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "Fixture.tla"
+            config = root / "Fixture.cfg"
+            source.write_text("Spec == TRUE\n", encoding="utf-8")
+            config.write_text("SPECIFICATION Spec\n", encoding="utf-8")
+            record = {
+                "model": "Fixture",
+                "config": "Fixture.cfg",
+                "distinct": 1,
+                "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                "config_sha256": hashlib.sha256(config.read_bytes()).hexdigest(),
+                "tlc_sha256": check_formal.TLC_SHA256,
+                "expected_violation": None,
+            }
+            record_path = root / "result.json"
+            log_path = root / "tlc.log"
+            record_path.write_text(json.dumps(record), encoding="utf-8")
+            log_path.write_text("Model checking completed. No error has been found.\n", encoding="utf-8")
+            self.assertEqual(check_formal.reusable(record_path, source, config), record)
+
+            source.write_text("Spec == FALSE\n", encoding="utf-8")
+            self.assertIsNone(check_formal.reusable(record_path, source, config))
+            source.write_text("Spec == TRUE\n", encoding="utf-8")
+
+            for mutated in (
+                {**record, "tlc_sha256": "0" * 64},
+                {**record, "expected_violation": "Safety"},
+            ):
+                record_path.write_text(json.dumps(mutated), encoding="utf-8")
+                self.assertIsNone(check_formal.reusable(record_path, source, config))
 
 
 if __name__ == "__main__":

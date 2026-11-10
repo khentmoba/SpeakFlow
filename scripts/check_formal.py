@@ -3,14 +3,17 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TLC_SHA256 = "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
+MAX_RAM_PERCENT = 25
 
 
 def tla_code(source: str) -> str:
@@ -114,13 +117,18 @@ def check_inventory(manifest: dict) -> None:
 
 
 def tlc(jar: Path, model: str, config: Path, source: Path, directory: Path,
-        expected_violation: str | None = None) -> dict:
+        expected_violation: str | None = None, workers: int = 2) -> dict:
     directory.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run([
-        "java", "-XX:+UseParallelGC", "-jar", str(jar), "-workers", "2",
-        "-coverage", "1",
-        "-metadir", str(directory / "states"), "-config", str(config), str(source),
-    ], cwd=source.parent, text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=480)
+    with tempfile.TemporaryDirectory(prefix="speak-flow-tlc-") as scratch:
+        result = subprocess.run([
+            "java", "-XX:+UseParallelGC", f"-XX:MaxRAMPercentage={MAX_RAM_PERCENT}",
+            # TLC unpacks standard modules (e.g. Naturals.tla) into java.io.tmpdir
+            # under fixed names; sharing the dir across parallel runs corrupts them.
+            f"-Djava.io.tmpdir={scratch}",
+            "-jar", str(jar), "-workers", str(workers),
+            "-coverage", "1",
+            "-metadir", str(Path(scratch) / "states"), "-config", str(config), str(source),
+        ], cwd=source.parent, text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=480)
     (directory / "tlc.log").write_text(result.stdout + result.stderr, encoding="utf-8")
     if expected_violation:
         if result.returncode != 12 or f"Invariant {expected_violation} is violated" not in result.stdout:
@@ -133,9 +141,68 @@ def tlc(jar: Path, model: str, config: Path, source: Path, directory: Path,
     record = {"model": model, "config": config.name, "distinct": count,
               "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
               "config_sha256": hashlib.sha256(config.read_bytes()).hexdigest(),
+              "tlc_sha256": TLC_SHA256,
               "expected_violation": expected_violation}
     (directory / "result.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     return record
+
+
+def run_all(tasks: list, jobs: int) -> list:
+    """Run tasks concurrently, keep their order, and stop scheduling after the first failure."""
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        futures = [pool.submit(task) for task in tasks]
+        done, _ = wait(futures, return_when=FIRST_EXCEPTION)
+        failed = next((future for future in done if future.exception()), None)
+        if failed:
+            pool.shutdown(cancel_futures=True)
+            failed.result()
+        return [future.result() for future in futures]
+
+
+def reusable(record_path: Path, source: Path, config: Path) -> dict | None:
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        output = (record_path.parent / "tlc.log").read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return None
+    if (isinstance(record, dict)
+            and record.get("tlc_sha256") == TLC_SHA256
+            and record.get("expected_violation") is None
+            and record.get("source_sha256") == hashlib.sha256(source.read_bytes()).hexdigest()
+            and record.get("config_sha256") == hashlib.sha256(config.read_bytes()).hexdigest()
+            and "Model checking completed. No error has been found." in output):
+        return record
+    return None
+
+
+def positive_run(jar: Path, model: str, config: str, logs: Path, reuse: bool) -> dict:
+    source = ROOT / "formal" / f"{model}.tla"
+    cfg = ROOT / "formal" / config
+    directory = logs / Path(config).stem
+    record = reusable(directory / "result.json", source, cfg) if reuse else None
+    if record:
+        print(f"REUSE verified {model}/{config}: {record['distinct']} distinct states", flush=True)
+        return record
+    return tlc(jar, model, cfg, source, directory)
+
+
+def negative_run(jar: Path, case: dict, logs: Path) -> dict:
+    model = case["model"]
+    source = ROOT / "formal" / f"{model}.tla"
+    config = ROOT / "formal" / case.get("config", f"{model}.cfg")
+    with tempfile.TemporaryDirectory(prefix="speak-flow-negative-") as temporary:
+        if "replace" in case:
+            original, replacement = case["replace"]
+            content = source.read_text(encoding="utf-8")
+            if content.count(original) != 1:
+                raise ValueError(f"mutation target changed: {case['name']}")
+            source = Path(temporary) / f"{model}.tla"
+            source.write_text(content.replace(original, replacement), encoding="utf-8")
+            # TLC 1.7.4 resolves configs beside the module, including mutations.
+            local_config = Path(temporary) / config.name
+            local_config.write_bytes(config.read_bytes())
+            config = local_config
+        return tlc(jar, model, config, source, logs / f"negative-{case['name']}", case["invariant"])
 
 
 def check_static_model_bindings(manifest: dict, model: str) -> tuple[set[str], set[str], set[str]]:
@@ -190,9 +257,17 @@ def main() -> int:
     parser.add_argument("--logs", type=Path)
     parser.add_argument("--negative-only", action="store_true")
     parser.add_argument("--reuse-completed", action="store_true",
-                        help="Reuse only successful logs with matching source/config hashes")
+                        help="Reuse only successful logs with matching source/config/TLC hashes")
+    parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) // 2),
+                        help="TLC runs in parallel; each uses two workers")
     args = parser.parse_args()
-    manifest = json.loads((ROOT / "formal/verification.json").read_text(encoding="utf-8"))
+    global MAX_RAM_PERCENT
+    # Parallel JVMs share the runner's memory; JVM default is 25% each.
+    MAX_RAM_PERCENT = max(10, min(25, 75 // max(1, args.jobs)))
+    try:
+        manifest = json.loads((ROOT / "formal/verification.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"cannot read formal/verification.json: {error}") from error
     check_inventory(manifest)
     traces = subprocess.run([sys.executable, "scripts/generate_async_ownership_traces.py", "--check"],
                             cwd=ROOT, text=True, capture_output=True, timeout=30)
@@ -215,23 +290,13 @@ def main() -> int:
     logs.mkdir(parents=True, exist_ok=True)
     results = []
     if not args.negative_only:
-        for model, configs in manifest["runs"].items():
-            for config in configs:
-                source = ROOT / "formal" / f"{model}.tla"
-                cfg = ROOT / "formal" / config
-                directory = logs / Path(config).stem
-                record_path = directory / "result.json"
-                if args.reuse_completed and record_path.exists():
-                    record = json.loads(record_path.read_text(encoding="utf-8"))
-                    output = (directory / "tlc.log").read_text(encoding="utf-8")
-                    if (record["source_sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
-                            and record["config_sha256"] == hashlib.sha256(cfg.read_bytes()).hexdigest()
-                            and "Model checking completed. No error has been found." in output):
-                        results.append(record)
-                        print(f"REUSE verified {model}/{config}: {record['distinct']} distinct states", flush=True)
-                        continue
-                results.append(tlc(jar, model, ROOT / "formal" / config,
-                                   ROOT / "formal" / f"{model}.tla", logs / Path(config).stem))
+        runs = [(model, config) for model, configs in manifest["runs"].items() for config in configs]
+        results += run_all([
+            (lambda model=model, config=config:
+                positive_run(jar, model, config, logs, args.reuse_completed))
+            for model, config in runs
+        ], args.jobs)
+        for model in manifest["runs"]:
             check_model_bindings(manifest, model, logs)
         coverage = subprocess.run([
             sys.executable, "scripts/check_tla_action_coverage.py",
@@ -249,23 +314,9 @@ def main() -> int:
         if lean.returncode:
             raise ValueError(f"Lean did not pass: {logs / 'lean.log'}")
         print("PASS Lean StateContracts", flush=True)
-    for case in manifest["negative"]:
-        model = case["model"]
-        source = ROOT / "formal" / f"{model}.tla"
-        config = ROOT / "formal" / case.get("config", f"{model}.cfg")
-        with tempfile.TemporaryDirectory(prefix="speak-flow-negative-") as temporary:
-            if "replace" in case:
-                original, replacement = case["replace"]
-                content = source.read_text(encoding="utf-8")
-                if content.count(original) != 1:
-                    raise ValueError(f"mutation target changed: {case['name']}")
-                source = Path(temporary) / f"{model}.tla"
-                source.write_text(content.replace(original, replacement), encoding="utf-8")
-                # TLC 1.7.4 resolves configs beside the module, including mutations.
-                local_config = Path(temporary) / config.name
-                local_config.write_bytes(config.read_bytes())
-                config = local_config
-            results.append(tlc(jar, model, config, source, logs / f"negative-{case['name']}", case["invariant"]))
+    results += run_all([
+        (lambda case=case: negative_run(jar, case, logs)) for case in manifest["negative"]
+    ], args.jobs)
     summary = "negative-summary.json" if args.negative_only else "summary.json"
     (logs / summary).write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     return 0

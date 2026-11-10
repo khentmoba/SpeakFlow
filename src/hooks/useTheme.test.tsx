@@ -37,7 +37,7 @@ function receiveStoredTheme(value: string | null) {
 function expectDOM(dark: boolean) {
   expect(document.documentElement.dataset.theme).toBe(dark ? "dark" : "light");
   expect(document.documentElement.classList.contains("dark")).toBe(dark);
-  expect(document.documentElement).not.toHaveClass("no-transition");
+  expect(document.documentElement.classList.contains("no-transition")).toBe(false);
 }
 
 beforeEach(() => {
