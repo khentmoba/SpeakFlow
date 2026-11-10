@@ -439,7 +439,7 @@
   .app-sidebar-name,
   .app-nav-item span:not(.update-nav-dot),
   .app-sidebar-status-text,
-  .app-sidebar-key,
+  .app-sidebar-status .app-sidebar-key,
   .app-sidebar-meta {
     display: none;
   }
