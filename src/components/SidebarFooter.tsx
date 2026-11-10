@@ -1,7 +1,4 @@
-import { useState, useEffect } from "react";
-import { useTranslation } from "react-i18next";
-import { getVersion } from "@tauri-apps/api/app";
-import { useRecordingContext } from "@/contexts/RecordingContext";
+import { useSidebarStatus } from "@/hooks/useSidebarStatus";
 import Kbd from "./Kbd";
 import type { AppView } from "./AppNavigation";
 
@@ -16,42 +13,11 @@ export default function SidebarFooter({
   updateAvailable = false,
   latestVersion = null,
 }: SidebarFooterProps) {
-  const { t } = useTranslation();
-  const [version, setVersion] = useState("");
-
-  useEffect(() => {
-    void getVersion().then(setVersion).catch(() => {});
-  }, []);
-
-  const {
-    isRecording, isStarting, isProcessing, isReady, stage,
-    hotkeyDisplay,
-  } = useRecordingContext();
-
-  const state = isRecording || isStarting
-    ? "recording"
-    : isProcessing
-      ? "processing"
-      : isReady
-        ? "ready"
-        : stage === "error"
-          ? "error"
-          : "idle";
-
-  const label = isRecording
-    ? t("main.statusListening")
-    : isStarting
-      ? t("main.statusConnecting")
-      : isProcessing
-        ? t("main.statusProcessing")
-        : isReady
-          ? t("main.statusReady")
-          : stage === "error"
-            ? t("main.statusError")
-            : t("main.statusPreparing");
+  const { version, state, label, hotkeyDisplay, updateLabel, statusBarLabel } =
+    useSidebarStatus(updateAvailable, latestVersion);
 
   return (
-    <footer className="app-sidebar-footer" aria-label={t("statusBar.label")}>
+    <footer className="app-sidebar-footer" aria-label={statusBarLabel}>
       <div className="app-sidebar-status">
         <span className="status-dot" data-state={state} aria-hidden="true" />
         <span className="app-sidebar-status-text">{label}</span>
@@ -64,9 +30,7 @@ export default function SidebarFooter({
           className="app-sidebar-link"
           onClick={() => onNavigate("updates")}
         >
-          {updateAvailable && latestVersion
-            ? t("settings.newVersionAvailable", { version: latestVersion })
-            : t("settings.checkUpdate")}
+          {updateLabel}
         </button>
       </div>
     </footer>

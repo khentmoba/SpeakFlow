@@ -4,14 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 export function handleWindowDrag(e: React.MouseEvent) {
   if (e.button !== 0) return;
   const target = e.target as HTMLElement;
-  if (
-    target.closest("button") ||
-    target.closest("input") ||
-    target.closest("select") ||
-    target.closest("textarea") ||
-    target.closest("a") ||
-    target.closest("[data-no-drag]")
-  ) {
+  if (target.closest("button,input,select,textarea,a,[data-no-drag]")) {
     return;
   }
   e.preventDefault();
