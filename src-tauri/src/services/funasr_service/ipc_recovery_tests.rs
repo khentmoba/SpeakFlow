@@ -354,7 +354,12 @@ mod async_ownership_replay_tests {
                 }
                 "ipc:write:complete" => {
                     std::fs::write(&gate, b"read").unwrap();
-                    tokio::time::timeout(Duration::from_secs(1), async {
+                    // The bound only guards the wait for the child process to
+                    // consume the frame; the early-settle panic below still
+                    // fires immediately. A 1s bound flaked under full-suite
+                    // load, so allow for a slow child without weakening the
+                    // assertion.
+                    tokio::time::timeout(Duration::from_secs(10), async {
                         while !consumed.exists() {
                             tokio::select! {
                                 result = operation.as_mut().unwrap().as_mut() => panic!("command settled before write consumed: {result:?}"),

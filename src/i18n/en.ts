@@ -1009,7 +1009,7 @@ const en = {
     keyboardModelsAdd: "Add layout rule",
     scriptingOrder: "Global transformations",
     scriptingOrderHint: "These run in order on every dictation, before any app-specific transforms.",
-    scriptingOrderEmpty: "No global transformations. Add one to run it on every dictation.",
+    scriptingOrderEmpty: "No global transformations. Declare one in speakflow.config.ts to run it on every dictation.",
     scriptingOrderUp: "Move up",
     scriptingOrderDown: "Move down",
     scriptingOrderRemove: "Remove transformation",

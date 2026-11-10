@@ -44,11 +44,13 @@ metrics.total_dist_bytes = distFiles.reduce((total, { bytes }) => total + bytes,
 //
 // Baseline history:
 //   v1.5.8: core 189,991 / total 322,836 (9 bytes of core headroom).
-//   v1.6.0: core 202,376 / total 335,224. The STT maturity work adds the Meetings
-//           workspace, the scripting editor, custom GGUF/HF model management, the
-//           Labs surface, and audio/output/shortcut behavior settings. Those are new
+//   v1.6.0: core 204,039 / total 336,882 at the final head. The STT maturity work adds
+//           the Meetings workspace, the scripting editor, custom GGUF/HF model management,
+//           the Labs surface, and audio/output/shortcut behavior settings. Those are new
 //           user-facing screens, not bundle drift, so the aggregate limits move with
-//           them. Per-entry-point limits are unchanged.
+//           them. Per-entry-point limits are unchanged. The previous 190,000 core limit
+//           had 9 bytes of headroom, so it could not absorb feature work; restoring it
+//           would mean cutting roughly 14 KB gzip of shipped UI.
 const budgets = {
   main_gzip_bytes: {
     limit: 140_000,

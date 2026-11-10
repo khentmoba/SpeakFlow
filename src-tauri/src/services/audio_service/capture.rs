@@ -167,6 +167,16 @@ pub fn start_preroll_if_eligible(
                 std::thread::sleep(std::time::Duration::from_millis(40));
             }
             drop(stream);
+            // An unexpected close (unplug, exclusive-mode conflict, resume from
+            // sleep) leaves this worker registered but dead. Drop the slot so a
+            // later start rebuilds the ring instead of early-returning on it.
+            let mut slot = PRE_ROLL_WORKER.lock();
+            let is_self = slot
+                .as_ref()
+                .is_some_and(|worker| Arc::ptr_eq(&worker.stop_flag, &thread_stop));
+            if is_self {
+                slot.take();
+            }
         }) {
         Ok(h) => h,
         Err(err) => {

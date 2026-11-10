@@ -655,11 +655,11 @@ pub async fn set_input_device(
     name: Option<String>,
 ) -> Result<(), AppError> {
     let previous = state.selected_input_device_name();
-    state.set_selected_input_device_name(name.clone());
-    // Only tear down the ring when the device actually changed. The frontend
-    // re-sends the stored device on every launch, and rebuilding a healthy
-    // ring there leaves a window where a dictation gets no pre-roll.
-    if previous != name {
+    state.set_selected_input_device_name(name);
+    let current = state.selected_input_device_name();
+    // Compare the stored (normalized) values, so a padded or empty name does
+    // not trigger the rebuild this guard exists to skip.
+    if previous != current {
         audio_service::stop_preroll();
     }
     audio_service::restart_idle_preroll_if_eligible(state.inner());
