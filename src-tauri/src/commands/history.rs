@@ -26,6 +26,21 @@ pub async fn get_transcription_history_stats() -> Result<history_service::Histor
 }
 
 #[tauri::command]
+pub async fn search_transcripts(
+    query: String,
+    kind: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<crate::services::search_service::SearchDocument>, AppError> {
+    crate::services::search_service::search_all(
+        &query,
+        kind.as_deref().unwrap_or("all"),
+        limit.unwrap_or(40),
+    )
+    .await
+    .map_err(AppError::Other)
+}
+
+#[tauri::command]
 pub async fn delete_transcription_history(
     app_handle: tauri::AppHandle,
     id: i64,
@@ -226,6 +241,8 @@ async fn reprocess_stored_history(
             },
             translation_target: resolved.translation_target.clone(),
             custom_prompt: resolved.custom_prompt.clone(),
+            tone_mode_override: resolved.tone_mode.clone(),
+            app_vocabulary: resolved.vocabulary.clone(),
             screen_context_enabled: Some(false),
             screen_context_explicit: false,
             screen_context_foreground: None,

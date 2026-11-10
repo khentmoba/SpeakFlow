@@ -6,6 +6,7 @@ import {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
   type FormEvent,
   type KeyboardEvent,
   type MouseEvent,
@@ -28,7 +29,7 @@ import {
   type RecordingSnapshot,
 } from "@/api/tauri";
 import { readLocalStorage } from "@/lib/storage";
-import { THEME_STORAGE_KEY } from "@/lib/constants";
+import { THEME_STORAGE_KEY, LABS_FAILURE_NOTICES_KEY } from "@/lib/constants";
 import { useSmoothText, segmentGraphemes } from "@/hooks/useSmoothText";
 import "@/i18n";
 import "../styles/theme.css";
@@ -846,8 +847,13 @@ export default function SubtitleOverlay() {
       else { hintText = streamTokens > 0 ? t("subtitle.polishingWithTokens", { tokens: streamTokens }) : t("subtitle.polishing"); }
       break;
   }
-  const outcomeText = outcome ? t(`recording.outcome.${outcome}`) : null;
-
+  // The subtitle window cannot call `get_user_profile` (see ipc_policy.rs), so
+  // the Labs toggle is mirrored through shared localStorage instead.
+  const failureNoticesEnabled = useMemo(
+    () => readLocalStorage(LABS_FAILURE_NOTICES_KEY) !== "false",
+    [outcome],
+  );
+  const outcomeText = outcome && failureNoticesEnabled ? t(`recording.outcome.${outcome}`) : null;
   const closeAssistantOverlay = useCallback(() => {
     clearFadeTimer();
     setFadingOut(false);

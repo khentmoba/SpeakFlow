@@ -155,6 +155,62 @@ pub(super) fn profile_hot_words(state: &AppState) -> Option<Vec<String>> {
     (!words.is_empty()).then_some(words)
 }
 
+#[allow(dead_code)]
+pub(super) fn profile_hot_words_for_app(
+    state: &AppState,
+    process_name: Option<&str>,
+    window_title: Option<&str>,
+) -> Option<Vec<String>> {
+    let words = state.with_profile(|p| match (process_name, window_title) {
+        (Some(proc), Some(title)) => {
+            let domain = crate::services::browser_domain::detect_active_browser_domain(proc, title);
+            let resolved = p.resolve_app_profile_with_domain(proc, title, domain.as_deref());
+            p.get_hot_word_texts_for_app(&resolved.vocabulary, 100)
+        }
+        _ => p.get_hot_word_texts(100),
+    });
+    (!words.is_empty()).then_some(words)
+}
+
+pub async fn diarize_wav_bytes(
+    state: &AppState,
+    audio_data: Vec<u8>,
+    app_handle: &tauri::AppHandle,
+) -> Result<Vec<super::DiarizeSegment>, AppError> {
+    if !state.is_funasr_ready() {
+        return Ok(Vec::new());
+    }
+    let engine = paths::read_engine_config();
+    if paths::is_online_engine(&engine) || !paths::is_transcribe_cpp_engine(&engine) {
+        return Ok(Vec::new());
+    }
+    let _asr_guard = state.engine.native_asr_owner.lock().await;
+    let temp_file = create_temp_audio_path();
+    tokio::fs::write(&temp_file, &audio_data)
+        .await
+        .map_err(|e| AppError::Asr(format!("Failed to write temporary diarization audio: {e}")))?;
+
+    let response = send_command_to_server(
+        state,
+        &ServerCommand::Diarize {
+            audio_path: Some(temp_file.to_string_lossy().to_string()),
+            audio_base64: None,
+            audio_format: None,
+            sample_rate: None,
+        },
+        Some(app_handle),
+    )
+    .await;
+
+    let _ = tokio::fs::remove_file(&temp_file).await;
+    let resp = response?;
+    if resp.supported == Some(true) {
+        Ok(resp.segments.unwrap_or_default())
+    } else {
+        Ok(Vec::new())
+    }
+}
+
 pub(super) fn profile_r2t2_options(
     state: &AppState,
     engine: &str,

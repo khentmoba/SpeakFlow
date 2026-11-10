@@ -88,6 +88,69 @@ pub(crate) async fn start_recording_inner(
     start_recording_with_start_owner(app_handle, state, trigger, edit_grab, None).await
 }
 
+async fn maybe_switch_engine_for_keyboard(app_handle: &tauri::AppHandle, state: &AppState) {
+    let Some(locale) = crate::services::keyboard_layout::detect_active_keyboard_language() else {
+        return;
+    };
+    let Some(target_engine) = state.with_profile(|p| {
+        crate::services::keyboard_layout::match_engine_for_keyboard(p, Some(&locale))
+    }) else {
+        return;
+    };
+    let current = crate::utils::paths::read_engine_config();
+    if target_engine == current || !crate::utils::paths::is_supported_engine(&target_engine) {
+        return;
+    }
+    if !crate::utils::paths::is_online_engine(&target_engine)
+        && !crate::services::funasr_service::inspect_model_files_for_engine(&target_engine)
+            .all_present
+    {
+        log::debug!(
+            "Keyboard layout rule matched {} -> {}, but model files are missing; keeping {}",
+            locale,
+            target_engine,
+            current
+        );
+        return;
+    }
+    if state.engine.download_task.lock().await.is_some() || state.engine.is_funasr_starting() {
+        return;
+    }
+    let _lifecycle_guard = state.engine.funasr_lifecycle_op.lock().await;
+    if state.engine.native_asr_owner.try_lock().is_err() {
+        return;
+    }
+    if let Err(err) = crate::utils::paths::write_engine_config(&target_engine) {
+        log::warn!("Keyboard auto engine switch failed to write config: {err}");
+        return;
+    }
+    state.engine.block_funasr_starting();
+    let stop_ok = crate::services::funasr_service::stop_server(state)
+        .await
+        .is_ok();
+    state.engine.unblock_funasr_starting();
+    if !stop_ok {
+        return;
+    }
+    if crate::utils::paths::is_online_engine(&target_engine) {
+        crate::commands::funasr::reload_online_asr_key(app_handle, state);
+        let has_key = !state.read_online_asr_api_key().is_empty();
+        state.set_funasr_ready(has_key);
+    } else if let Err(err) = crate::services::funasr_service::start_server(app_handle, state).await
+    {
+        log::warn!("Keyboard auto engine switch failed starting {target_engine}: {err}");
+        return;
+    }
+    let _ = app_handle.emit(
+        "keyboard-engine-switched",
+        serde_json::json!({
+            "locale": locale,
+            "engine": target_engine,
+            "previousEngine": current,
+        }),
+    );
+}
+
 pub(crate) async fn start_recording_with_start_owner(
     app_handle: tauri::AppHandle,
     state: &AppState,
@@ -96,6 +159,7 @@ pub(crate) async fn start_recording_with_start_owner(
     start_owner: Option<(Arc<crate::commands::hotkey::HotkeyStartOwner>, u64)>,
 ) -> Result<u64, AppError> {
     crate::services::external_correction_service::cancel();
+    maybe_switch_engine_for_keyboard(&app_handle, state).await;
     let lifecycle_guard = state.engine.funasr_lifecycle_op.lock().await;
     // Starting a recording and dispatching queued output share the same boundary.
     let paste_guard = state.recording.paste_dispatch.lock().await;
@@ -187,15 +251,27 @@ pub(crate) async fn start_recording_with_start_owner(
         })
     });
 
+    let (audio_behavior, labs, selected_device) = state.with_profile(|p| {
+        (
+            p.audio_behavior.clone(),
+            p.labs.clone(),
+            state.selected_input_device_name(),
+        )
+    });
+    let _ = labs;
+    audio_service::set_avoid_bluetooth_microphone(audio_behavior.avoid_bluetooth_microphone);
+    audio_service::update_audio_behavior(audio_behavior.clone());
+    let preroll = audio_service::stop_preroll_and_take();
+
     let capture_task = {
         let capture_stop = stop_flag.clone();
         let capture_samples = samples.clone();
-        let selected_device = state.selected_input_device_name();
         tokio::task::spawn_blocking(move || {
-            audio_service::spawn_audio_capture_thread(
+            audio_service::spawn_audio_capture_thread_with_preroll(
                 capture_stop,
                 capture_samples,
                 selected_device,
+                preroll,
             )
         })
     };
@@ -297,31 +373,37 @@ pub(crate) async fn start_recording_with_start_owner(
         }
     };
 
-    let (interim_task, native_recording) =
-        if crate::utils::paths::read_engine_config() == "confucius4-r2t2" {
-            (
-                None,
-                Some(audio_service::spawn_native_recording(
-                    app_handle.clone(),
-                    session_id,
-                    samples.clone(),
-                    actual_sample_rate,
-                )),
-            )
-        } else {
-            (
-                Some(audio_service::spawn_interim_loop(
-                    app_handle.clone(),
-                    session_id,
-                    stop_flag.clone(),
-                    stop_notify.clone(),
-                    samples.clone(),
-                    actual_sample_rate,
-                    interim_cache.clone(),
-                )),
-                None,
-            )
-        };
+    let current_engine = crate::utils::paths::read_engine_config();
+    let use_native_stream = current_engine == "confucius4-r2t2"
+        || (crate::utils::paths::is_transcribe_cpp_engine(&current_engine)
+            && state
+                .engine
+                .supports_native_streaming
+                .load(Ordering::Acquire));
+    let (interim_task, native_recording) = if use_native_stream {
+        (
+            None,
+            Some(audio_service::spawn_native_recording(
+                app_handle.clone(),
+                session_id,
+                samples.clone(),
+                actual_sample_rate,
+            )),
+        )
+    } else {
+        (
+            Some(audio_service::spawn_interim_loop(
+                app_handle.clone(),
+                session_id,
+                stop_flag.clone(),
+                stop_notify.clone(),
+                samples.clone(),
+                actual_sample_rate,
+                interim_cache.clone(),
+            )),
+            None,
+        )
+    };
 
     audio_service::spawn_waveform_emitter(
         app_handle.clone(),
@@ -392,7 +474,7 @@ pub(crate) async fn start_recording_with_start_owner(
         emit_recording_state(&app_handle, &snapshot, false, true, false, None);
     }
 
-    crate::services::audio_service::duck_audio();
+    crate::services::audio_service::duck_audio_with_config(&audio_behavior);
 
     if state.ui.sound_enabled.load(Ordering::Acquire) {
         match trigger.mode() {
@@ -414,6 +496,7 @@ pub(crate) async fn stop_recording_inner(
     state: &AppState,
     expected_session: Option<(u64, RecordingTrigger)>,
 ) -> Result<Option<u64>, AppError> {
+    let adaptive_release_tail = state.with_profile(|p| p.audio_behavior.adaptive_release_tail);
     let (recording, transition) = {
         let mut guard = state.recording.recording.lock();
         if let Some((expected_session_id, expected_trigger)) = expected_session {
@@ -432,8 +515,13 @@ pub(crate) async fn stop_recording_inner(
                     pending.stop_notify.notify_waiters();
                 }
                 RecordingSlot::Active(session) => {
-                    session.stop_flag.store(true, Ordering::Release);
-                    session.stop_notify.notify_waiters();
+                    let defer_for_tail = adaptive_release_tail
+                        && session.trigger.mode() == RecordingMode::Dictation
+                        && session.native_recording.is_none();
+                    if !defer_for_tail {
+                        session.stop_flag.store(true, Ordering::Release);
+                        session.stop_notify.notify_waiters();
+                    }
                 }
             }
         }

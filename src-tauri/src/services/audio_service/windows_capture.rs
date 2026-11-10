@@ -267,6 +267,28 @@ fn select_capture_device(
     let name = device
         .get_friendlyname()
         .unwrap_or_else(|_| "Unknown Device".into());
+
+    if super::capture::should_avoid_bluetooth_mic() && super::capture::is_bluetooth_mic_name(&name)
+    {
+        if let Ok(collection) = enumerator.get_device_collection(&Direction::Capture) {
+            let count = collection.get_nbr_devices().unwrap_or(0);
+            for idx in 0..count {
+                if let Ok(candidate) = collection.get_device_at_index(idx) {
+                    if let Ok(candidate_name) = candidate.get_friendlyname() {
+                        if !super::capture::is_bluetooth_mic_name(&candidate_name) {
+                            log::info!(
+                                "Avoided Bluetooth default microphone '{}' in favor of '{}'",
+                                name,
+                                candidate_name
+                            );
+                            return Ok((candidate, candidate_name));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Ok((device, name))
 }
 

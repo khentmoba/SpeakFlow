@@ -28,7 +28,10 @@ def cmd_serve(engine: str):
     if engine == "confucius4-r2t2":
         from r2t2_asr_server import R2T2ASRServer
         server = R2T2ASRServer()
-    elif engine in TRANSCRIBE_CPP_ASR_MODELS:
+    elif engine in TRANSCRIBE_CPP_ASR_MODELS or (
+        engine.startswith("custom:")
+        and os.environ.get("SPEAK_FLOW_CUSTOM_MODEL_PATH", "").strip()
+    ):
         from qwen3_asr_server import Qwen3ASRServer
         server = Qwen3ASRServer(engine=engine)
     else:
@@ -51,7 +54,7 @@ def main():
 
     serve_p = sub.add_parser("serve")
     engine_choices = sorted(LOCAL_ASR_MODELS)
-    serve_p.add_argument("--engine", required=True, choices=engine_choices)
+    serve_p.add_argument("--engine", required=True)
 
     dl_p = sub.add_parser("download")
     dl_p.add_argument("--engine", required=True, choices=engine_choices)

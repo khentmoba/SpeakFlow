@@ -39,8 +39,16 @@ metrics.total_dist_bytes = distFiles.reduce((total, { bytes }) => total + bytes,
 
 // Guard user-visible entry points and meaningful aggregate regressions. The settings
 // page is lazy-loaded and preloaded after startup, so its size remains observable in
-// the metrics without an arbitrary per-page cap. Limits are rounded above the v1.5.8
+// the metrics without an arbitrary per-page cap. Limits are rounded above the measured
 // baseline to leave room for routine feature work while still catching material growth.
+//
+// Baseline history:
+//   v1.5.8: core 189,991 / total 322,836 (9 bytes of core headroom).
+//   v1.6.0: core 202,376 / total 335,224. The STT maturity work adds the Meetings
+//           workspace, the scripting editor, custom GGUF/HF model management, the
+//           Labs surface, and audio/output/shortcut behavior settings. Those are new
+//           user-facing screens, not bundle drift, so the aggregate limits move with
+//           them. Per-entry-point limits are unchanged.
 const budgets = {
   main_gzip_bytes: {
     limit: 140_000,
@@ -59,11 +67,11 @@ const budgets = {
     rationale: "shared Markdown and math renderer",
   },
   core_js_gzip_bytes: {
-    limit: 190_000,
+    limit: 208_000,
     rationale: "all JavaScript except the selection overlay and lazy rich text",
   },
   total_js_gzip_bytes: {
-    limit: 340_000,
+    limit: 345_000,
     rationale: "complete JavaScript payload",
   },
   largest_font_bytes: {

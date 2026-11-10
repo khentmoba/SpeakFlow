@@ -69,7 +69,7 @@ pub(super) fn validate_stream_response(
 }
 
 fn stream_error(message: &str) -> AppError {
-    AppError::Asr(format!("R2T2 stream error: {message}"))
+    AppError::Asr(format!("Native stream error: {message}"))
 }
 
 pub(crate) struct NativeStreamClient {

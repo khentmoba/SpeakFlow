@@ -182,6 +182,16 @@ pub fn spawn_interim_loop(
                                 "language": &result.language,
                             }),
                         );
+                        crate::services::http_api_service::publish_stream_event(
+                            "dictation.interim",
+                            serde_json::json!({
+                                "sessionId": session_id,
+                                "text": &result.text,
+                                "stableText": stable_text,
+                                "tentativeText": tentative_text,
+                                "language": &result.language,
+                            }),
+                        );
                     }
                     previous_hypothesis = Some(result.text.clone());
                     *interim_cache.lock() = Some(crate::state::InterimCache {

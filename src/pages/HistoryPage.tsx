@@ -8,6 +8,7 @@ import {
   Copy,
   Download,
   FileAudio,
+  PencilLine,
   RefreshCw,
   Search,
   Trash2,
@@ -25,6 +26,9 @@ import {
   transcribeAudioFile,
 } from "@/api/tauri";
 import { prefersReducedMotion } from "@/lib/motion";
+import FixThisDialog from "@/components/FixThisDialog";
+import { LABS_OUTPUT_FIXES_KEY } from "@/lib/constants";
+import { readLocalStorage } from "@/lib/storage";
 import type {
   FileTranscriptionResult,
   PersistentHistoryRecord,
@@ -88,6 +92,13 @@ export default function HistoryPage({
   const [exportFormat, setExportFormat] = useState<"json" | "markdown" | "csv" | "srt" | "vtt">("markdown");
   const [fileResult, setFileResult] = useState<FileTranscriptionResult | null>(null);
   const [fileBusy, setFileBusy] = useState(false);
+  const [fixRecord, setFixRecord] = useState<PersistentHistoryRecord | null>(null);
+  // Labs > "Fix this" is mirrored through localStorage so this page does not
+  // need an extra profile round trip just to show one button.
+  const outputFixesEnabled = useMemo(
+    () => readLocalStorage(LABS_OUTPUT_FIXES_KEY) === "true",
+    [],
+  );
   const requestId = useRef(0);
   const itemCount = useRef(0);
   const pageSize = 50;
@@ -467,6 +478,11 @@ export default function HistoryPage({
                       </button>
                     )}
                     <span className="history-action-spacer" />
+                    {outputFixesEnabled && !failed && (
+                      <button className="icon-btn icon-btn-sm" title={t("settings.fixThis")} aria-label={t("settings.fixThis")} onClick={() => setFixRecord(record)}>
+                        <PencilLine size={13} />
+                      </button>
+                    )}
                     {canReprocess && record.audioAvailable && (
                       <button className="icon-btn icon-btn-sm" disabled={isWorking} title={t("historyPage.reprocessAsr")} aria-label={t("historyPage.reprocessAsr")} onClick={() => void reprocess(record, "asr")}>
                         <RefreshCw size={13} />
@@ -493,6 +509,13 @@ export default function HistoryPage({
           )}
         </section>
       </main>
+      {fixRecord && (
+        <FixThisDialog
+          record={fixRecord}
+          onClose={() => setFixRecord(null)}
+          onSaved={() => { void load(true); }}
+        />
+      )}
     </div>
   );
 }

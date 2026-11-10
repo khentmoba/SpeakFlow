@@ -544,6 +544,127 @@
     ],
     "commands::support::get_free_disk_space": [
       "support"
+    ],
+    "commands::clipboard::paste_last_as_terminal": [
+      "clipboard"
+    ],
+    "commands::funasr::add_custom_model": [
+      "engine",
+      "directory"
+    ],
+    "commands::funasr::inspect_gguf_model": [
+      "engine",
+      "directory"
+    ],
+    "commands::funasr::list_custom_models": [
+      "engine",
+      "directory"
+    ],
+    "commands::funasr::pick_gguf_file": [
+      "directory"
+    ],
+    "commands::funasr::remove_custom_model": [
+      "engine",
+      "directory"
+    ],
+    "commands::funasr::scan_hf_cache_models": [
+      "engine",
+      "directory"
+    ],
+    "commands::history::search_transcripts": [
+      "history"
+    ],
+    "commands::hotkey::register_extended_hotkeys": [
+      "hotkeys"
+    ],
+    "commands::meeting::delete_meeting": [
+      "history"
+    ],
+    "commands::meeting::detect_meeting_call": [
+      "recording"
+    ],
+    "commands::meeting::export_meeting": [
+      "history"
+    ],
+    "commands::meeting::get_meeting": [
+      "history"
+    ],
+    "commands::meeting::get_meeting_status": [
+      "recording"
+    ],
+    "commands::meeting::list_meetings": [
+      "history"
+    ],
+    "commands::meeting::reprocess_meeting": [
+      "history"
+    ],
+    "commands::meeting::set_meetings_config": [
+      "preferences",
+      "profile-save"
+    ],
+    "commands::meeting::start_meeting_recording": [
+      "recording",
+      "capture"
+    ],
+    "commands::meeting::stop_meeting_recording": [
+      "recording",
+      "capture"
+    ],
+    "commands::profile::get_active_keyboard_locale": [
+      "preferences"
+    ],
+    "commands::profile::get_last_dictation_record": [
+      "history"
+    ],
+    "commands::profile::get_scripting_status": [
+      "preferences"
+    ],
+    "commands::profile::list_output_fixes": [
+      "personalization"
+    ],
+    "commands::profile::read_script_config": [
+      "preferences"
+    ],
+    "commands::profile::save_script_config": [
+      "preferences"
+    ],
+    "commands::profile::scaffold_script_config": [
+      "preferences"
+    ],
+    "commands::profile::set_audio_behavior": [
+      "capture",
+      "preferences",
+      "profile-save"
+    ],
+    "commands::profile::set_global_transformations": [
+      "preferences",
+      "profile-save"
+    ],
+    "commands::profile::set_keyboard_model_switching": [
+      "engine",
+      "preferences",
+      "profile-save"
+    ],
+    "commands::profile::set_labs_config": [
+      "preferences",
+      "profile-save"
+    ],
+    "commands::profile::set_output_behavior": [
+      "clipboard",
+      "preferences",
+      "profile-save"
+    ],
+    "commands::profile::set_shortcuts_behavior": [
+      "hotkeys",
+      "preferences",
+      "profile-save"
+    ],
+    "commands::profile::submit_output_fix": [
+      "personalization",
+      "profile-save"
+    ],
+    "commands::profile::test_script_transformations": [
+      "preferences"
     ]
   },
   "events": {
@@ -612,6 +733,30 @@
     ],
     "selection-detected": [
       "selection"
+    ],
+    "open-typed-text": [
+      "windows"
+    ],
+    "output-fix-saved": [
+      "personalization"
+    ],
+    "keyboard-engine-switched": [
+      "engine"
+    ],
+    "meeting-call-detected": [
+      "recording"
+    ],
+    "meeting-hotkey-toggle": [
+      "hotkeys"
+    ],
+    "meeting-status": [
+      "recording"
+    ],
+    "meeting-finished": [
+      "history"
+    ],
+    "engine-changed": [
+      "engine"
     ]
   },
   "lifecycle": {
@@ -2345,6 +2490,40 @@
     "commands::file_transcription::transcribe_audio_file": "src-tauri/src/commands/file_transcription.rs#fn transcribe_audio_file(",
     "commands::support::get_diagnostics": "src-tauri/src/commands/support.rs#fn get_diagnostics(",
     "commands::support::open_logs_folder": "src-tauri/src/commands/support.rs#fn open_logs_folder(",
-    "commands::support::get_free_disk_space": "src-tauri/src/commands/support.rs#fn get_free_disk_space("
+    "commands::support::get_free_disk_space": "src-tauri/src/commands/support.rs#fn get_free_disk_space(",
+    "commands::clipboard::paste_last_as_terminal": "src-tauri/src/commands/clipboard.rs#fn paste_last_as_terminal(",
+    "commands::funasr::add_custom_model": "src-tauri/src/commands/funasr.rs#fn add_custom_model(",
+    "commands::funasr::inspect_gguf_model": "src-tauri/src/commands/funasr.rs#fn inspect_gguf_model(",
+    "commands::funasr::list_custom_models": "src-tauri/src/commands/funasr.rs#fn list_custom_models(",
+    "commands::funasr::pick_gguf_file": "src-tauri/src/commands/funasr.rs#fn pick_gguf_file(",
+    "commands::funasr::remove_custom_model": "src-tauri/src/commands/funasr.rs#fn remove_custom_model(",
+    "commands::funasr::scan_hf_cache_models": "src-tauri/src/commands/funasr.rs#fn scan_hf_cache_models(",
+    "commands::history::search_transcripts": "src-tauri/src/commands/history.rs#fn search_transcripts(",
+    "commands::hotkey::register_extended_hotkeys": "src-tauri/src/commands/hotkey.rs#fn register_extended_hotkeys(",
+    "commands::meeting::delete_meeting": "src-tauri/src/commands/meeting.rs#fn delete_meeting(",
+    "commands::meeting::detect_meeting_call": "src-tauri/src/commands/meeting.rs#fn detect_meeting_call(",
+    "commands::meeting::export_meeting": "src-tauri/src/commands/meeting.rs#fn export_meeting(",
+    "commands::meeting::get_meeting": "src-tauri/src/commands/meeting.rs#fn get_meeting(",
+    "commands::meeting::get_meeting_status": "src-tauri/src/commands/meeting.rs#fn get_meeting_status(",
+    "commands::meeting::list_meetings": "src-tauri/src/commands/meeting.rs#fn list_meetings(",
+    "commands::meeting::reprocess_meeting": "src-tauri/src/commands/meeting.rs#fn reprocess_meeting(",
+    "commands::meeting::set_meetings_config": "src-tauri/src/commands/meeting.rs#fn set_meetings_config(",
+    "commands::meeting::start_meeting_recording": "src-tauri/src/commands/meeting.rs#fn start_meeting_recording(",
+    "commands::meeting::stop_meeting_recording": "src-tauri/src/commands/meeting.rs#fn stop_meeting_recording(",
+    "commands::profile::get_active_keyboard_locale": "src-tauri/src/commands/profile.rs#fn get_active_keyboard_locale(",
+    "commands::profile::get_last_dictation_record": "src-tauri/src/commands/profile.rs#fn get_last_dictation_record(",
+    "commands::profile::get_scripting_status": "src-tauri/src/commands/profile.rs#fn get_scripting_status(",
+    "commands::profile::list_output_fixes": "src-tauri/src/commands/profile.rs#fn list_output_fixes(",
+    "commands::profile::read_script_config": "src-tauri/src/commands/profile.rs#fn read_script_config(",
+    "commands::profile::save_script_config": "src-tauri/src/commands/profile.rs#fn save_script_config(",
+    "commands::profile::scaffold_script_config": "src-tauri/src/commands/profile.rs#fn scaffold_script_config(",
+    "commands::profile::set_audio_behavior": "src-tauri/src/commands/profile.rs#fn set_audio_behavior(",
+    "commands::profile::set_global_transformations": "src-tauri/src/commands/profile.rs#fn set_global_transformations(",
+    "commands::profile::set_keyboard_model_switching": "src-tauri/src/commands/profile.rs#fn set_keyboard_model_switching(",
+    "commands::profile::set_labs_config": "src-tauri/src/commands/profile.rs#fn set_labs_config(",
+    "commands::profile::set_output_behavior": "src-tauri/src/commands/profile.rs#fn set_output_behavior(",
+    "commands::profile::set_shortcuts_behavior": "src-tauri/src/commands/profile.rs#fn set_shortcuts_behavior(",
+    "commands::profile::submit_output_fix": "src-tauri/src/commands/profile.rs#fn submit_output_fix(",
+    "commands::profile::test_script_transformations": "src-tauri/src/commands/profile.rs#fn test_script_transformations("
   }
 }

@@ -19,13 +19,15 @@ import "./styles/pages.css";
 import "./styles/workspace.css";
 import "./styles/signal.css";
 
-type View = "main" | "settings" | "history" | "updates";
+type View = "main" | "settings" | "history" | "updates" | "meetings";
 const loadUpdatesPage = () => import("./pages/UpdatesPage");
 const UpdatesPage = lazy(loadUpdatesPage);
 const loadSettingsPage = () => import("./pages/SettingsPage");
 const loadHistoryPage = () => import("./pages/HistoryPage");
+const loadMeetingsPage = () => import("./pages/MeetingsPage");
 const SettingsPage = lazy(loadSettingsPage);
 const HistoryPage = lazy(loadHistoryPage);
+const MeetingsPage = lazy(loadMeetingsPage);
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -117,7 +119,13 @@ function AppWorkspace() {
     };
 
     if (target !== "main") {
-      const loadTarget = target === "settings" ? loadSettingsPage : target === "updates" ? loadUpdatesPage : loadHistoryPage;
+      const loadTarget = target === "settings"
+        ? loadSettingsPage
+        : target === "updates"
+          ? loadUpdatesPage
+          : target === "meetings"
+            ? loadMeetingsPage
+            : loadHistoryPage;
       void loadTarget().then(startTransition).catch((error) => {
         isTransitioning.current = false;
         console.error(`${target} page load failed:`, error);
@@ -159,6 +167,8 @@ function AppWorkspace() {
               <SettingsPage onNavigate={navigateTo} active animClass={animClass} />
             ) : view === "updates" ? (
               <UpdatesPage animClass={animClass} />
+            ) : view === "meetings" ? (
+              <MeetingsPage animClass={animClass} />
             ) : (
               <HistoryPage onNavigate={navigateTo} animClass={animClass} />
             )}

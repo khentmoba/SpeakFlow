@@ -55,6 +55,8 @@ pub struct PolishOverrides {
     /// None = 使用全局设置；Some(None) = 禁用翻译；Some(Some(...)) = 指定目标语言。
     pub translation_target: Option<Option<String>>,
     pub custom_prompt: Option<String>,
+    pub tone_mode_override: Option<String>,
+    pub app_vocabulary: Vec<String>,
     pub screen_context_enabled: Option<bool>,
     pub screen_context_explicit: bool,
     /// 录音开始时的目标窗口。设置后，真正截图前后都必须仍是同一窗口，
@@ -75,6 +77,8 @@ impl Default for PolishOverrides {
             allow_jev_gate: false,
             translation_target: None,
             custom_prompt: None,
+            tone_mode_override: None,
+            app_vocabulary: Vec::new(),
             screen_context_enabled: None,
             screen_context_explicit: false,
             screen_context_foreground: None,
@@ -441,11 +445,13 @@ pub async fn polish_text_with_overrides_detailed(
         emit_polish_status(app_handle, "prompt", text, "", "", session_id);
     }
     let prompt_start = std::time::Instant::now();
-    let system_prompt = build_system_prompt(
+    let system_prompt = build_system_prompt_with_overrides(
         state,
         text,
         overrides.translation_target.clone(),
         overrides.custom_prompt.as_deref(),
+        overrides.tone_mode_override.as_deref(),
+        &overrides.app_vocabulary,
     );
     let prompt_elapsed_ms = prompt_start.elapsed().as_millis();
 

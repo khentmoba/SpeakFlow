@@ -38,6 +38,23 @@ import type {
   TranscriptionResult,
   UserProfile,
   WebSearchProvider,
+  AudioBehaviorConfig,
+  OutputBehaviorConfig,
+  ShortcutsBehaviorConfig,
+  LabsConfig,
+  KeyboardModelRule,
+  MeetingsConfig,
+  MeetingRecord,
+  MeetingStatusPayload,
+  CallDetectionResult,
+  MeetingExportFormat,
+  CustomModelEntry,
+  DiscoveredHfModel,
+  GgufInspection,
+  SearchDocument,
+  ScriptingStatus,
+  OutputFixEntry,
+  LastDictationRecord,
 } from "@/types";
 import { INPUT_DEVICE_STORAGE_KEY } from "@/lib/constants";
 import { writeLocalStorage } from "@/lib/storage";
@@ -828,6 +845,152 @@ export interface ModelsDirUpdateResult {
 
 export function setModelsDir(path: string | null, migrate: boolean): Promise<ModelsDirUpdateResult> {
   return invokeCommand<ModelsDirUpdateResult>("set_models_dir", { path, migrate });
+}
+
+
+// --- Audio, output, shortcut, and Labs behavior ---
+
+export function setAudioBehavior(audioBehavior: AudioBehaviorConfig): Promise<void> {
+  return invokeCommand<void>("set_audio_behavior", { audioBehavior });
+}
+
+export function setOutputBehavior(outputBehavior: OutputBehaviorConfig): Promise<void> {
+  return invokeCommand<void>("set_output_behavior", { outputBehavior });
+}
+
+export function setShortcutsBehavior(shortcutsBehavior: ShortcutsBehaviorConfig): Promise<void> {
+  return invokeCommand<void>("set_shortcuts_behavior", { shortcutsBehavior });
+}
+
+export function setLabsConfig(labs: LabsConfig): Promise<void> {
+  return invokeCommand<void>("set_labs_config", { labs });
+}
+
+export function setKeyboardModelSwitching(
+  enabled: boolean,
+  rules: KeyboardModelRule[],
+): Promise<void> {
+  return invokeCommand<void>("set_keyboard_model_switching", { enabled, rules });
+}
+
+export function setGlobalTransformations(transformations: string[]): Promise<void> {
+  return invokeCommand<void>("set_global_transformations", { transformations });
+}
+
+export const getActiveKeyboardLocale = createNoArgCommand<string | null>("get_active_keyboard_locale");
+
+// --- QuickJS scripting ---
+
+export const getScriptingStatus = createNoArgCommand<ScriptingStatus>("get_scripting_status");
+export const scaffoldScriptConfig = createNoArgCommand<ScriptingStatus>("scaffold_script_config");
+export const readScriptConfig = createNoArgCommand<string | null>("read_script_config");
+
+export function saveScriptConfig(source: string): Promise<ScriptingStatus> {
+  return invokeCommand<ScriptingStatus>("save_script_config", { source });
+}
+
+export function testScriptTransformations(params: {
+  source: string;
+  transformIds: string[];
+  text: string;
+  appProcess?: string | null;
+  windowTitle?: string | null;
+  domain?: string | null;
+}): Promise<string> {
+  return invokeCommand<string>("test_script_transformations", params);
+}
+
+// --- Output fixes and last dictation ---
+
+export const getLastDictationRecord = createNoArgCommand<LastDictationRecord | null>(
+  "get_last_dictation_record",
+);
+export const listOutputFixes = createNoArgCommand<OutputFixEntry[]>("list_output_fixes");
+
+export function submitOutputFix(params: {
+  original: string;
+  fixed: string;
+  rawOriginal?: string | null;
+  note?: string | null;
+  sessionId?: number | null;
+  processName?: string | null;
+  windowTitle?: string | null;
+}): Promise<OutputFixEntry> {
+  return invokeCommand<OutputFixEntry>("submit_output_fix", params);
+}
+
+export const pasteLastAsTerminal = createNoArgCommand<boolean>("paste_last_as_terminal");
+export const registerExtendedHotkeys = createNoArgCommand<void>("register_extended_hotkeys");
+
+// --- Custom GGUF and Hugging Face cache models ---
+
+export function inspectGgufModel(path: string): Promise<GgufInspection> {
+  return invokeCommand<GgufInspection>("inspect_gguf_model", { path });
+}
+
+export const listCustomModels = createNoArgCommand<CustomModelEntry[]>("list_custom_models");
+export const scanHfCacheModels = createNoArgCommand<DiscoveredHfModel[]>("scan_hf_cache_models");
+export const pickGgufFile = createNoArgCommand<string | null>("pick_gguf_file");
+
+export function addCustomModel(params: {
+  path: string;
+  name?: string | null;
+  source?: string | null;
+  repoId?: string | null;
+}): Promise<CustomModelEntry> {
+  return invokeCommand<CustomModelEntry>("add_custom_model", params);
+}
+
+export function removeCustomModel(id: string): Promise<boolean> {
+  return invokeCommand<boolean>("remove_custom_model", { id });
+}
+
+// --- Transcript search ---
+
+export function searchTranscripts(
+  query: string,
+  kind?: string,
+  limit?: number,
+): Promise<SearchDocument[]> {
+  return invokeCommand<SearchDocument[]>("search_transcripts", { query, kind, limit });
+}
+
+// --- Meetings ---
+
+export const getMeetingStatus = createNoArgCommand<MeetingStatusPayload>("get_meeting_status");
+export const detectMeetingCall = createNoArgCommand<CallDetectionResult>("detect_meeting_call");
+export const stopMeetingRecording = createNoArgCommand<MeetingRecord>("stop_meeting_recording");
+export const listMeetings = createNoArgCommand<MeetingRecord[]>("list_meetings");
+
+export function startMeetingRecording(
+  title?: string | null,
+  appName?: string | null,
+): Promise<MeetingStatusPayload> {
+  return invokeCommand<MeetingStatusPayload>("start_meeting_recording", { title, appName });
+}
+
+export function getMeeting(id: string): Promise<MeetingRecord | null> {
+  return invokeCommand<MeetingRecord | null>("get_meeting", { id });
+}
+
+export function deleteMeeting(id: string): Promise<boolean> {
+  return invokeCommand<boolean>("delete_meeting", { id });
+}
+
+export function exportMeeting(
+  id: string,
+  format: MeetingExportFormat,
+  saveToDisk = false,
+): Promise<string> {
+  return invokeCommand<string>("export_meeting", { id, format, saveToDisk });
+}
+
+export function reprocessMeeting(id: string): Promise<MeetingRecord> {
+  return invokeCommand<MeetingRecord>("reprocess_meeting", { id });
+}
+
+export function setMeetingsConfig(meetings: MeetingsConfig): Promise<void> {
+  return invokeCommand<void>("set_meetings_config", { meetings });
 }
 
 export { enableAutostart, disableAutostart, isAutostartEnabled };

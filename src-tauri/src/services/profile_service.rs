@@ -118,7 +118,6 @@ pub fn normalize_profile(profile: &mut UserProfile) -> ProfileCleanupStats {
         rule.screen_context = AppRuleOverride::Disabled;
         rule.translation = AppTranslationOverride::Disabled;
         rule.translation_target = None;
-        rule.custom_prompt = None;
     }
     migrate_custom_provider(profile);
     migrate_reasoning_modes(profile);
@@ -297,6 +296,7 @@ pub struct ProfileCleanupStats {
 pub fn cleanup_profile(profile: &mut UserProfile) -> ProfileCleanupStats {
     sanitize_history_settings(profile);
     sanitize_app_profile_rules(profile);
+    sanitize_extended_settings(profile);
     sanitize_blocked_hot_words(profile);
     let removed_hot_words = sanitize_hot_words(profile);
     let removed_corrections = sanitize_corrections(profile) + limit_correction_patterns(profile);
@@ -306,6 +306,38 @@ pub fn cleanup_profile(profile: &mut UserProfile) -> ProfileCleanupStats {
     ProfileCleanupStats {
         removed_hot_words,
         removed_corrections,
+    }
+}
+
+fn sanitize_extended_settings(profile: &mut UserProfile) {
+    if !profile.audio_behavior.duck_volume.is_finite() {
+        profile.audio_behavior.duck_volume = 0.2;
+    } else {
+        profile.audio_behavior.duck_volume = profile.audio_behavior.duck_volume.clamp(0.0, 1.0);
+    }
+    if profile.audio_behavior.release_mic_while_idle {
+        profile.audio_behavior.pre_roll_enabled = false;
+    }
+    let clean_opt = |value: &mut Option<String>| {
+        *value = value
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string);
+    };
+    clean_opt(&mut profile.shortcuts_behavior.second_dictation_hotkey);
+    clean_opt(&mut profile.shortcuts_behavior.terminal_paste_hotkey);
+    clean_opt(&mut profile.shortcuts_behavior.typed_text_hotkey);
+    clean_opt(&mut profile.shortcuts_behavior.meeting_hotkey);
+    clean_opt(&mut profile.meetings.markdown_output_dir);
+    profile.meetings.keep_audio_days = profile.meetings.keep_audio_days.min(3650);
+    profile.meetings.transcript_font_size = profile.meetings.transcript_font_size.clamp(10, 24);
+    profile
+        .keyboard_model_rules
+        .retain(|rule| !rule.layout_tag.trim().is_empty() && !rule.engine.trim().is_empty());
+    for rule in &mut profile.keyboard_model_rules {
+        rule.layout_tag = rule.layout_tag.trim().to_ascii_lowercase();
+        rule.engine = rule.engine.trim().to_string();
     }
 }
 
@@ -332,16 +364,35 @@ pub fn sanitize_app_profile_rules(profile: &mut UserProfile) {
         .enumerate()
     {
         rule.process_name = rule.process_name.trim().to_string();
-        if rule.process_name.is_empty() {
+        rule.browser_domain = trimmed_option(rule.browser_domain);
+        if rule.process_name.is_empty() && rule.browser_domain.is_none() {
             continue;
         }
         rule.name = rule.name.trim().to_string();
         if rule.name.is_empty() {
-            rule.name = rule.process_name.clone();
+            rule.name = rule
+                .browser_domain
+                .clone()
+                .unwrap_or_else(|| rule.process_name.clone());
         }
         rule.window_title_contains = trimmed_option(rule.window_title_contains);
         rule.translation_target = trimmed_option(rule.translation_target);
         rule.custom_prompt = trimmed_option(rule.custom_prompt);
+        rule.tone_mode = trimmed_option(rule.tone_mode);
+        rule.vocabulary = rule
+            .vocabulary
+            .into_iter()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .take(50)
+            .collect();
+        rule.transformations = rule
+            .transformations
+            .into_iter()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .take(20)
+            .collect();
         if rule.translation == AppTranslationOverride::Target && rule.translation_target.is_none() {
             rule.translation = AppTranslationOverride::Inherit;
         }
@@ -970,6 +1021,49 @@ fn extract_diff_segments(original: &str, polished: &str) -> Vec<(String, String)
     }
 
     diffs
+}
+
+const OUTPUT_FIXES_FILE: &str = "output_fixes.json";
+const MAX_OUTPUT_FIXES: usize = 200;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputFixEntry {
+    pub id: String,
+    pub created_at: u64,
+    pub original: String,
+    pub fixed: String,
+    pub raw_original: Option<String>,
+    pub note: Option<String>,
+    pub process_name: Option<String>,
+    pub window_title: Option<String>,
+    pub session_id: Option<u64>,
+    pub applied_rules: Vec<(String, String)>,
+}
+
+fn output_fixes_path() -> std::path::PathBuf {
+    paths::get_data_dir().join(OUTPUT_FIXES_FILE)
+}
+
+pub fn load_output_fixes() -> Vec<OutputFixEntry> {
+    let path = output_fixes_path();
+    let Ok(data) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    serde_json::from_str::<Vec<OutputFixEntry>>(&data).unwrap_or_default()
+}
+
+pub fn record_output_fix(entry: OutputFixEntry) -> Result<OutputFixEntry, String> {
+    let mut entries = load_output_fixes();
+    entries.insert(0, entry.clone());
+    if entries.len() > MAX_OUTPUT_FIXES {
+        entries.truncate(MAX_OUTPUT_FIXES);
+    }
+    let json = serde_json::to_string_pretty(&entries)
+        .map_err(|err| format!("Failed to serialize output fixes: {err}"))?;
+    paths::atomic_write(&output_fixes_path(), json.as_bytes())
+        .map_err(|err| format!("Failed to write output fixes: {err}"))?;
+    Ok(entry)
 }
 
 #[cfg(test)]

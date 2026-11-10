@@ -114,18 +114,21 @@ pub(super) fn compact_jev_base_prompt() -> String {
     remove_xml_section(&without_output, "examples")
 }
 
-/// 构建动态 system prompt，注入用户画像中的热词和纠错模式
-pub(super) fn build_system_prompt(
+pub(super) fn build_system_prompt_with_overrides(
     state: &AppState,
     input_text: &str,
     translation_target_override: Option<Option<String>>,
     app_custom_prompt: Option<&str>,
+    tone_mode_override: Option<&str>,
+    app_vocabulary: &[String],
 ) -> String {
     build_system_prompt_with_base(
         state,
         input_text,
         translation_target_override,
         app_custom_prompt,
+        tone_mode_override,
+        app_vocabulary,
         BASE_SYSTEM_PROMPT.to_string(),
         true,
     )
@@ -143,6 +146,8 @@ pub(super) fn build_jev_policy(
         input_text,
         translation_target_override,
         app_custom_prompt,
+        None,
+        &[],
         compact_jev_base_prompt(),
         false,
     );
@@ -200,11 +205,14 @@ pub(super) fn push_user_terms(
     prompt.push_str("</user_terms>");
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn build_system_prompt_with_base(
     state: &AppState,
     input_text: &str,
     translation_target_override: Option<Option<String>>,
     app_custom_prompt: Option<&str>,
+    tone_mode_override: Option<&str>,
+    app_vocabulary: &[String],
     mut prompt: String,
     include_output_contract: bool,
 ) -> String {
@@ -213,7 +221,10 @@ pub(super) fn build_system_prompt_with_base(
     let (hot_words, corrections, profile_translation_target, custom_prompt, polish_structure_level) =
         state.with_profile(|p| {
             (
-                p.get_hot_word_texts(polish_hot_word_limit(recognition_vocabulary)),
+                p.get_hot_word_texts_for_app(
+                    app_vocabulary,
+                    polish_hot_word_limit(recognition_vocabulary),
+                ),
                 p.get_relevant_corrections(input_text, 10)
                     .into_iter()
                     .cloned()
@@ -307,7 +318,10 @@ pub(super) fn build_system_prompt_with_base(
         prompt.push_str("\n</app_preferences>");
     }
 
-    if let Some(tone) = crate::utils::paths::read_tone_mode().instruction() {
+    let effective_tone = tone_mode_override
+        .map(crate::services::tone_modes::ToneMode::parse)
+        .unwrap_or_else(crate::utils::paths::read_tone_mode);
+    if let Some(tone) = effective_tone.instruction() {
         prompt.push_str("\n\n<tone_preference priority=\"high\">\n");
         prompt.push_str(&crate::utils::foreground::wrap_xml_cdata(
             "preference",

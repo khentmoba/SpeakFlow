@@ -201,6 +201,30 @@ pub struct UserProfile {
     /// 按前台应用匹配的听写覆盖规则；顺序即优先级，首个匹配项生效
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub app_profile_rules: Vec<AppProfileRule>,
+    /// Audio ducking, Bluetooth guard, pre-roll, and adaptive release tail settings.
+    #[serde(default)]
+    pub audio_behavior: AudioBehaviorConfig,
+    /// Clipboard, terminal paste, and copy-only output behavior.
+    #[serde(default)]
+    pub output_behavior: OutputBehaviorConfig,
+    /// Secondary dictation, terminal paste, typed-text, meeting, and passthrough shortcuts.
+    #[serde(default)]
+    pub shortcuts_behavior: ShortcutsBehaviorConfig,
+    /// Experimental and power-user feature toggles surfaced under Settings > Labs.
+    #[serde(default)]
+    pub labs: LabsConfig,
+    /// Switch local ASR engine by active Windows keyboard layout (BCP-47 / primary tag).
+    #[serde(default)]
+    pub keyboard_model_switching: bool,
+    /// Mapping from keyboard layout language tag (e.g. "en", "zh", "ja") to ASR engine key.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keyboard_model_rules: Vec<KeyboardModelRule>,
+    /// Dual-track meeting capture, call detection, retention, and summary settings.
+    #[serde(default)]
+    pub meetings: MeetingsConfig,
+    /// Ordered global text transformation IDs (built-in or from speakflow.config.ts).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub global_transformations: Vec<String>,
 }
 
 fn default_external_correction_learning() -> bool {
@@ -235,6 +259,216 @@ impl Default for UserProfile {
             last_correction_validation: Default::default(),
             history_settings: Default::default(),
             app_profile_rules: Default::default(),
+            audio_behavior: Default::default(),
+            output_behavior: Default::default(),
+            shortcuts_behavior: Default::default(),
+            labs: Default::default(),
+            keyboard_model_switching: false,
+            keyboard_model_rules: Default::default(),
+            meetings: Default::default(),
+            global_transformations: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AudioDuckingMode {
+    #[default]
+    Off,
+    Duck,
+    Mute,
+    PauseMedia,
+}
+
+fn default_duck_volume() -> f32 {
+    0.2
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioBehaviorConfig {
+    #[serde(default)]
+    pub ducking_mode: AudioDuckingMode,
+    #[serde(default = "default_duck_volume")]
+    pub duck_volume: f32,
+    #[serde(default)]
+    pub speakers_only: bool,
+    #[serde(default = "default_true")]
+    pub avoid_bluetooth_microphone: bool,
+    #[serde(default)]
+    pub release_mic_while_idle: bool,
+    #[serde(default = "default_true")]
+    pub pre_roll_enabled: bool,
+    #[serde(default = "default_true")]
+    pub adaptive_release_tail: bool,
+}
+
+impl Default for AudioBehaviorConfig {
+    fn default() -> Self {
+        Self {
+            ducking_mode: AudioDuckingMode::Off,
+            duck_volume: default_duck_volume(),
+            speakers_only: false,
+            avoid_bluetooth_microphone: true,
+            release_mic_while_idle: false,
+            pre_roll_enabled: true,
+            adaptive_release_tail: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputBehaviorConfig {
+    #[serde(default)]
+    pub paste_with_shift: bool,
+    #[serde(default)]
+    pub auto_terminal_ctrl_shift_v: bool,
+    #[serde(default)]
+    pub keep_on_clipboard: bool,
+    #[serde(default)]
+    pub copy_only: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortcutsBehaviorConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub second_dictation_hotkey: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_paste_hotkey: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub typed_text_hotkey: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meeting_hotkey: Option<String>,
+    #[serde(default)]
+    pub share_dictation_shortcut: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LabsConfig {
+    #[serde(default)]
+    pub live_text: bool,
+    #[serde(default = "default_true")]
+    pub failure_notices: bool,
+    #[serde(default)]
+    pub return_to_app: bool,
+    #[serde(default)]
+    pub smart_spacing: bool,
+    #[serde(default)]
+    pub spoken_formatting: bool,
+    #[serde(default)]
+    pub spoken_symbols: bool,
+    #[serde(default)]
+    pub skip_pauses: bool,
+    #[serde(default)]
+    pub tap_or_hold: bool,
+    #[serde(default)]
+    pub standalone_special_keys: bool,
+    #[serde(default)]
+    pub model_in_place: bool,
+    #[serde(default = "default_true")]
+    pub picker_sort_filter: bool,
+    #[serde(default)]
+    pub benchmark_details: bool,
+    #[serde(default)]
+    pub output_fixes: bool,
+    #[serde(default)]
+    pub api_processing: bool,
+    #[serde(default)]
+    pub meeting_finished_event: bool,
+    #[serde(default = "default_true")]
+    pub meeting_notes_vocabulary: bool,
+    #[serde(default)]
+    pub expire_meeting_audio: bool,
+}
+
+impl Default for LabsConfig {
+    fn default() -> Self {
+        Self {
+            live_text: false,
+            failure_notices: true,
+            return_to_app: false,
+            smart_spacing: false,
+            spoken_formatting: false,
+            spoken_symbols: false,
+            skip_pauses: false,
+            tap_or_hold: false,
+            standalone_special_keys: false,
+            model_in_place: false,
+            picker_sort_filter: true,
+            benchmark_details: false,
+            output_fixes: false,
+            api_processing: false,
+            meeting_finished_event: false,
+            meeting_notes_vocabulary: true,
+            expire_meeting_audio: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyboardModelRule {
+    pub layout_tag: String,
+    pub engine: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MeetingAppPolicy {
+    #[default]
+    Ask,
+    Always,
+    Never,
+}
+
+fn default_meeting_keep_audio_days() -> u32 {
+    30
+}
+
+fn default_meeting_font_size() -> u8 {
+    13
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingsConfig {
+    #[serde(default = "default_true")]
+    pub call_detection_enabled: bool,
+    #[serde(default)]
+    pub more_call_apps: bool,
+    #[serde(default)]
+    pub app_policies: HashMap<String, MeetingAppPolicy>,
+    #[serde(default = "default_true")]
+    pub auto_summarize: bool,
+    #[serde(default)]
+    pub save_markdown_transcripts: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub markdown_output_dir: Option<String>,
+    #[serde(default = "default_meeting_keep_audio_days")]
+    pub keep_audio_days: u32,
+    #[serde(default = "default_meeting_font_size")]
+    pub transcript_font_size: u8,
+}
+
+impl Default for MeetingsConfig {
+    fn default() -> Self {
+        Self {
+            call_detection_enabled: true,
+            more_call_apps: false,
+            app_policies: HashMap::new(),
+            auto_summarize: true,
+            save_markdown_transcripts: false,
+            markdown_output_dir: None,
+            keep_audio_days: default_meeting_keep_audio_days(),
+            transcript_font_size: default_meeting_font_size(),
         }
     }
 }
@@ -287,11 +521,22 @@ pub enum AppTranslationOverride {
     Target,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AppPasteMethod {
+    #[default]
+    Inherit,
+    SendInput,
+    Clipboard,
+    TerminalCtrlShiftV,
+    CopyOnly,
+}
+
 fn default_app_rule_enabled() -> bool {
     true
 }
 
-/// 针对一个 Windows 进程（并可进一步限定窗口标题）的听写覆盖规则。
+/// 针对一个 Windows 进程（并可进一步限定窗口标题或浏览器域名）的听写覆盖规则。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppProfileRule {
     pub id: String,
@@ -301,6 +546,8 @@ pub struct AppProfileRule {
     pub process_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window_title_contains: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub browser_domain: Option<String>,
     #[serde(default)]
     pub ai_polish: AppRuleOverride,
     #[serde(default)]
@@ -313,6 +560,14 @@ pub struct AppProfileRule {
     pub history: AppRuleOverride,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tone_mode: Option<String>,
+    #[serde(default)]
+    pub paste_method: AppPasteMethod,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub vocabulary: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transformations: Vec<String>,
 }
 
 impl Default for AppProfileRule {
@@ -323,12 +578,17 @@ impl Default for AppProfileRule {
             enabled: true,
             process_name: String::new(),
             window_title_contains: None,
+            browser_domain: None,
             ai_polish: AppRuleOverride::Inherit,
             translation: AppTranslationOverride::Inherit,
             translation_target: None,
             screen_context: AppRuleOverride::Inherit,
             history: AppRuleOverride::Inherit,
             custom_prompt: None,
+            tone_mode: None,
+            paste_method: AppPasteMethod::Inherit,
+            vocabulary: Vec::new(),
+            transformations: Vec::new(),
         }
     }
 }
@@ -342,6 +602,10 @@ pub struct ResolvedAppProfile {
     pub screen_context_enabled: Option<bool>,
     pub history_enabled: Option<bool>,
     pub custom_prompt: Option<String>,
+    pub tone_mode: Option<String>,
+    pub paste_method: AppPasteMethod,
+    pub vocabulary: Vec<String>,
+    pub transformations: Vec<String>,
 }
 
 fn normalized_process_name(value: &str) -> String {
@@ -400,6 +664,25 @@ impl AppProfileRule {
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(str::to_string),
+            tone_mode: self
+                .tone_mode
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            paste_method: self.paste_method,
+            vocabulary: self
+                .vocabulary
+                .iter()
+                .map(|item| item.trim().to_string())
+                .filter(|item| !item.is_empty())
+                .collect(),
+            transformations: self
+                .transformations
+                .iter()
+                .map(|item| item.trim().to_string())
+                .filter(|item| !item.is_empty())
+                .collect(),
         }
     }
 }
@@ -894,6 +1177,36 @@ impl UserProfile {
             .unwrap_or_default()
     }
 
+    pub fn resolve_app_profile_with_domain(
+        &self,
+        process_name: &str,
+        window_title: &str,
+        browser_domain: Option<&str>,
+    ) -> ResolvedAppProfile {
+        if let Some(domain) = browser_domain.map(str::trim).filter(|d| !d.is_empty()) {
+            let domain_lower = domain.to_ascii_lowercase();
+            if let Some(rule) = self.app_profile_rules.iter().find(|rule| {
+                rule.enabled
+                    && rule
+                        .browser_domain
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|d| !d.is_empty())
+                        .is_some_and(|d| {
+                            let target = d.to_ascii_lowercase();
+                            domain_lower == target || domain_lower.ends_with(&format!(".{target}"))
+                        })
+            }) {
+                return rule.resolve();
+            }
+            let legacy_domain = self.resolve_app_profile(domain, window_title);
+            if legacy_domain.rule_name.is_some() {
+                return legacy_domain;
+            }
+        }
+        self.resolve_app_profile(process_name, window_title)
+    }
+
     /// 获取按权重排序的热词文本列表（用于 ASR 注入）
     pub fn get_hot_word_texts(&self, limit: usize) -> Vec<String> {
         let mut words: Vec<&HotWord> = self.hot_words.iter().collect();
@@ -908,6 +1221,38 @@ impl UserProfile {
             .take(limit)
             .map(|w| w.text.clone())
             .collect()
+    }
+
+    /// Prioritize mode-specific vocabulary ahead of global vocabulary up to `limit`.
+    pub fn get_hot_word_texts_for_app(&self, app_vocab: &[String], limit: usize) -> Vec<String> {
+        if limit == 0 {
+            return Vec::new();
+        }
+        let mut merged = Vec::with_capacity(limit);
+        let mut seen = std::collections::HashSet::new();
+        for term in app_vocab {
+            let trimmed = term.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let key = trimmed.to_lowercase();
+            if seen.insert(key) {
+                merged.push(trimmed.to_string());
+                if merged.len() >= limit {
+                    return merged;
+                }
+            }
+        }
+        for term in self.get_hot_word_texts(limit) {
+            let key = term.to_lowercase();
+            if seen.insert(key) {
+                merged.push(term);
+                if merged.len() >= limit {
+                    break;
+                }
+            }
+        }
+        merged
     }
 
     /// 根据输入文本动态检索相关纠错模式

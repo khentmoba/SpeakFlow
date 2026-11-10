@@ -612,7 +612,7 @@ class LongClipTests(unittest.TestCase):
 
     def test_truncated_decode_keeps_the_partial_transcript(self):
         class OutputTruncated(Exception):
-            pass
+            partial_result: object = None
 
         class RepeatingSession(FakeSession):
             def run(self, audio, **kwargs):
@@ -636,7 +636,7 @@ class LongClipTests(unittest.TestCase):
 
     def test_empty_partial_transcript_still_fails(self):
         class OutputTruncated(Exception):
-            pass
+            partial_result: object = None
 
         class EmptySession(FakeSession):
             def run(self, audio, **kwargs):
@@ -707,7 +707,7 @@ class TranscribeDispatchContractTests(unittest.TestCase):
                     return {"success": True}
 
             server_common.BaseASRServer._execute_action(
-                Probe(),
+                Probe(),  # type: ignore[arg-type]
                 {"action": "transcribe", "audio_path": "clip.wav"},
                 "transcribe",
             )
@@ -834,6 +834,135 @@ class SpeechProcessingTests(unittest.TestCase):
                     handle.write(b"0" * 9)
                 with mock.patch.dict(os.environ, {"SPEAK_FLOW_MODEL_DIRS": directory}):
                     self.assertIsNone(hf_cache_utils.find_shared_model_file("model-Q8_0.gguf"))
+
+
+class NativeStreamingDiarizeAndCacheTests(unittest.TestCase):
+    def test_stream_commands_feed_commit_finalize_and_cancel(self):
+        class FakeStreamText:
+            def __init__(self, committed, tentative, full=""):
+                self.committed = committed
+                self.tentative = tentative
+                self.full = full
+
+        class FakeStream:
+            def __init__(self):
+                self.chunks = []
+                self.finalized = False
+                self.reset_called = False
+
+            def feed(self, audio):
+                self.chunks.append(len(audio))
+
+            def text(self):
+                if self.finalized:
+                    return FakeStreamText("hello world", "", full="hello world")
+                if len(self.chunks) == 1:
+                    return FakeStreamText("hello", " wor")
+                return FakeStreamText("hello world", "")
+
+            def finalize(self):
+                self.finalized = True
+
+            def reset(self):
+                self.reset_called = True
+
+        with mock.patch.object(qwen3_asr_server.Qwen3ASRServer, "_detect_device", return_value="cpu"):
+            server = qwen3_asr_server.Qwen3ASRServer(engine="parakeet-unified-en-0.6b")
+        server.initialized = True
+        server.model = types.SimpleNamespace(
+            capabilities=types.SimpleNamespace(supports_streaming=True),
+            supports=lambda cap: cap in ("vocabulary", "diarization"),
+        )
+        fake_stream = FakeStream()
+        server.session = mock.Mock()
+        server.session.stream.return_value = fake_stream
+
+        started = server.handle_stream_command({
+            "action": "stream_start",
+            "session_id": 7,
+            "language": "en",
+            "hot_words": ["SpeakFlow"],
+        })
+        self.assertTrue(started["success"])
+        self.assertFalse(started["final"])
+        server.session.stream.assert_called_once_with(
+            timestamps="none",
+            language="en",
+            vocabulary=["SpeakFlow"],
+        )
+
+        payload = base64.b64encode(np.zeros(1600, dtype="<i2").tobytes()).decode("ascii")
+        fed = server.handle_stream_command({
+            "action": "stream_feed",
+            "session_id": 7,
+            "audio_base64": payload,
+            "audio_format": "pcm_s16le",
+            "sample_rate": 16_000,
+        })
+        self.assertTrue(fed["success"])
+        self.assertEqual(fed["text"], "hello")
+        self.assertEqual(fed["tentative_text"], " wor")
+        self.assertEqual(fed["sample_count"], 1600)
+
+        finished = server.handle_stream_command({"action": "stream_finish", "session_id": 7})
+        self.assertTrue(finished["success"])
+        self.assertTrue(finished["final"])
+        self.assertEqual(finished["text"], "hello world")
+
+        # Start and cancel another session
+        server.handle_stream_command({"action": "stream_start", "session_id": 8})
+        cancelled = server.handle_stream_command({"action": "stream_cancel", "session_id": 8})
+        self.assertTrue(cancelled["success"])
+        self.assertTrue(cancelled["final"])
+
+    def test_diarize_audio_returns_speaker_segments(self):
+        with mock.patch.object(qwen3_asr_server.Qwen3ASRServer, "_detect_device", return_value="cpu"):
+            server = qwen3_asr_server.Qwen3ASRServer(engine="parakeet-unified-en-0.6b")
+        server.initialized = True
+        diar_sess = mock.Mock()
+        diar_sess.run.return_value = [
+            types.SimpleNamespace(t0_ms=0, t1_ms=1500, speaker_id=0, p=0.92),
+            types.SimpleNamespace(t0_ms=1600, t1_ms=3200, speaker_id=1, p=0.87),
+        ]
+        server.model = types.SimpleNamespace(
+            supports=lambda cap: cap == "diarization",
+            diarize_session=lambda: diar_sess,
+        )
+        payload = base64.b64encode(np.zeros(16_000, dtype="<i2").tobytes()).decode("ascii")
+        res = server.diarize_audio(None, audio_base64=payload, audio_format="pcm_s16le", sample_rate=16_000)
+        self.assertTrue(res["success"])
+        self.assertTrue(res["supported"])
+        self.assertEqual(len(res["segments"]), 2)
+        self.assertEqual(res["segments"][1]["speaker_id"], 1)
+
+    def test_vocabulary_and_prompt_conditioning_across_capabilities(self):
+        with mock.patch.object(qwen3_asr_server.Qwen3ASRServer, "_detect_device", return_value="cpu"):
+            server = qwen3_asr_server.Qwen3ASRServer(engine="whisper-small")
+        opts = {"timestamps": "none"}
+        server.model = types.SimpleNamespace(supports=lambda cap: cap == "initial_prompt")
+        server._apply_vocabulary_conditioning(opts, ["Rust", "Tauri"], False)
+        self.assertEqual(opts.get("prompt"), "Rust, Tauri")
+        self.assertNotIn("vocabulary", opts)
+
+        opts2 = {"timestamps": "none"}
+        server.model = types.SimpleNamespace(supports=lambda cap: cap == "vocabulary")
+        server._apply_vocabulary_conditioning(opts2, ["SpeakFlow"], False)
+        self.assertEqual(opts2.get("vocabulary"), ["SpeakFlow"])
+
+    def test_scan_hf_cache_models_zero_copy(self):
+        import hf_cache_utils
+
+        with tempfile.TemporaryDirectory() as root:
+            snap = os.path.join(root, "models--acme--asr-gguf", "snapshots", "abc123")
+            os.makedirs(snap, exist_ok=True)
+            gguf = os.path.join(snap, "custom-model-Q8_0.gguf")
+            with open(gguf, "wb") as f:
+                f.write(b"GGUF" + b"\x00" * 1_000_100)
+            with mock.patch.dict(os.environ, {"HF_HUB_CACHE": root}):
+                found = hf_cache_utils.scan_hf_cache_models()
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["repo_id"], "acme/asr-gguf")
+        self.assertEqual(found[0]["filename"], "custom-model-Q8_0.gguf")
 
 
 if __name__ == "__main__":

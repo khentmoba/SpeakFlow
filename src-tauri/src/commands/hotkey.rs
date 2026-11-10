@@ -31,8 +31,9 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, PeekMessageW, PostThreadMessageW,
     SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, HC_ACTION, KBDLLHOOKSTRUCT, MSG,
-    PM_NOREMOVE, WH_KEYBOARD_LL, WM_HOTKEY, WM_KEYDOWN, WM_KEYUP, WM_NULL, WM_QUIT, WM_SYSKEYDOWN,
-    WM_SYSKEYUP,
+    MSLLHOOKSTRUCT, PM_NOREMOVE, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_HOTKEY, WM_KEYDOWN, WM_KEYUP,
+    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_NULL, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN,
+    WM_XBUTTONUP,
 };
 
 mod dispatch;
@@ -44,7 +45,10 @@ mod unified_hook;
 
 #[cfg(test)]
 use dispatch::is_ignorable_start_audio_error;
-use dispatch::{dispatch_hotkey_press, dispatch_hotkey_release, handle_hotkey_stop};
+use dispatch::{
+    dispatch_hotkey_press, dispatch_hotkey_release, handle_hotkey_stop,
+    handle_meeting_toggle_action, handle_terminal_paste_action, handle_typed_text_action,
+};
 use monitor::*;
 use reg_backend::*;
 use spec::*;
@@ -73,18 +77,17 @@ enum HotkeyBackend {
     LowLevelHook,
 }
 
-fn classify_backend(spec: &HotkeySpec) -> HotkeyBackend {
-    if is_toggle_mode() {
-        match spec {
-            HotkeySpec::ModifierOnly { .. } => HotkeyBackend::LowLevelHook,
-            HotkeySpec::Standard {
-                force_low_level_hook: true,
-                ..
-            } => HotkeyBackend::LowLevelHook,
-            HotkeySpec::Standard { .. } => HotkeyBackend::RegisterHotKey,
-        }
+fn classify_backend(kind: HotkeyKind, spec: &HotkeySpec) -> HotkeyBackend {
+    if spec.force_low_level_hook() {
+        return HotkeyBackend::LowLevelHook;
+    }
+    if is_share_dictation_shortcut() && kind.is_dictation_passthrough_eligible() {
+        return HotkeyBackend::LowLevelHook;
+    }
+    if is_toggle_mode() || !kind.is_recording_trigger() {
+        HotkeyBackend::RegisterHotKey
     } else {
-        // Hold mode always needs LLKH for key-up detection
+        // Hold / tap-or-hold needs LLKH for key-up detection
         HotkeyBackend::LowLevelHook
     }
 }
@@ -99,6 +102,9 @@ enum DispatchEvent {
     Release(Arc<UnifiedHookState>, String),
     Cancel(Arc<UnifiedHookState>, String),
     PasteLast(Arc<UnifiedHookState>),
+    TerminalPaste(tauri::AppHandle),
+    TypedText(tauri::AppHandle),
+    MeetingToggle(tauri::AppHandle),
 }
 
 #[cfg(target_os = "windows")]
@@ -159,6 +165,15 @@ fn dispatch_channel() -> &'static std::sync::mpsc::Sender<DispatchEvent> {
                             tauri::async_runtime::spawn(async move {
                                 let _ = crate::commands::clipboard::paste_last_dictation(app).await;
                             });
+                        }
+                        DispatchEvent::TerminalPaste(app) => {
+                            handle_terminal_paste_action(app);
+                        }
+                        DispatchEvent::TypedText(app) => {
+                            handle_typed_text_action(app);
+                        }
+                        DispatchEvent::MeetingToggle(app) => {
+                            handle_meeting_toggle_action(app);
                         }
                     }
                 }
@@ -221,6 +236,8 @@ fn probe_system_hotkey_conflict(spec: &HotkeySpec) -> Option<String> {
 struct HotkeyEventGate {
     is_pressed: AtomicBool,
     last_release_ms: AtomicU64,
+    pressed_at_ms: AtomicU64,
+    tap_locked: AtomicBool,
     toggle_active: AtomicBool,
     start_owner: Arc<HotkeyStartOwner>,
     transition: parking_lot::Mutex<()>,
@@ -232,6 +249,8 @@ impl Default for HotkeyEventGate {
         Self {
             is_pressed: AtomicBool::new(false),
             last_release_ms: AtomicU64::new(0),
+            pressed_at_ms: AtomicU64::new(0),
+            tap_locked: AtomicBool::new(false),
             toggle_active: AtomicBool::new(false),
             start_owner: Arc::new(HotkeyStartOwner::default()),
             transition: parking_lot::Mutex::new(()),
@@ -251,18 +270,34 @@ fn reset_hotkey_event_gate(gate: &HotkeyEventGate) {
     gate.start_owner.release();
     gate.is_pressed.store(false, Ordering::Release);
     gate.last_release_ms.store(0, Ordering::Release);
+    gate.pressed_at_ms.store(0, Ordering::Release);
+    gate.tap_locked.store(false, Ordering::Release);
     gate.toggle_active.store(false, Ordering::Release);
 }
 
 #[cfg(target_os = "windows")]
 fn hotkey_gate_is_current(trigger: RecordingTrigger, gate: &Arc<HotkeyEventGate>) -> bool {
     let guard = unified_hook_state_snapshot().load_full();
-    let state = match trigger {
-        RecordingTrigger::DictationOriginal => guard.dictation.as_ref(),
-        RecordingTrigger::DictationTranslated => guard.translation.as_ref(),
-        RecordingTrigger::Assistant => guard.assistant.as_ref(),
-    };
-    state.is_some_and(|state| Arc::ptr_eq(&state.gate, gate))
+    match trigger {
+        RecordingTrigger::DictationOriginal => {
+            guard
+                .dictation
+                .as_ref()
+                .is_some_and(|s| Arc::ptr_eq(&s.gate, gate))
+                || guard
+                    .second_dictation
+                    .as_ref()
+                    .is_some_and(|s| Arc::ptr_eq(&s.gate, gate))
+        }
+        RecordingTrigger::DictationTranslated => guard
+            .translation
+            .as_ref()
+            .is_some_and(|s| Arc::ptr_eq(&s.gate, gate)),
+        RecordingTrigger::Assistant => guard
+            .assistant
+            .as_ref()
+            .is_some_and(|s| Arc::ptr_eq(&s.gate, gate)),
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -287,6 +322,22 @@ fn toggle_mode_flag() -> &'static AtomicBool {
 
 fn is_toggle_mode() -> bool {
     toggle_mode_flag().load(Ordering::Acquire)
+}
+
+static SHARE_DICTATION_SHORTCUT: AtomicBool = AtomicBool::new(false);
+static TAP_OR_HOLD_ENABLED: AtomicBool = AtomicBool::new(false);
+static STANDALONE_SPECIAL_KEYS: AtomicBool = AtomicBool::new(false);
+
+pub(super) fn is_share_dictation_shortcut() -> bool {
+    SHARE_DICTATION_SHORTCUT.load(Ordering::Acquire)
+}
+
+pub(super) fn is_tap_or_hold_enabled() -> bool {
+    TAP_OR_HOLD_ENABLED.load(Ordering::Acquire)
+}
+
+pub(super) fn is_standalone_special_keys_enabled() -> bool {
+    STANDALONE_SPECIAL_KEYS.load(Ordering::Acquire)
 }
 
 // ---------------------------------------------------------------------------
@@ -318,8 +369,12 @@ fn hotkey_warning_message(shortcut_label: &str) -> Option<String> {
 fn hotkey_kind_label(kind: HotkeyKind) -> &'static str {
     match kind {
         HotkeyKind::Dictation => "dictation",
+        HotkeyKind::SecondDictation => "secondary dictation",
         HotkeyKind::Translation => "translation",
         HotkeyKind::Assistant => "assistant",
+        HotkeyKind::TerminalPaste => "terminal paste",
+        HotkeyKind::TypedText => "typed text",
+        HotkeyKind::MeetingToggle => "meeting toggle",
     }
 }
 
@@ -333,8 +388,12 @@ fn ensure_hotkey_not_conflicting(
         let guard = unified_hook_state_slot().lock();
         for (other_kind, state) in [
             (HotkeyKind::Dictation, guard.dictation.as_ref()),
+            (HotkeyKind::SecondDictation, guard.second_dictation.as_ref()),
             (HotkeyKind::Translation, guard.translation.as_ref()),
             (HotkeyKind::Assistant, guard.assistant.as_ref()),
+            (HotkeyKind::TerminalPaste, guard.terminal_paste.as_ref()),
+            (HotkeyKind::TypedText, guard.typed_text.as_ref()),
+            (HotkeyKind::MeetingToggle, guard.meeting_toggle.as_ref()),
         ] {
             if other_kind == kind {
                 continue;
@@ -402,8 +461,12 @@ fn restore_hotkey_registrations(
     }
     for (kind, state) in previous {
         if let Some(state) = state {
-            let fresh =
-                build_hook_state(state.app_handle.clone(), state.spec.clone(), state.trigger);
+            let fresh = build_hook_state(
+                state.app_handle.clone(),
+                *kind,
+                state.spec.clone(),
+                state.trigger,
+            );
             set_unified_hook_state(*kind, Some(fresh.clone()));
             try_register_hotkey_backend(*kind, &fresh);
         }
@@ -472,6 +535,7 @@ fn register_on_chosen_backend(
                     );
                     let fallback_state = build_hook_state_with_backend(
                         hook_state.app_handle.clone(),
+                        hook_state.kind,
                         hook_state.spec.clone(),
                         hook_state.trigger,
                         HotkeyBackend::LowLevelHook,
@@ -524,6 +588,7 @@ fn try_register_hotkey_backend(kind: HotkeyKind, state: &Arc<UnifiedHookState>) 
             );
             let fallback = build_hook_state_with_backend(
                 state.app_handle.clone(),
+                state.kind,
                 state.spec.clone(),
                 state.trigger,
                 HotkeyBackend::LowLevelHook,
@@ -543,23 +608,24 @@ pub async fn register_custom_hotkey(
     shortcut: String,
 ) -> Result<String, AppError> {
     let _configuration = hotkey_configuration_lock().lock();
-    let spec = match normalize_shortcut(&shortcut) {
-        Ok(spec) => spec,
-        Err(err) => {
-            let now_ms = now_unix_ms();
-            update_hotkey_diagnostic(&app_handle, |diagnostic| {
-                diagnostic.shortcut = shortcut.replace("Super", "Win");
-                diagnostic.registered = false;
-                diagnostic.backend = "none".to_string();
-                diagnostic.is_pressed = false;
-                diagnostic.last_error = Some(err.to_string());
-                diagnostic.warning = None;
-                diagnostic.last_event = Some("error".to_string());
-                diagnostic.last_event_at_ms = Some(now_ms);
-            });
-            return Err(err);
-        }
-    };
+    let spec =
+        match normalize_shortcut_with_options(&shortcut, is_standalone_special_keys_enabled()) {
+            Ok(spec) => spec,
+            Err(err) => {
+                let now_ms = now_unix_ms();
+                update_hotkey_diagnostic(&app_handle, |diagnostic| {
+                    diagnostic.shortcut = shortcut.replace("Super", "Win");
+                    diagnostic.registered = false;
+                    diagnostic.backend = "none".to_string();
+                    diagnostic.is_pressed = false;
+                    diagnostic.last_error = Some(err.to_string());
+                    diagnostic.warning = None;
+                    diagnostic.last_event = Some("error".to_string());
+                    diagnostic.last_event_at_ms = Some(now_ms);
+                });
+                return Err(err);
+            }
+        };
 
     let label = spec.label().to_string();
     ensure_hotkey_not_conflicting(&app_handle, HotkeyKind::Dictation, &label)?;
@@ -584,6 +650,7 @@ pub async fn register_custom_hotkey(
     #[cfg(target_os = "windows")]
     let hook_state = build_hook_state(
         app_handle.clone(),
+        HotkeyKind::Dictation,
         spec,
         RecordingTrigger::DictationOriginal,
     );
@@ -660,10 +727,12 @@ pub(crate) fn register_translation_hotkey_inner(
     #[cfg(target_os = "windows")]
     {
         let next_state = if let Some(shortcut) = shortcut {
-            let spec = normalize_shortcut(&shortcut)?;
+            let spec =
+                normalize_shortcut_with_options(&shortcut, is_standalone_special_keys_enabled())?;
             ensure_hotkey_not_conflicting(&app_handle, HotkeyKind::Translation, spec.label())?;
             Some(build_hook_state(
                 app_handle.clone(),
+                HotkeyKind::Translation,
                 spec,
                 RecordingTrigger::DictationTranslated,
             ))
@@ -725,10 +794,12 @@ pub(crate) fn register_assistant_hotkey_inner(
     #[cfg(target_os = "windows")]
     {
         let next_state = if let Some(shortcut) = shortcut {
-            let spec = normalize_shortcut(&shortcut)?;
+            let spec =
+                normalize_shortcut_with_options(&shortcut, is_standalone_special_keys_enabled())?;
             ensure_hotkey_not_conflicting(&app_handle, HotkeyKind::Assistant, spec.label())?;
             Some(build_hook_state(
                 app_handle.clone(),
+                HotkeyKind::Assistant,
                 spec,
                 RecordingTrigger::Assistant,
             ))
@@ -768,20 +839,19 @@ pub async fn unregister_all_hotkeys(app_handle: tauri::AppHandle) -> Result<Stri
     let _configuration = hotkey_configuration_lock().lock();
     #[cfg(target_os = "windows")]
     {
-        // Unregister from RegisterHotKey backend
-        unregister_via_reg_hotkey(HotkeyKind::Dictation);
-        unregister_via_reg_hotkey(HotkeyKind::Translation);
-        unregister_via_reg_hotkey(HotkeyKind::Assistant);
-
-        // Unregister from LLKH backend
-        if let Some(previous) = set_unified_hook_state(HotkeyKind::Dictation, None) {
-            force_release_hotkey(&previous);
-        }
-        if let Some(previous) = set_unified_hook_state(HotkeyKind::Translation, None) {
-            force_release_hotkey(&previous);
-        }
-        if let Some(previous) = set_unified_hook_state(HotkeyKind::Assistant, None) {
-            force_release_hotkey(&previous);
+        for kind in [
+            HotkeyKind::Dictation,
+            HotkeyKind::SecondDictation,
+            HotkeyKind::Translation,
+            HotkeyKind::Assistant,
+            HotkeyKind::TerminalPaste,
+            HotkeyKind::TypedText,
+            HotkeyKind::MeetingToggle,
+        ] {
+            unregister_via_reg_hotkey(kind);
+            if let Some(previous) = set_unified_hook_state(kind, None) {
+                force_release_hotkey(&previous);
+            }
         }
     }
     stop_unified_hotkey_monitor();
@@ -837,11 +907,18 @@ pub async fn set_recording_mode(
         let bundle = get_unified_hook_states();
         for (kind, state) in [
             (HotkeyKind::Dictation, bundle.dictation.as_ref()),
+            (
+                HotkeyKind::SecondDictation,
+                bundle.second_dictation.as_ref(),
+            ),
             (HotkeyKind::Translation, bundle.translation.as_ref()),
             (HotkeyKind::Assistant, bundle.assistant.as_ref()),
+            (HotkeyKind::TerminalPaste, bundle.terminal_paste.as_ref()),
+            (HotkeyKind::TypedText, bundle.typed_text.as_ref()),
+            (HotkeyKind::MeetingToggle, bundle.meeting_toggle.as_ref()),
         ] {
             if let Some(old_state) = state {
-                let new_backend = classify_backend(&old_state.spec);
+                let new_backend = classify_backend(kind, &old_state.spec);
                 let label = old_state.spec.label().to_string();
                 log::info!(
                     "模式切换：{} 从 {:?} 迁移到 {:?}",
@@ -857,6 +934,7 @@ pub async fn set_recording_mode(
                 // Rebuild state with new backend classification
                 let new_state = build_hook_state(
                     old_state.app_handle.clone(),
+                    kind,
                     old_state.spec.clone(),
                     old_state.trigger,
                 );
@@ -872,8 +950,12 @@ pub async fn set_recording_mode(
                 &_app_handle,
                 &[
                     (HotkeyKind::Dictation, bundle.dictation),
+                    (HotkeyKind::SecondDictation, bundle.second_dictation),
                     (HotkeyKind::Translation, bundle.translation),
                     (HotkeyKind::Assistant, bundle.assistant),
+                    (HotkeyKind::TerminalPaste, bundle.terminal_paste),
+                    (HotkeyKind::TypedText, bundle.typed_text),
+                    (HotkeyKind::MeetingToggle, bundle.meeting_toggle),
                 ],
                 error,
             ));
@@ -889,6 +971,107 @@ pub async fn get_hotkey_diagnostic(
     state: tauri::State<'_, AppState>,
 ) -> Result<crate::state::HotkeyDiagnosticState, AppError> {
     Ok(state.hotkey_diagnostic_snapshot())
+}
+
+#[cfg(target_os = "windows")]
+fn register_optional_hotkey_slot(
+    app_handle: &tauri::AppHandle,
+    kind: HotkeyKind,
+    trigger: RecordingTrigger,
+    shortcut: Option<&str>,
+) -> Result<(), AppError> {
+    let normalized = shortcut.map(str::trim).filter(|value| !value.is_empty());
+    let next_state = if let Some(raw) = normalized {
+        let spec = normalize_shortcut_with_options(raw, is_standalone_special_keys_enabled())?;
+        ensure_hotkey_not_conflicting(app_handle, kind, spec.label())?;
+        Some(build_hook_state(app_handle.clone(), kind, spec, trigger))
+    } else {
+        None
+    };
+
+    unregister_via_reg_hotkey(kind);
+    let previous = set_unified_hook_state(kind, next_state.clone());
+    if let Some(prev) = previous.as_ref() {
+        force_release_hotkey(prev);
+    }
+    if let Some(ref state) = next_state {
+        try_register_hotkey_backend(kind, state);
+    }
+    Ok(())
+}
+
+/// Applies secondary shortcuts (`second_dictation_hotkey`, `terminal_paste_hotkey`,
+/// `typed_text_hotkey`, `meeting_hotkey`), passthrough (`share_dictation_shortcut`),
+/// `tap_or_hold`, and `standalone_special_keys` from `UserProfile`.
+pub(crate) fn sync_extended_hotkeys(
+    app_handle: &tauri::AppHandle,
+    shortcuts: &crate::state::user_profile::ShortcutsBehaviorConfig,
+    labs: &crate::state::user_profile::LabsConfig,
+) -> Result<(), AppError> {
+    let _configuration = hotkey_configuration_lock().lock();
+    SHARE_DICTATION_SHORTCUT.store(shortcuts.share_dictation_shortcut, Ordering::Release);
+    TAP_OR_HOLD_ENABLED.store(labs.tap_or_hold, Ordering::Release);
+    STANDALONE_SPECIAL_KEYS.store(labs.standalone_special_keys, Ordering::Release);
+
+    #[cfg(target_os = "windows")]
+    {
+        register_optional_hotkey_slot(
+            app_handle,
+            HotkeyKind::SecondDictation,
+            RecordingTrigger::DictationOriginal,
+            shortcuts.second_dictation_hotkey.as_deref(),
+        )?;
+        register_optional_hotkey_slot(
+            app_handle,
+            HotkeyKind::TerminalPaste,
+            RecordingTrigger::DictationOriginal,
+            shortcuts.terminal_paste_hotkey.as_deref(),
+        )?;
+        register_optional_hotkey_slot(
+            app_handle,
+            HotkeyKind::TypedText,
+            RecordingTrigger::DictationOriginal,
+            shortcuts.typed_text_hotkey.as_deref(),
+        )?;
+        register_optional_hotkey_slot(
+            app_handle,
+            HotkeyKind::MeetingToggle,
+            RecordingTrigger::DictationOriginal,
+            shortcuts.meeting_hotkey.as_deref(),
+        )?;
+        // Refresh primary dictation backend if share_dictation_shortcut toggled it between RegisterHotKey and LLKH.
+        let current_dict = unified_hook_state_slot().lock().dictation.clone();
+        if let Some(dict_state) = current_dict {
+            let desired_backend = classify_backend(HotkeyKind::Dictation, &dict_state.spec);
+            if desired_backend != dict_state.backend {
+                unregister_via_reg_hotkey(HotkeyKind::Dictation);
+                force_release_hotkey(&dict_state);
+                let rebuilt = build_hook_state(
+                    app_handle.clone(),
+                    HotkeyKind::Dictation,
+                    dict_state.spec.clone(),
+                    RecordingTrigger::DictationOriginal,
+                );
+                set_unified_hook_state(HotkeyKind::Dictation, Some(rebuilt.clone()));
+                try_register_hotkey_backend(HotkeyKind::Dictation, &rebuilt);
+            }
+        }
+        sync_hotkey_monitor_lifecycle(app_handle.clone())?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app_handle;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn register_extended_hotkeys(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), AppError> {
+    let (shortcuts, labs) = state.with_profile(|p| (p.shortcuts_behavior.clone(), p.labs.clone()));
+    sync_extended_hotkeys(&app_handle, &shortcuts, &labs)
 }
 
 #[cfg(test)]

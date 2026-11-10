@@ -12,6 +12,7 @@ pub mod history;
 pub mod hotkey;
 pub mod jev;
 pub mod magpie;
+pub mod meeting;
 #[cfg(test)]
 mod polish_credential_tests;
 pub mod profile;

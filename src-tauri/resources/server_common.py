@@ -4,6 +4,7 @@
 """Python ASR server shared utilities."""
 
 import base64
+import binascii
 import contextlib
 import io
 import logging
@@ -13,8 +14,8 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Optional, Tuple
 from logging.handlers import RotatingFileHandler
+from typing import Optional, Tuple
 
 
 def _has_nvidia_gpu() -> bool:
@@ -154,7 +155,7 @@ def decode_inline_audio(
 
     try:
         audio_bytes = base64.b64decode(audio_base64, validate=False)
-    except (ValueError, base64.binascii.Error) as exc:
+    except (ValueError, binascii.Error) as exc:
         raise ValueError(f"Failed to decode audio base64: {exc}") from exc
     fmt = (audio_format or "pcm_s16le").lower()
 
@@ -244,7 +245,7 @@ class BaseASRServer:
     def _detect_device(self) -> str:
         """Detect inference device. Override for engine-specific detection."""
         try:
-            import torch
+            import torch  # type: ignore[import-not-found]
             if torch.cuda.is_available():
                 gpu_name = torch.cuda.get_device_name(0)
                 gpu_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
@@ -286,7 +287,7 @@ class BaseASRServer:
             import gc
             gc.collect()
             if self.device == "cuda":
-                import torch
+                import torch  # type: ignore[import-not-found]
                 torch.cuda.empty_cache()
             self.logger.info("Memory cleanup completed")
         except Exception as e:
@@ -304,7 +305,7 @@ class BaseASRServer:
         info = {"device": self.device}
         if self.device == "cuda":
             try:
-                import torch
+                import torch  # type: ignore[import-not-found]
                 info["gpu_name"] = torch.cuda.get_device_name(0)
                 info["gpu_memory_total"] = round(
                     torch.cuda.get_device_properties(0).total_memory / (1024**3), 1
@@ -350,6 +351,15 @@ class BaseASRServer:
             "success": False,
             "error": f"Unsupported streaming command: {command.get('action')}",
         }
+
+    def diarize_audio(
+        self,
+        audio_path: str | None,
+        audio_base64: str | None = None,
+        audio_format: str | None = None,
+        sample_rate: int | None = None,
+    ) -> dict:
+        return {"success": True, "supported": False, "segments": []}
 
 
     def _with_gpu_suspend_flag(self, payload):
@@ -504,6 +514,13 @@ class BaseASRServer:
             "stream_cancel",
         ):
             return self.handle_stream_command(command)
+        if action == "diarize":
+            return self.diarize_audio(
+                command.get("audio_path"),
+                audio_base64=command.get("audio_base64"),
+                audio_format=command.get("audio_format"),
+                sample_rate=command.get("sample_rate"),
+            )
         return {"success": False, "error": f"Unknown command: {action}"}
 
     # ------------------------------------------------------------------
