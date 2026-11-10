@@ -149,7 +149,16 @@ export default function KeyboardModelSwitchingSettingsSection({
             )}
 
             {draft !== null && (
-              <div className="app-rule-card">
+              <div
+                className="app-rule-card"
+                // Commit only when focus leaves the whole card, so tabbing or
+                // clicking into the engine picker does not save the row early.
+                onBlur={(event) => {
+                  const next = event.relatedTarget as Node | null;
+                  if (next && event.currentTarget.contains(next)) return;
+                  commitDraft(draft);
+                }}
+              >
                 <div className="settings-row">
                   <input
                     className="settings-input"
@@ -160,7 +169,6 @@ export default function KeyboardModelSwitchingSettingsSection({
                     onChange={(event) => {
                       setDraft({ ...draft, layoutTag: event.target.value });
                     }}
-                    onBlur={() => commitDraft(draft)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") commitDraft(draft);
                       if (event.key === "Escape") setDraft(null);
