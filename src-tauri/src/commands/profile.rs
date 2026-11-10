@@ -306,9 +306,12 @@ pub async fn set_app_profile_rules(
             profile_service::MAX_APP_PROFILE_RULES
         )));
     }
-    if rules.iter().any(|rule| rule.process_name.trim().is_empty()) {
+    if rules
+        .iter()
+        .any(|rule| rule.process_name.trim().is_empty() && rule.browser_domain.is_none())
+    {
         return Err(AppError::Other(
-            "Every app rule must have a process name".into(),
+            "Every app rule needs a process name or a browser domain".into(),
         ));
     }
     profile_service::update_profile_and_schedule(state.inner(), |profile| {

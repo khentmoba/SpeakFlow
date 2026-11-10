@@ -451,7 +451,6 @@ export interface ShortcutsBehaviorConfig {
 }
 
 export interface LabsConfig {
-  liveText: boolean;
   failureNotices: boolean;
   returnToApp: boolean;
   smartSpacing: boolean;
@@ -460,9 +459,6 @@ export interface LabsConfig {
   skipPauses: boolean;
   tapOrHold: boolean;
   standaloneSpecialKeys: boolean;
-  modelInPlace: boolean;
-  pickerSortFilter: boolean;
-  benchmarkDetails: boolean;
   outputFixes: boolean;
   apiProcessing: boolean;
   meetingFinishedEvent: boolean;

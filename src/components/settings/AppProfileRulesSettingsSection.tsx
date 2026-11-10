@@ -192,7 +192,7 @@ function RuleEditor({ value, onChange, onCancel, onSubmit }: {
         <button
           type="button"
           className="test-btn"
-          disabled={!value.process_name.trim()}
+          disabled={!value.process_name.trim() && !(value.browser_domain ?? "").trim()}
           onClick={onSubmit}
         >
           {t("settings.appRuleSave")}

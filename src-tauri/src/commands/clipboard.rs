@@ -321,9 +321,9 @@ static LAST_DICTATION_RECORD: parking_lot::Mutex<Option<LastDictationRecord>> =
 
 pub fn set_last_dictation_record(record: LastDictationRecord) {
     set_last_pasted_text(&record.text);
-    if let Some(last_ch) = record.text.chars().last() {
-        *LAST_PASTED_TRAIL.lock() = Some((record.target_window, last_ch));
-    }
+    // The pasted trail is recorded by `paste_text_with_strategy` once delivery
+    // succeeds. Writing it here would make the smart-spacing probe read this
+    // dictation's own last character as the preceding one.
     *LAST_DICTATION_RECORD.lock() = Some(record);
 }
 
@@ -731,6 +731,9 @@ pub(crate) async fn paste_text_with_strategy(
     }
 
     log::info!("已输入 {} 个字符", text.len());
+    if let Some(last_ch) = text.chars().last() {
+        *LAST_PASTED_TRAIL.lock() = Some((target, last_ch));
+    }
     Ok("Text entered".to_string())
 }
 

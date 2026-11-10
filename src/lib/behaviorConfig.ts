@@ -37,7 +37,6 @@ export const DEFAULT_SHORTCUTS_BEHAVIOR: ShortcutsBehaviorConfig = {
 };
 
 export const DEFAULT_LABS: LabsConfig = {
-  liveText: false,
   failureNotices: true,
   returnToApp: false,
   smartSpacing: false,
@@ -46,9 +45,6 @@ export const DEFAULT_LABS: LabsConfig = {
   skipPauses: false,
   tapOrHold: false,
   standaloneSpecialKeys: false,
-  modelInPlace: false,
-  pickerSortFilter: true,
-  benchmarkDetails: false,
   outputFixes: false,
   apiProcessing: false,
   meetingFinishedEvent: false,

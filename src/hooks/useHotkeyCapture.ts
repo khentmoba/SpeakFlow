@@ -9,6 +9,13 @@ import {
   modifierFromKeyboardEvent,
 } from "@/lib/hotkey";
 
+/** DOM `MouseEvent.button` values for the bindable extra buttons. */
+const MOUSE_BUTTON_TOKENS: Record<number, string> = {
+  1: "Mouse3",
+  3: "Mouse4",
+  4: "Mouse5",
+};
+
 interface HotkeyCaptureConfig {
   /** Persist the shortcut. Throw to signal failure. */
   save: (shortcut: string) => Promise<void>;
@@ -98,15 +105,29 @@ export function useHotkeyCapture(config: HotkeyCaptureConfig) {
       }
     };
 
+    // Mouse buttons are bindable too (Mouse3/4/5), so capture them alongside
+    // keys instead of leaving the Rust Mouse spec unreachable.
+    const onMouseDown = (e: MouseEvent) => {
+      const token = MOUSE_BUTTON_TOKENS[e.button];
+      if (!token || applied) return;
+      e.preventDefault();
+      e.stopPropagation();
+      mainKeyPressed = true;
+      const combo = [...HOTKEY_MODIFIER_ORDER.filter((k) => active.has(k)), token].join("+");
+      apply(combo);
+    };
+
     const onVisibilityChange = () => { if (document.hidden) reset(); };
 
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("mousedown", onMouseDown, true);
     window.addEventListener("blur", reset);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("mousedown", onMouseDown, true);
       window.removeEventListener("blur", reset);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };

@@ -45,6 +45,7 @@ import ShortcutsBehaviorSettingsSection from "@/components/settings/ShortcutsBeh
 import LabsSettingsSection from "@/components/settings/LabsSettingsSection";
 import MeetingsSettingsSection from "@/components/settings/MeetingsSettingsSection";
 import ScriptingSettingsSection from "@/components/settings/ScriptingSettingsSection";
+import KeyboardModelSwitchingSettingsSection from "@/components/settings/KeyboardModelSwitchingSettingsSection";
 import CustomModelsSettingsSection from "@/components/settings/CustomModelsSettingsSection";
 import GpuIdleUnloadControl from "@/components/settings/GpuIdleUnloadControl";
 import { SettingsReveal } from "@/components/settings/SettingsReveal";
@@ -1242,6 +1243,11 @@ export default function SettingsPage({
           <DictationToolsSettingsSection />
 
           <ScriptingSettingsSection
+            profile={profile}
+            onSaved={() => { void refreshProfile(); }}
+          />
+
+          <KeyboardModelSwitchingSettingsSection
             profile={profile}
             onSaved={() => { void refreshProfile(); }}
           />

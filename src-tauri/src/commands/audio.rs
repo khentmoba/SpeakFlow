@@ -550,14 +550,17 @@ pub(crate) async fn stop_recording_inner(
     };
 
     audio_service::flush_pending_paste(&app_handle);
-    crate::services::audio_service::restore_audio();
 
     let session = match recording {
         None => {
+            // No session means no release tail, so nothing is still capturing.
+            crate::services::audio_service::restore_audio();
             log::warn!("stop_recording 被调用但没有活跃的录音会话");
             return Ok(None);
         }
         Some(RecordingSlot::Starting(p)) => {
+            // A cancelled start never opened the capture stream, so no tail runs.
+            crate::services::audio_service::restore_audio();
             log::info!("录音启动阶段已取消 (session {})", p.session_id);
             if let Some(snapshot) = transition.as_ref() {
                 emit_recording_state(&app_handle, snapshot, false, false, false, None);

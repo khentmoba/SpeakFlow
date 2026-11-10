@@ -10,6 +10,7 @@ import {
   pickGgufFile,
   removeCustomModel,
   scanHfCacheModels,
+  setEngine,
 } from "@/api/tauri";
 import { formatFileSize } from "@/lib/behaviorConfig";
 import type { CustomModelEntry, DiscoveredHfModel } from "@/types";
@@ -81,6 +82,18 @@ export default function CustomModelsSettingsSection() {
     }
   };
 
+  const handleUse = async (model: CustomModelEntry) => {
+    setBusy(true);
+    try {
+      await setEngine(model.engineKey);
+      toast.success(t("settings.customModelsActivated", { name: model.name }));
+    } catch {
+      toast.error(t("settings.customModelsActivateFailed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <section className="settings-card" data-nav-id="custom-models">
       <SettingsSectionHeader
@@ -119,6 +132,14 @@ export default function CustomModelsSettingsSection() {
                 </span>
               </div>
               <div className="app-rule-actions">
+                <button
+                  type="button"
+                  className="btn-ghost btn-ghost-sm"
+                  disabled={busy}
+                  onClick={() => { void handleUse(model); }}
+                >
+                  {t("settings.customModelsActivate")}
+                </button>
                 <button
                   type="button"
                   className="btn-ghost app-rule-icon-button app-rule-delete"

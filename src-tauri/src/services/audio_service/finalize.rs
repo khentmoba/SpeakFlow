@@ -347,6 +347,9 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
     let state = app_handle.state::<AppState>();
 
     wait_adaptive_release_tail(&state, &stop_flag, &stop_notify, &samples, sample_rate).await;
+    // Restore ducking only after the release tail, so the tail is captured
+    // against the ducked background instead of the restored one.
+    crate::services::audio_service::restore_audio();
 
     if let Some(h) = audio_thread {
         let _ = tokio::task::spawn_blocking(move || {

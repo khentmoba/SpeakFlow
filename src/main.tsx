@@ -1,8 +1,10 @@
 import React, { Suspense, lazy, useState, useRef, useCallback, useEffect } from "react";
 import ReactDOM from "react-dom/client";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { CircleCheck, CircleAlert, Info, TriangleAlert, LoaderCircle } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
+import { getMeetingStatus, startMeetingRecording, stopMeetingRecording } from "./api/tauri";
 import { RecordingProvider } from "./contexts/RecordingContext";
 import { prefersReducedMotion } from "./lib/motion";
 import MainPage from "./pages/MainPage";
@@ -74,6 +76,73 @@ function AppWorkspace() {
   const isTransitioning = useRef(false);
   useTheme();
   useProfileSaveNotifications();
+
+  // Rust emits these for hotkey and API actions that run outside the React
+  // tree. Without a listener the user action looks like it did nothing.
+  useEffect(() => {
+    const unlisteners: Array<() => void> = [];
+    let disposed = false;
+
+    const register = async (event: string, handler: (payload: unknown) => void) => {
+      const unlisten = await listen(event, (incoming) => handler(incoming.payload));
+      if (disposed) unlisten();
+      else unlisteners.push(unlisten);
+    };
+
+    const toggleMeeting = async () => {
+      try {
+        const status = await getMeetingStatus();
+        if (status.recording) {
+          await stopMeetingRecording();
+          toast.success(i18n.t("meetingsStop"));
+        } else {
+          await startMeetingRecording();
+          toast.success(i18n.t("meetingsStart"));
+        }
+      } catch {
+        toast.error(i18n.t("meetingsToggleFailed"));
+      }
+    };
+
+    void (async () => {
+      await register("meeting-hotkey-toggle", () => { void toggleMeeting(); });
+      await register("meeting-call-detected", (payload) => {
+        const appName = (payload as { appName?: string | null } | null)?.appName;
+        toast.info(
+          i18n.t("meetingsCallDetected", {
+            app: appName ?? i18n.t("meetingsCallDetectedUnknown"),
+          }),
+          {
+            action: {
+              label: i18n.t("meetingsStart"),
+              onClick: () => { void startMeetingRecording(appName ?? null, appName ?? null); },
+            },
+          },
+        );
+      });
+      // The typed-text hotkey only reaches here when nothing was selected, so
+      // bring the window forward instead of dropping the key press.
+      await register("open-typed-text", () => {
+        const window = getCurrentWindow();
+        void window.show().then(() => window.setFocus()).catch(() => undefined);
+      });
+      await register("keyboard-engine-switched", (payload) => {
+        const switched = payload as { locale?: string; engine?: string } | null;
+        if (!switched?.engine) return;
+        toast.info(
+          i18n.t("toastEngineSwitched", {
+            engine: switched.engine,
+            locale: switched.locale ?? "",
+          }),
+        );
+      });
+    })();
+
+    return () => {
+      disposed = true;
+      for (const unlisten of unlisteners) unlisten();
+    };
+  }, []);
 
   useEffect(() => {
     const preloadTimer = window.setTimeout(() => {

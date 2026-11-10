@@ -155,23 +155,27 @@ export default function HistoryPage({
   useEffect(() => {
     void refreshStats();
     let disposed = false;
-    let unlisten: UnlistenFn | undefined;
-    void listen("history-updated", () => {
+    const unlisteners: UnlistenFn[] = [];
+    const refresh = () => {
       if (deletionInProgress.current) return;
       void loadRef.current(true);
       void refreshStats();
-    }).then((dispose) => {
-      if (disposed) {
-        dispose();
-      } else {
-        unlisten = dispose;
-      }
-    }).catch((error) => {
-      console.error("Failed to listen for history updates:", error);
-    });
+    };
+    // "Fix this" also changes what the list should show, so it refreshes too.
+    for (const event of ["history-updated", "output-fix-saved"]) {
+      void listen(event, refresh).then((dispose) => {
+        if (disposed) {
+          dispose();
+        } else {
+          unlisteners.push(dispose);
+        }
+      }).catch((error) => {
+        console.error(`Failed to listen for ${event}:`, error);
+      });
+    }
     return () => {
       disposed = true;
-      unlisten?.();
+      for (const unlisten of unlisteners) unlisten();
     };
   }, [refreshStats]);
 

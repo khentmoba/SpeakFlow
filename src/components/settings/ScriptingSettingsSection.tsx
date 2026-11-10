@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { FileCode2, LoaderCircle, Play, Save } from "lucide-react";
+import { ArrowDown, ArrowUp, FileCode2, LoaderCircle, Play, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
@@ -8,6 +8,7 @@ import {
   readScriptConfig,
   saveScriptConfig,
   scaffoldScriptConfig,
+  setGlobalTransformations,
   testScriptTransformations,
 } from "@/api/tauri";
 import type { ScriptingStatus, UserProfile } from "@/types";
@@ -29,6 +30,33 @@ export default function ScriptingSettingsSection({ profile, onSaved }: Scripting
   const [testing, setTesting] = useState(false);
 
   const globalTransformations = profile?.global_transformations ?? [];
+  // The backend applies these in order, so the list is editable here rather
+  // than only being displayed.
+  const [transformOrder, setTransformOrder] = useState<string[]>(globalTransformations);
+
+  useEffect(() => {
+    setTransformOrder(globalTransformations);
+  }, [globalTransformations]);
+
+  const persistOrder = async (next: string[]) => {
+    const previous = transformOrder;
+    setTransformOrder(next);
+    try {
+      await setGlobalTransformations(next);
+      onSaved();
+    } catch {
+      setTransformOrder(previous);
+      toast.error(t("settings.behaviorSaveFailed"));
+    }
+  };
+
+  const moveTransform = (index: number, delta: number) => {
+    const target = index + delta;
+    if (target < 0 || target >= transformOrder.length) return;
+    const next = [...transformOrder];
+    [next[index], next[target]] = [next[target], next[index]];
+    void persistOrder(next);
+  };
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -153,6 +181,69 @@ export default function ScriptingSettingsSection({ profile, onSaved }: Scripting
                   <Save size={12} aria-hidden="true" /> {t("settings.scriptingSave")}
                 </button>
               </div>
+            </div>
+
+            <div className="settings-column">
+              <span className="settings-option-label">{t("settings.scriptingOrder")}</span>
+              <p className="settings-hint settings-hint-flush">{t("settings.scriptingOrderHint")}</p>
+              {transformOrder.length === 0 ? (
+                <div className="app-rules-empty">{t("settings.scriptingOrderEmpty")}</div>
+              ) : (
+                transformOrder.map((id, index) => (
+                  <div className="settings-row" key={id}>
+                    <span className="settings-option-desc">{index + 1}. {id}</span>
+                    <span className="history-action-spacer" />
+                    <button
+                      type="button"
+                      className="btn-ghost app-rule-icon-button"
+                      aria-label={t("settings.scriptingOrderUp")}
+                      disabled={index === 0}
+                      onClick={() => moveTransform(index, -1)}
+                    >
+                      <ArrowUp size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost app-rule-icon-button"
+                      aria-label={t("settings.scriptingOrderDown")}
+                      disabled={index === transformOrder.length - 1}
+                      onClick={() => moveTransform(index, 1)}
+                    >
+                      <ArrowDown size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost app-rule-icon-button app-rule-delete"
+                      aria-label={t("settings.scriptingOrderRemove")}
+                      onClick={() => { void persistOrder(transformOrder.filter((item) => item !== id)); }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))
+              )}
+              {status && (
+                <div className="settings-row">
+                  <span className="history-action-spacer" />
+                  <select
+                    className="settings-input"
+                    aria-label={t("settings.scriptingOrderAdd")}
+                    value=""
+                    onChange={(event) => {
+                      const id = event.target.value;
+                      if (!id || transformOrder.includes(id)) return;
+                      void persistOrder([...transformOrder, id]);
+                    }}
+                  >
+                    <option value="">{t("settings.scriptingOrderAdd")}</option>
+                    {status.allTransforms
+                      .filter((transform) => !transformOrder.includes(transform.id))
+                      .map((transform) => (
+                        <option key={transform.id} value={transform.id}>{transform.label}</option>
+                      ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             {status && status.allTransforms.length > 0 && (

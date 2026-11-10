@@ -264,7 +264,14 @@ pub fn run() {
             }
             spawn_subtitle_prewarm(app_handle.clone());
             spawn_profile_maintenance(app_handle.clone());
-            services::http_api_service::start_server(app_handle.clone());
+            // Labs > "Local API and CLI" is the opt-in for the loopback surface,
+            // so the server only listens when the user turned it on.
+            if app_handle
+                .state::<AppState>()
+                .with_profile(|profile| profile.labs.api_processing)
+            {
+                services::http_api_service::start_server(app_handle.clone());
+            }
             spawn_meeting_call_monitor(app_handle.clone());
             if let Err(error) = services::selection_service::create_selection_window(&app_handle) {
                 log::warn!("划词助手窗口预创建失败，首次使用时会重试: {error}");

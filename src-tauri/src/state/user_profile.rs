@@ -353,8 +353,6 @@ pub struct ShortcutsBehaviorConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LabsConfig {
-    #[serde(default)]
-    pub live_text: bool,
     #[serde(default = "default_true")]
     pub failure_notices: bool,
     #[serde(default)]
@@ -372,12 +370,6 @@ pub struct LabsConfig {
     #[serde(default)]
     pub standalone_special_keys: bool,
     #[serde(default)]
-    pub model_in_place: bool,
-    #[serde(default = "default_true")]
-    pub picker_sort_filter: bool,
-    #[serde(default)]
-    pub benchmark_details: bool,
-    #[serde(default)]
     pub output_fixes: bool,
     #[serde(default)]
     pub api_processing: bool,
@@ -392,7 +384,6 @@ pub struct LabsConfig {
 impl Default for LabsConfig {
     fn default() -> Self {
         Self {
-            live_text: false,
             failure_notices: true,
             return_to_app: false,
             smart_spacing: false,
@@ -401,9 +392,6 @@ impl Default for LabsConfig {
             skip_pauses: false,
             tap_or_hold: false,
             standalone_special_keys: false,
-            model_in_place: false,
-            picker_sort_filter: true,
-            benchmark_details: false,
             output_fixes: false,
             api_processing: false,
             meeting_finished_event: false,

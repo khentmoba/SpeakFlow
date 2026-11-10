@@ -902,20 +902,25 @@ pub async fn stop_meeting(app_handle: &tauri::AppHandle) -> Result<MeetingRecord
     let mut segments: Vec<MeetingSegment> = Vec::new();
     let mut seg_seq = 1usize;
 
+    let mut transcription_errors: Vec<String> = Vec::new();
+
     if let Some(bytes) = mic_wav {
-        if let Ok(res) = funasr_service::transcribe(state.inner(), bytes, app_handle).await {
-            let text = res.text.trim().to_string();
-            if !text.is_empty() {
-                segments.push(MeetingSegment {
-                    id: format!("seg-{seg_seq}"),
-                    speaker: "You".to_string(),
-                    track: "mic".to_string(),
-                    start_ms: 0,
-                    end_ms: (duration_sec * 1000.0) as u64,
-                    text,
-                });
-                seg_seq += 1;
+        match funasr_service::transcribe(state.inner(), bytes, app_handle).await {
+            Ok(res) => {
+                let text = res.text.trim().to_string();
+                if !text.is_empty() {
+                    segments.push(MeetingSegment {
+                        id: format!("seg-{seg_seq}"),
+                        speaker: "You".to_string(),
+                        track: "mic".to_string(),
+                        start_ms: 0,
+                        end_ms: (duration_sec * 1000.0) as u64,
+                        text,
+                    });
+                    seg_seq += 1;
+                }
             }
+            Err(error) => transcription_errors.push(format!("mic: {error}")),
         }
     }
 
@@ -938,35 +943,42 @@ pub async fn stop_meeting(app_handle: &tauri::AppHandle) -> Result<MeetingRecord
                     continue;
                 }
                 if let Ok(slice_wav) = encode_wav(&slice, TARGET_SAMPLE_RATE) {
-                    if let Ok(res) =
-                        funasr_service::transcribe(state.inner(), slice_wav, app_handle).await
-                    {
-                        let text = res.text.trim().to_string();
-                        if !text.is_empty() {
-                            segments.push(MeetingSegment {
-                                id: format!("seg-{seg_seq}"),
-                                speaker: format!("Speaker {}", turn.speaker_id + 1),
-                                track: "loopback".to_string(),
-                                start_ms,
-                                end_ms,
-                                text,
-                            });
-                            seg_seq += 1;
+                    match funasr_service::transcribe(state.inner(), slice_wav, app_handle).await {
+                        Ok(res) => {
+                            let text = res.text.trim().to_string();
+                            if !text.is_empty() {
+                                segments.push(MeetingSegment {
+                                    id: format!("seg-{seg_seq}"),
+                                    speaker: format!("Speaker {}", turn.speaker_id + 1),
+                                    track: "loopback".to_string(),
+                                    start_ms,
+                                    end_ms,
+                                    text,
+                                });
+                                seg_seq += 1;
+                            }
                         }
+                        Err(error) => transcription_errors
+                            .push(format!("speaker {}: {error}", turn.speaker_id + 1)),
                     }
                 }
             }
-        } else if let Ok(res) = funasr_service::transcribe(state.inner(), bytes, app_handle).await {
-            let text = res.text.trim().to_string();
-            if !text.is_empty() {
-                segments.push(MeetingSegment {
-                    id: format!("seg-{seg_seq}"),
-                    speaker: "Remote".to_string(),
-                    track: "loopback".to_string(),
-                    start_ms: 0,
-                    end_ms: (duration_sec * 1000.0) as u64,
-                    text,
-                });
+        } else {
+            match funasr_service::transcribe(state.inner(), bytes, app_handle).await {
+                Ok(res) => {
+                    let text = res.text.trim().to_string();
+                    if !text.is_empty() {
+                        segments.push(MeetingSegment {
+                            id: format!("seg-{seg_seq}"),
+                            speaker: "Remote".to_string(),
+                            track: "loopback".to_string(),
+                            start_ms: 0,
+                            end_ms: (duration_sec * 1000.0) as u64,
+                            text,
+                        });
+                    }
+                }
+                Err(error) => transcription_errors.push(format!("remote: {error}")),
             }
         }
     }
@@ -1002,11 +1014,24 @@ pub async fn stop_meeting(app_handle: &tauri::AppHandle) -> Result<MeetingRecord
     };
     let word_count = transcript_text.split_whitespace().count();
 
+    // A meeting whose every transcription attempt failed is not "completed":
+    // surface the failure instead of storing an empty transcript as success.
+    let status = if segments.is_empty() && !transcription_errors.is_empty() {
+        "failed"
+    } else {
+        "completed"
+    };
+    let error = if transcription_errors.is_empty() {
+        None
+    } else {
+        Some(transcription_errors.join("; "))
+    };
+
     let mut record = MeetingRecord {
         id: session.id.clone(),
         title: session.title,
         app_name: session.app_name,
-        status: "completed".to_string(),
+        status: status.to_string(),
         started_at: session.started_at,
         ended_at,
         duration_sec,
@@ -1018,7 +1043,7 @@ pub async fn stop_meeting(app_handle: &tauri::AppHandle) -> Result<MeetingRecord
         segments,
         word_count,
         speaker_count,
-        error: None,
+        error,
     };
 
     if meetings_cfg.save_markdown_transcripts {
