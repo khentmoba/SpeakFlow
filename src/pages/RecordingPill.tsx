@@ -79,6 +79,8 @@ export default function RecordingPill() {
     };
   }, []);
 
+  if (phase === "idle") return null;
+
   return (
     <div className="pill" data-phase={phase} role="status" aria-live="polite">
       <span className="pill-signal" aria-hidden="true" />
