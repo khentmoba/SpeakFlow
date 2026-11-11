@@ -24,7 +24,7 @@ From the repository root:
 bash scripts/release.sh 1.6.0 "Concise English release notes."
 ```
 
-The script updates all six version files, runs quick local checks (lockfiles, Rust formatting, whitespace), and pushes the version bump as the candidate commit. While CI checks that exact commit, it builds the engine and installer, validates both archives, and prints the installer SHA-256. It then requires the candidate's `Frontend`, `Python`, `Rust` and `Application formal contracts` CI jobs to exist and succeed; skipped jobs block publication. Only after the build and CI both succeed and `origin/main` still matches does it publish the annotated tag and GitHub Release.
+Before it changes anything, the script checks that the R2T2 native runtimes exist and match the pinned source whenever the engine will be rebuilt. It then updates all six version files, runs quick local checks (lockfiles, Rust formatting, whitespace), and pushes the version bump as the candidate commit. While CI checks that exact commit, it builds the engine and installer, validates both archives, and prints the installer SHA-256. It then requires the candidate's `Frontend`, `Python`, `Rust` and `Application formal contracts` CI jobs to exist and succeed; skipped jobs block publication. Only after the build and CI both succeed and `origin/main` still matches does it publish the annotated tag and GitHub Release.
 
 The full checks run once, in CI. If the build or CI fails, the version bump stays on `main` without a tag. Fix the cause and rerun the same command: an unchanged version reuses the existing candidate commit.
 

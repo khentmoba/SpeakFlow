@@ -1,3 +1,4 @@
+import contextlib
 import importlib.util
 import hashlib
 import io
@@ -748,6 +749,62 @@ class NvidiaRuntimeBundleTests(unittest.TestCase):
             self.module.bundle_nvidia_runtime_dlls(
                 self.engine_dir, self.root / "no-site-packages"
             )
+
+
+class R2T2RuntimeCheckTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.module = load_build_engine_module()
+        patcher = mock.patch.object(self.module, "RESOURCES_DIR", self.root)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write_runtime(self, backend, **overrides):
+        directory = self.root / "r2t2-native" / backend
+        directory.mkdir(parents=True, exist_ok=True)
+        data = f"synthetic {backend} native library".encode()
+        (directory / "audiocpp.dll").write_bytes(data)
+        manifest = {
+            "build_id": self.module.R2T2_BUILD_ID,
+            "revision": self.module.R2T2_REVISION,
+            "patch_sha256": hashlib.sha256(self.module.R2T2_PATCH.read_bytes()).hexdigest(),
+            "backend": backend,
+            "files": {"audiocpp.dll": {"size": len(data), "sha256": hashlib.sha256(data).hexdigest()}},
+        }
+        manifest.update(overrides)
+        (directory / "runtime-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    def check(self):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(io.StringIO()):
+            status = self.module.check_r2t2_runtime()
+        return status, stderr.getvalue()
+
+    def test_complete_runtimes_for_both_backends_pass(self):
+        self.write_runtime("cpu")
+        self.write_runtime("cuda")
+        self.assertEqual(self.check(), (0, ""))
+
+    def test_missing_cpu_runtime_names_the_build_command(self):
+        status, stderr = self.check()
+        self.assertEqual(status, 1)
+        self.assertIn("R2T2 cpu runtime missing", stderr)
+        self.assertIn("build_r2t2_runtime.py --backend cpu", stderr)
+
+    def test_missing_cuda_runtime_blocks_the_default_engine_build(self):
+        self.write_runtime("cpu")
+        status, stderr = self.check()
+        self.assertEqual(status, 1)
+        self.assertIn("R2T2 cuda runtime missing", stderr)
+
+    def test_stale_runtime_is_rejected(self):
+        self.write_runtime("cpu", build_id="speak-flow-r2t2-0")
+        self.write_runtime("cuda")
+        status, stderr = self.check()
+        self.assertEqual(status, 1)
+        self.assertIn("Stale R2T2 cpu runtime", stderr)
 
 
 if __name__ == "__main__":
