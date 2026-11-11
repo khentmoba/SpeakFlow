@@ -87,14 +87,19 @@ body,
   overflow: visible;
 }
 
-/* Reset dot / waveform-indicator margins inside pill-shaped status capsule */
+/* Reset dot margins inside pill-shaped status capsule */
 .subtitle-capsule:has(.subtitle-hint) .subtitle-dot-recording,
 .subtitle-capsule:has(.subtitle-hint) .subtitle-dot-assistant,
 .subtitle-capsule:has(.subtitle-hint) .subtitle-dot-assistant-processing,
 .subtitle-capsule:has(.subtitle-hint) .subtitle-dot-polishing,
-.subtitle-capsule:has(.subtitle-hint) .subtitle-dot-processing,
-.subtitle-capsule:has(.subtitle-hint) .subtitle-waveform-indicator {
+.subtitle-capsule:has(.subtitle-hint) .subtitle-dot-processing {
   margin-top: 0;
+}
+
+/* While recording, the floating recording pill is the only listening indicator,
+   so an empty capsule is hidden rather than drawn as a second status bar. */
+.subtitle-capsule-idle {
+  display: none;
 }
 
 /* Light theme capsule */
@@ -705,46 +710,7 @@ body,
   box-shadow: 0 0 10px color-mix(in srgb, var(--color-assistant) 18%, transparent);
 }
 
-/* ---- Waveform indicator (replaces dot during recording) ---- */
-
-.subtitle-waveform-indicator {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1px;
-  width: 28px;
-  height: 16px;
-  flex-shrink: 0;
-  margin-top: 0;
-  animation: subtitle-indicator-enter 0.18s var(--ease-out-expo);
-}
-
-.subtitle-waveform-indicator-bar {
-  width: 2px;
-  flex: 0 0 2px;
-  min-height: 2px;
-  border-radius: 1px;
-  background: var(--color-accent);
-  opacity: 0.85;
-}
-
-.subtitle-waveform-indicator.is-assistant .subtitle-waveform-indicator-bar {
-  background: var(--color-assistant);
-}
-
 /* ---- Animations ---- */
-
-/* Indicator entrance — opacity + scale (for elements without conflicting transform animations) */
-@keyframes subtitle-indicator-enter {
-  from {
-    opacity: 0;
-    transform: scale(0.5);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
 
 /* Subtle opacity-only fade-in (safe to compose with transform-based animations) */
 @keyframes subtitle-fade-in-subtle {
@@ -806,7 +772,6 @@ body,
   .subtitle-dot-assistant-processing,
   .subtitle-dot-polishing,
   .subtitle-dot-processing,
-  .subtitle-waveform-indicator,
   .subtitle-hint {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
@@ -820,10 +785,6 @@ body,
   .subtitle-text-streaming::after {
     animation: none;
     opacity: 0;
-  }
-
-  .subtitle-waveform-indicator-bar {
-    transition: none !important;
   }
 
   .subtitle-action-button,

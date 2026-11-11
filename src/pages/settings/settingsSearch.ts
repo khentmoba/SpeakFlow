@@ -6,7 +6,7 @@ export const SETTINGS_SECTION_KEYWORDS: Record<string, readonly string[]> = {
   appearance: ["theme", "dark", "light", "system", "live transcript", "motion"],
   engine: ["model", "asr", "download", "language", "gpu", "speech engine", "vocabulary"],
   "custom-models": ["gguf", "custom model", "hugging face", "hf cache", "own model", "local model"],
-  "ai-models": ["llm", "provider", "api key", "polish", "assistant", "decision model", "search"],
+  "ai-models": ["llm", "provider", "api key", "polish", "assistant", "decision model", "search", "effort", "reasoning", "thinking"],
   hotkey: ["shortcut", "f2", "recording mode", "hold", "toggle", "keyboard"],
   "shortcuts-behavior": ["shortcut", "secondary", "terminal paste", "typed text", "meeting key", "passthrough"],
   microphone: ["mic", "input device", "level", "audio input"],

@@ -9,6 +9,7 @@ import {
   getAiPolishApiKey,
   getAiPolishConfig,
   getClaudeOauthStatus,
+  getLlmReasoningSupport,
   getOpenaiCodexOauthStatus,
   listAiModels,
   loginOpenaiCodexOauth,
@@ -18,17 +19,20 @@ import {
   setAiPolishConfig,
   setLlmProviderConfig,
   setOpenaiFastMode,
+  setPolishReasoningMode,
   startClaudeOauth,
   startOpenaiCodexOauthDeviceCode,
   syncClaudeOauth,
   syncOpenaiCodexOauth,
 } from "@/api/tauri";
-import { findLlmPreset } from "@/lib/llmModelOptions";
+import { findLlmPreset, reasoningModeOptions } from "@/lib/llmModelOptions";
 import type { MagpieStatus } from "@/api/tauri";
 import type {
   AiModelInfo,
   ClaudeAuthMode,
   ClaudeOauthStatus,
+  LlmReasoningMode,
+  LlmReasoningSupport,
   OpenaiAuthMode,
   OpenaiCodexOauthDeviceCodeChallenge,
   OpenaiCodexOauthStatus,
@@ -69,6 +73,14 @@ export default function AiModelsSettingsSection({
 
   const [aiPolishEnabled, setAiPolishEnabled] = useState(false);
   const [modelDraft, setModelDraft] = useState(savedModel);
+  const activeBaseUrl = activePreset?.baseUrl;
+  const customProviderApiFormat = profile?.llm_provider.custom_providers?.find(
+    (provider) => provider.id === activeProvider,
+  )?.api_format;
+  const savedPolishMode: LlmReasoningMode =
+    profile?.llm_provider.polish_reasoning_mode ?? profile?.llm_provider.reasoning_mode ?? "provider_default";
+  const [polishMode, setPolishMode] = useState<LlmReasoningMode>(savedPolishMode);
+  const [polishSupport, setPolishSupport] = useState<LlmReasoningSupport | null>(null);
 
   const [openaiAuthMode, setOpenaiAuthMode] = useState<OpenaiAuthMode>(
     profile?.llm_provider.openai_auth_mode || "oauth",
@@ -168,6 +180,24 @@ export default function AiModelsSettingsSection({
   }, [savedModel]);
 
   useEffect(() => {
+    setPolishMode(savedPolishMode);
+  }, [savedPolishMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getLlmReasoningSupport(activeProvider, activeBaseUrl, savedModel, customProviderApiFormat, polishMode)
+      .then((support) => {
+        if (!cancelled) setPolishSupport(support);
+      })
+      .catch(() => {
+        if (!cancelled) setPolishSupport(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProvider, activeBaseUrl, savedModel, customProviderApiFormat, polishMode]);
+
+  useEffect(() => {
     if (profile?.llm_provider.openai_auth_mode) {
       setOpenaiAuthMode(profile.llm_provider.openai_auth_mode);
     }
@@ -186,6 +216,19 @@ export default function AiModelsSettingsSection({
       toast.success(enabled ? t("toast.aiPolishEnabled") : t("toast.aiPolishDisabled"));
     } catch (err) {
       setAiPolishEnabled(!enabled);
+      toast.error(err instanceof Error ? err.message : t("toast.settingsSaveFailed"));
+    }
+  };
+
+  const handlePolishModeSelect = async (mode: LlmReasoningMode) => {
+    if (mode === polishMode) return;
+    const previous = polishMode;
+    setPolishMode(mode);
+    try {
+      await setPolishReasoningMode(mode);
+      await onRefreshProfile();
+    } catch (err) {
+      setPolishMode(previous);
       toast.error(err instanceof Error ? err.message : t("toast.settingsSaveFailed"));
     }
   };
@@ -496,6 +539,29 @@ export default function AiModelsSettingsSection({
               }}
             />
           </div>
+        </div>
+
+        <div className="settings-column" style={{ gap: 6 }}>
+          <span className="settings-option-desc">{t("settings.polishEffortLabel")}</span>
+          <div className="openai-auth-mode-toggle" role="group" aria-label={t("settings.polishEffortLabel")}>
+            {reasoningModeOptions.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className="openai-auth-mode-toggle-btn"
+                data-active={polishMode === item.key}
+                aria-pressed={polishMode === item.key}
+                title={t(item.descKey)}
+                onClick={() => void handlePolishModeSelect(item.key)}
+              >
+                {t(item.labelKey)}
+              </button>
+            ))}
+          </div>
+          <span className="settings-hint">{t("settings.polishEffortHint")}</span>
+          {polishSupport && !polishSupport.supported && (
+            <span className="settings-hint">{polishSupport.summary}</span>
+          )}
         </div>
 
         {activeProvider === "openai" && (

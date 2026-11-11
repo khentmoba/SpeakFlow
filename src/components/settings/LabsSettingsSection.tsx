@@ -4,9 +4,8 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
 import { setLabsConfig } from "@/api/tauri";
-import { LABS_FAILURE_NOTICES_KEY, LABS_OUTPUT_FIXES_KEY } from "@/lib/constants";
 import { withLabsDefaults } from "@/lib/behaviorConfig";
-import { writeLocalStorage } from "@/lib/storage";
+import { mirrorLabsToStorage } from "@/lib/labsMirror";
 import type { LabsConfig, UserProfile } from "@/types";
 import { SettingsSectionHeader, SettingsToggleRow } from "./SettingsControls";
 
@@ -49,10 +48,7 @@ export default function LabsSettingsSection({ profile, onSaved }: LabsSettingsSe
     setSaving(true);
     try {
       await setLabsConfig(next);
-      // The subtitle overlay is a separate window; it reads this flag from
-      // shared localStorage instead of widening its IPC allowlist.
-      writeLocalStorage(LABS_FAILURE_NOTICES_KEY, String(next.failureNotices));
-      writeLocalStorage(LABS_OUTPUT_FIXES_KEY, String(next.outputFixes));
+      mirrorLabsToStorage(next);
       onSaved();
     } catch {
       setConfig(previous);

@@ -581,6 +581,11 @@ export function setPolishStructureLevel(level: PolishStructureLevel): Promise<vo
   return invokeCommand<void>("set_polish_structure_level", { level });
 }
 
+/** Changes only the AI polish effort; the saved model and other modes are untouched. */
+export function setPolishReasoningMode(mode: LlmReasoningMode): Promise<void> {
+  return invokeCommand<void>("set_polish_reasoning_mode", { mode });
+}
+
 export function setOpenaiFastMode(enabled: boolean): Promise<void> {
   return invokeCommand<void>("set_openai_fast_mode", { enabled });
 }
