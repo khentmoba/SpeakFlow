@@ -125,19 +125,19 @@ notesChunks.forEach((chunk, i) => {
   });
 });
 
+// The announcement carries no download or install instructions; the release
+// link and the attachment field already say where the build is.
+const summary = args.summary || `${product} ${version} is now available for Windows.`;
+
 const payload = {
   username: `${product} Release Bot`,
   allowed_mentions: { parse: [] },
-  content: fileName
-    ? `New Release: **${product} ${version}** is now available! Download the attached installer below.`
-    : `New Release: **${product} ${version}** is now available! Use the download link below.`,
+  content: `New Release: **${product} ${version}** is now available!`,
   embeds: [
     {
       title: `Release: ${product} ${version}`,
       color: COLOR,
-      description: fileName
-        ? `Download the installer below, close any running SpeakFlow window, then run the setup file.`
-        : `Download the installer from the link below, close any running SpeakFlow window, then run the setup file.`,
+      description: summary,
       fields,
       footer: { text: FOOTER },
       timestamp: new Date().toISOString(),

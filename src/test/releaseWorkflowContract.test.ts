@@ -105,8 +105,11 @@ describe("release workflow contract", () => {
       expect(run.status, run.stderr).toBe(0);
       const jsonStart = run.stdout.indexOf("payload_json:\n") + "payload_json:\n".length;
       const payload = JSON.parse(run.stdout.slice(jsonStart)) as {
-        embeds: Array<{ fields: Array<{ name: string; value: string }> }>;
+        content: string;
+        embeds: Array<{ description: string; fields: Array<{ name: string; value: string }> }>;
       };
+      expect(payload.content).toBe("New Release: **SpeakFlow 1.2.0** is now available!");
+      expect(payload.embeds[0].description).not.toMatch(/download|install|setup file/i);
       const noteFields = payload.embeds[0].fields.filter((f) => f.name.startsWith("What's New"));
       expect(noteFields.length).toBe(2);
       expect(noteFields[0].name).toBe("What's New");
