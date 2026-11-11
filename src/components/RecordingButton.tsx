@@ -66,8 +66,8 @@ export default function RecordingButton({
         onClick={onToggle}
         style={{
           border: "none",
-          background: isRecording ? "var(--color-error)" : isProcessing ? "var(--color-layer-2)" : isReady ? "var(--color-contrast)" : "var(--color-layer-2)",
-          color: isRecording ? "var(--color-text-inverse)" : isProcessing ? "var(--color-text-tertiary)" : isReady ? "var(--color-contrast-ink)" : "var(--color-text-tertiary)",
+          background: isRecording ? "var(--color-brand)" : isProcessing ? "var(--color-layer-2)" : isReady ? "var(--color-contrast)" : "var(--color-layer-2)",
+          color: isRecording ? "var(--color-brand-ink)" : isProcessing ? "var(--color-text-tertiary)" : isReady ? "var(--color-contrast-ink)" : "var(--color-text-tertiary)",
           boxShadow: "none",
           cursor: !isReady ? "not-allowed" : isProcessing ? "wait" : "pointer",
           opacity: !isReady ? 0.4 : 1,

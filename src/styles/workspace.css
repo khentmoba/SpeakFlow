@@ -61,7 +61,7 @@
 }
 
 .app-sidebar-logo {
-  color: var(--color-text-secondary);
+  color: var(--color-brand);
   flex-shrink: 0;
 }
 
@@ -183,7 +183,7 @@
 }
 
 .app-sidebar-status .status-dot[data-state="recording"] {
-  background: var(--color-error);
+  background: var(--color-brand);
   box-shadow: none;
   animation: status-pulse 1.4s ease-in-out infinite;
 }

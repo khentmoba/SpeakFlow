@@ -32,6 +32,12 @@
   --color-text-inverse: #FFFFFF;
   --color-text-brand: var(--color-accent);
 
+  /* Brand — the logo's amber. The mark and the live/recording state only;
+     never a surface, never a border. Deeper in light so it clears 3:1 on the
+     page, the logo's own #FFB020 in dark where it already does. */
+  --color-brand: #C47600;
+  --color-brand-ink: #161616;
+
   /* Accent — Hex's blue: links, focus, the on switch. */
   --color-accent: #3B5CF6;
   --color-accent-hover: #0B34F4;
@@ -194,6 +200,9 @@
   --color-text-tertiary: #808080;
   --color-text-inverse: #161616;
   --color-text-brand: var(--color-accent);
+
+  --color-brand: #FFB020;
+  --color-brand-ink: #161616;
 
   --color-accent: #7698FD;
   --color-accent-hover: #A2BCFF;

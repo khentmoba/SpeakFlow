@@ -36,7 +36,7 @@ body,
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--color-error);
+  background: var(--color-brand);
 }
 
 .pill[data-phase="idle"] .pill-signal {
@@ -68,7 +68,7 @@ body,
   width: 2px;
   height: 100%;
   border-radius: 1px;
-  background: var(--color-error);
+  background: var(--color-brand);
   transform-origin: center;
   transition: transform 90ms linear;
 }

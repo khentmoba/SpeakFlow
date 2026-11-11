@@ -52,7 +52,7 @@ h2.signal-label { margin: 0; }
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--color-error);
+  background: var(--color-brand);
   animation: status-pulse 1.4s ease-in-out infinite;
 }
 
@@ -217,7 +217,7 @@ h2.signal-label { margin: 0; }
 }
 
 .wave-panel:has(.record-btn-wrapper.is-recording) .wave-bars i[data-live] {
-  background: var(--color-error);
+  background: var(--color-brand);
 }
 
 .wave-base {
