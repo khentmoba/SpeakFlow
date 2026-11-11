@@ -1,8 +1,9 @@
-use super::{send_command_to_server, ServerCommand};
+use super::{send_command_to_server, send_command_to_server_with_timeout, ServerCommand};
 use crate::state::{AppState, FunasrProcess};
 use std::io::{BufRead, Write};
 use std::os::windows::io::AsRawHandle;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::Listener;
@@ -50,6 +51,10 @@ fn ipc_test_server() {
 }
 
 async fn test_process(mode: &str) -> FunasrProcess {
+    spawn_fixture(mode, true).await
+}
+
+async fn spawn_fixture(mode: &str, kill_on_drop: bool) -> FunasrProcess {
     let mut child = Command::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
@@ -62,7 +67,7 @@ async fn test_process(mode: &str) -> FunasrProcess {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .creation_flags(0x08000000)
-        .kill_on_drop(true)
+        .kill_on_drop(kill_on_drop)
         .spawn()
         .unwrap();
     let stdin = child.stdin.take().unwrap();
@@ -87,6 +92,94 @@ async fn test_process(mode: &str) -> FunasrProcess {
         stdin,
         stdout,
     }
+}
+
+fn process_is_running(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    const STILL_ACTIVE: u32 = 259;
+    // SAFETY: The handle is closed on every path below, and the exit code is written to a local.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return false;
+        }
+        let mut code = 0u32;
+        let queried = GetExitCodeProcess(handle, &mut code) != 0;
+        CloseHandle(handle);
+        queried && code == STILL_ACTIVE
+    }
+}
+
+#[tokio::test]
+async fn abandoned_engine_process_is_ended_when_its_command_times_out() {
+    // Production children are not kill_on_drop, so the guard's drop path must end this one.
+    let process = spawn_fixture("parked_stdin", false).await;
+    let pid = process.child.id().expect("fixture pid");
+    let state = AppState::default();
+    *state.engine.funasr_process.lock().await = Some(process);
+    state.set_funasr_ready(true);
+    let app = tauri::test::mock_app();
+
+    let error = send_command_to_server_with_timeout(
+        &state,
+        &ServerCommand::Status,
+        Some(app.handle()),
+        Duration::from_millis(200),
+    )
+    .await
+    .expect_err("a parked engine never answers");
+    assert!(
+        error.to_string().to_lowercase().contains("timed out"),
+        "unexpected failure: {error}"
+    );
+    assert!(!state.is_funasr_ready());
+    assert!(state.engine.funasr_process.lock().await.is_none());
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while process_is_running(pid) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "abandoned engine process {pid} is still running"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+#[tokio::test]
+async fn recovery_ends_the_lost_process_before_starting_a_replacement() {
+    // A replacement that loads while the old process holds GPU memory can fall back
+    // to a slower backend, so the old process must be gone before `start` runs.
+    let process = spawn_fixture("parked_stdin", false).await;
+    let pid = process.child.id().expect("fixture pid");
+    let started_after_exit = Arc::new(AtomicBool::new(false));
+    let observed = started_after_exit.clone();
+
+    let recovered = super::restart_engine_after_exit(Some(process), move || {
+        let observed = observed.clone();
+        async move {
+            observed.store(!process_is_running(pid), Ordering::SeqCst);
+            Ok(())
+        }
+    })
+    .await;
+
+    assert!(recovered, "a successful start reports recovery");
+    assert!(
+        started_after_exit.load(Ordering::SeqCst),
+        "the replacement started while the lost process was still running"
+    );
+}
+
+#[tokio::test]
+async fn recovery_reports_failure_when_the_replacement_cannot_start() {
+    let recovered = super::restart_engine_after_exit(None, || async {
+        Err(crate::utils::AppError::Asr("no engine".into()))
+    })
+    .await;
+    assert!(!recovered);
 }
 
 #[tokio::test]
