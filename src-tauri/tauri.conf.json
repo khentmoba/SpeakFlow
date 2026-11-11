@@ -26,13 +26,7 @@
         "skipTaskbar": false,
         "visible": false,
         "center": true,
-        "url": "/",
-        "windowEffects": {
-          "effects": [
-            "acrylic"
-          ],
-          "state": "active"
-        }
+        "url": "/"
       },
       {
         "label": "selection-toolbar",
@@ -48,7 +42,8 @@
         "focusable": false,
         "shadow": false,
         "visible": false,
-        "url": "/?window=selection"
+        "url": "/?window=selection",
+        "create": false
       },
       {
         "label": "recording-pill",

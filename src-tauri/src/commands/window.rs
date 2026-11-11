@@ -295,12 +295,6 @@ fn create_subtitle_window_unlocked(app_handle: &tauri::AppHandle) -> Result<Stri
     Ok("Subtitle window created".to_string())
 }
 
-pub async fn create_subtitle_window(app_handle: tauri::AppHandle) -> Result<String, AppError> {
-    let state = app_handle.state::<AppState>();
-    let _window_op = state.recording.subtitle_window_op.lock().await;
-    create_subtitle_window_unlocked(&app_handle)
-}
-
 pub(crate) fn reserve_subtitle_show_generation(app_handle: &tauri::AppHandle) -> u64 {
     app_handle
         .state::<AppState>()
