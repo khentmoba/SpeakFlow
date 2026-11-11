@@ -1,8 +1,11 @@
-/* SpeakFlow shell — Hex-inspired matte black sidebar + raised rounded workspace with signature yellowish outlines. */
+/* SpeakFlow shell — Hex's window: a 220px navigation column and one content
+   pane on the same #121212 ground, a 52px header, and hairlines instead of
+   borders. Nothing floats except menus and the recording capsule. */
 
 :root {
-  --chrome-height: 38px;
-  --hairline: var(--color-border);
+  --chrome-height: 52px;
+  --sidebar-width: 220px;
+  --hairline: var(--color-border-subtle);
   --signal: var(--color-accent);
 }
 
@@ -12,63 +15,64 @@
   height: 100dvh;
   width: 100%;
   background: var(--color-bg-primary);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   overflow: hidden;
   position: relative;
+  border-radius: var(--radius-lg);
 }
 
 .skip-link {
   position: absolute;
-  left: 8px;
+  left: 12px;
   top: -48px;
   z-index: 100;
   padding: 6px 10px;
-  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
   background: var(--color-bg-elevated);
   color: var(--color-text-primary);
-  font-size: 12px;
-  transition: top 120ms ease-out;
+  font-size: var(--text-xs);
+  transition: top var(--dur-2) var(--ease-out-expo);
 }
-.skip-link:focus { top: 8px; }
+.skip-link:focus { top: 12px; }
 
-/* ── Left Sidebar (Hex style) ──────────────────────────────── */
+/* ── Navigation column ─────────────────────────────────────── */
 
 .app-sidebar {
-  width: 200px;
+  width: var(--sidebar-width);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   background: var(--color-bg-primary);
-  padding: 10px 8px 12px 10px;
+  padding: 12px 6px 12px 10px;
   user-select: none;
   min-height: 0;
-  border-right: 1px solid var(--color-hairline);
 }
 
 .app-sidebar-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 36px;
-  padding: 0 10px;
+  height: 28px;
+  padding: 0 6px;
   margin-bottom: 8px;
   -webkit-app-region: drag;
   cursor: default;
 }
 
 .app-sidebar-logo {
-  color: var(--color-accent);
+  color: var(--color-text-secondary);
   flex-shrink: 0;
 }
 
 .app-sidebar-name {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   color: var(--color-text-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-body);
 }
 
-/* ── Navigation (Hex style vertical pills) ─────────────────── */
+/* ── Navigation list ───────────────────────────────────────── */
 
 .app-navigation {
   display: flex;
@@ -83,99 +87,104 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 36px;
-  padding: 0 12px;
-  border-radius: var(--radius-sm, 8px);
+  gap: 8px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
   font-family: var(--font-ui);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: normal;
-  text-transform: none;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-ui);
+  letter-spacing: var(--tracking-body);
   background: transparent;
-  border: 1px solid transparent;
+  border: none;
   white-space: nowrap;
-  transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
   cursor: pointer;
   -webkit-app-region: no-drag;
+  transition: color var(--dur-2) var(--ease-out-expo),
+              background-color var(--dur-2) var(--ease-out-expo);
 }
 
 .app-nav-item svg {
   flex-shrink: 0;
-  opacity: 0.8;
-  color: inherit;
+  color: var(--color-text-tertiary);
+  transition: color var(--dur-2) var(--ease-out-expo);
 }
 
 .app-nav-item:hover {
   color: var(--color-text-primary);
-  background: var(--color-bg-tertiary);
+  background: var(--color-hover);
+}
+
+.app-nav-item:hover svg {
+  color: var(--color-text-secondary);
 }
 
 .app-nav-item[aria-current="page"] {
   color: var(--color-text-primary);
-  background: var(--color-surface-card);
-  border: 1px solid var(--color-accent);
-  box-shadow: 0 0 0 1px var(--color-hairline-accent), var(--shadow-sm);
+  background: var(--color-layer-2);
+  border: none;
+  box-shadow: none;
 }
 
 .app-nav-item[aria-current="page"] svg {
-  opacity: 1;
-  color: var(--color-accent);
+  color: var(--color-text-primary);
 }
 
 .update-nav-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--color-accent);
   margin-left: auto;
   flex-shrink: 0;
 }
+
 .app-nav-item[aria-current="page"] .update-nav-dot {
   background: var(--color-accent);
-  box-shadow: 0 0 6px rgba(var(--color-accent-rgb), 0.8);
+  box-shadow: none;
 }
 
-/* ── Sidebar Footer (Hex style bottom stats & updates) ─────── */
+/* ── Footer: version and status, two quiet lines ───────────── */
 
 .app-sidebar-footer {
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 6px 0;
-  border-top: 1px solid var(--color-hairline);
-  font-size: 11px;
+  gap: 0;
+  padding: 8px 0 0;
+  border-top: none;
+  font-size: var(--text-2xs);
   color: var(--color-text-tertiary);
 }
 
 .app-sidebar-status {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  border-radius: 6px;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-hairline);
+  gap: 7px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
 }
 
 .app-sidebar-status .status-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--color-text-tertiary);
   flex-shrink: 0;
 }
 
 .app-sidebar-status .status-dot[data-state="ready"] {
-  background: var(--color-accent);
-  box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.7);
+  background: var(--color-success);
+  box-shadow: none;
 }
 
 .app-sidebar-status .status-dot[data-state="recording"] {
-  background: var(--color-accent);
-  box-shadow: 0 0 10px rgba(var(--color-accent-rgb), 0.9);
+  background: var(--color-error);
+  box-shadow: none;
   animation: status-pulse 1.4s ease-in-out infinite;
 }
 
@@ -184,7 +193,7 @@
 }
 
 .app-sidebar-status-text {
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: var(--color-text-secondary);
   flex: 1;
   overflow: hidden;
@@ -192,12 +201,18 @@
   white-space: nowrap;
 }
 
+.app-sidebar-key {
+  flex-shrink: 0;
+}
+
 .app-sidebar-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2px 6px;
-  font-size: 11px;
+  gap: 8px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: var(--text-2xs);
   color: var(--color-text-tertiary);
 }
 
@@ -207,33 +222,34 @@
   background: none;
   border: none;
   padding: 0;
-  font-size: 11px;
+  font-size: var(--text-2xs);
   cursor: pointer;
-  transition: color var(--transition-fast);
+  transition: color var(--dur-2) var(--ease-out-expo);
 }
 
 .app-sidebar-link:hover {
-  color: var(--color-accent);
+  color: var(--color-text-secondary);
 }
 
-/* ── Raised Rounded Content Panel (Hex style) ─────────────── */
+/* ── Content pane ──────────────────────────────────────────── */
 
 .app-workspace {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  margin: 6px 6px 6px 0;
-  border-radius: 14px;
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-hairline-accent);
-  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
+  background: var(--color-bg-primary);
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
   overflow: hidden;
   position: relative;
 }
 
-.app-workspace:focus {
+/* The skip link targets this region, so a programmatic focus must stay visible.
+   Inset, because the workspace clips its own overflow. */
+.app-workspace:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: -2px;
 }
@@ -243,10 +259,10 @@
   place-items: center;
   height: 100%;
   color: var(--color-text-tertiary);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
-/* ── Title bar inside raised panel ─────────────────────────── */
+/* ── Pane header ───────────────────────────────────────────── */
 
 .title-bar {
   display: flex;
@@ -254,8 +270,8 @@
   justify-content: space-between;
   height: var(--chrome-height);
   flex: none;
-  padding: 0 0 0 16px;
-  border-bottom: 1px solid var(--color-hairline);
+  padding: 0 8px 0 32px;
+  border-bottom: none;
   background: transparent;
   -webkit-app-region: drag;
   user-select: none;
@@ -265,14 +281,18 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .title-bar-doc {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
   color: var(--color-text-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-heading);
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .title-bar-actions {
@@ -287,22 +307,23 @@
   -webkit-app-region: no-drag;
 }
 .window-controls button {
-  width: 44px;
+  width: 40px;
   height: 100%;
   display: grid;
   place-items: center;
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
   border: none;
   background: transparent;
   cursor: pointer;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition: background-color var(--dur-2) var(--ease-out-expo),
+              color var(--dur-2) var(--ease-out-expo);
 }
 .window-controls button:focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-border-accent);
   outline-offset: -2px;
 }
 .window-controls button:hover {
-  background: var(--color-bg-tertiary);
+  background: var(--color-hover);
   color: var(--color-text-primary);
 }
 .window-controls button[data-close]:hover {
@@ -322,13 +343,14 @@
   position: relative;
   overflow: hidden;
   height: 3px;
-  background: var(--color-bg-tertiary);
+  border-radius: 2px;
+  background: var(--color-layer-2);
 }
 .update-progress-fill {
   height: 100%;
   width: 100%;
   transform-origin: left;
-  background: var(--color-accent);
+  background: var(--color-text-primary);
   transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .update-progress-fill[data-indeterminate="true"] {
@@ -341,11 +363,11 @@
   gap: 12px;
   margin-top: 8px;
   color: var(--color-text-tertiary);
-  font-family: var(--font-display);
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 .update-steps span {
   display: inline-flex;
@@ -353,7 +375,7 @@
   gap: 6px;
   transition: color 180ms ease-out;
 }
-.update-steps [data-active="true"] { color: var(--color-accent); }
+.update-steps [data-active="true"] { color: var(--color-text-primary); }
 
 .update-notes {
   margin-top: 14px;
@@ -371,18 +393,21 @@
   align-items: center;
   gap: 5px;
   padding: 2px 0;
-  font-size: 11px;
-  color: var(--color-accent);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
   background: none;
   border: 0;
+  cursor: pointer;
+  transition: color var(--dur-2) var(--ease-out-expo);
 }
+.update-notes-link:hover { color: var(--color-text-primary); }
 .update-notes-body {
   margin-top: 8px;
   max-height: 220px;
   overflow-y: auto;
   white-space: pre-wrap;
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: var(--text-xs);
+  line-height: 1.5;
   color: var(--color-text-secondary);
 }
 
@@ -392,33 +417,21 @@
 
 /* ── Shared chrome controls ────────────────────────────────── */
 
-.icon-btn {
-  display: inline-grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 0;
-  color: var(--color-text-secondary);
-  transition: background-color var(--transition-fast), color var(--transition-fast);
-}
-.icon-btn:hover { background: var(--color-bg-tertiary); color: var(--color-text-primary); }
-.icon-btn.plain { width: 22px; height: 22px; }
-.icon-btn-sm { width: 20px; height: 20px; }
-
 /* Model browser entry point, shared by the dictation toolbar. */
 .dictation-model-browse {
-  align-self: flex-start;
+  align-self: center;
   padding: 0;
   border: 0;
   background: none;
-  color: var(--color-accent);
-  font-family: var(--font-display);
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-body);
+  text-transform: none;
   white-space: nowrap;
   cursor: pointer;
+  transition: color var(--dur-2) var(--ease-out-expo);
 }
 .dictation-model-browse:hover { color: var(--color-text-primary); }
 
@@ -430,10 +443,10 @@
   .update-progress-fill { transition: none; }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .app-sidebar {
     width: 52px;
-    padding: 8px 4px;
+    padding: 12px 6px;
     overflow: hidden;
   }
   .app-sidebar-name,
@@ -453,15 +466,14 @@
   }
   .app-nav-item .update-nav-dot {
     position: absolute;
-    top: 7px;
-    right: 7px;
+    top: 5px;
+    right: 5px;
     margin-left: 0;
   }
   .app-sidebar-status {
     justify-content: center;
-    padding: 6px 0;
+    padding: 0;
   }
-  .title-bar { padding-left: 10px; }
-  .title-bar-doc { font-size: 12px; }
+  .title-bar { padding-left: 16px; }
   .window-controls button { width: 36px; }
 }

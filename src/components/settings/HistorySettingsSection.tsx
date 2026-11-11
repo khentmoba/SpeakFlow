@@ -48,7 +48,7 @@ export default function HistorySettingsSection({ profile, onSaved }: HistorySett
         <Database size={15} className="icon-accent" />
         <h2 className="settings-section-title">{t("settings.historySettings")}</h2>
       </div>
-      <div className="settings-column history-settings-column">
+      <div className="settings-column">
         <p className="settings-hint settings-hint-flush">{t("settings.historySettingsHint")}</p>
 
         <div className="settings-row">
