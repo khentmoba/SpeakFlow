@@ -35,7 +35,7 @@ import AppearanceSettingsSection from "@/components/settings/AppearanceSettingsS
 import AiModelsSettingsSection from "@/components/settings/AiModelsSettingsSection";
 import SystemSettingsSections from "@/components/settings/SystemSettingsSections";
 import SupportSettingsSection from "@/components/settings/SupportSettingsSection";
-import SettingsNav from "@/components/settings/SettingsNav";
+import SettingsPanes from "@/components/settings/SettingsPanes";
 import AppProfileRulesSettingsSection from "@/components/settings/AppProfileRulesSettingsSection";
 import HistorySettingsSection from "@/components/settings/HistorySettingsSection";
 import DictationToolsSettingsSection from "@/components/settings/DictationToolsSettingsSection";
@@ -68,6 +68,12 @@ import { useTranslation } from "react-i18next";
 import { engineDisplayDescription, engineDisplayLabel } from "@/lib/asrEngineOptions";
 import { isOnlineEngineKey, asrCapabilityTagKeys, inputOptions, recordingModeOptions, sourceLabels, sourceColors, findRecordingModeOption } from "@/pages/settings/settingsOptions";
 import { settingsSectionMatches } from "@/pages/settings/settingsSearch";
+import {
+  SETTINGS_GROUPS,
+  SETTINGS_SECTIONS,
+  groupForSection,
+  sectionsInGroup,
+} from "@/pages/settings/settingsGroups";
 
 const CorrectionRulesModal = lazy(() => import("@/components/settings/CorrectionRulesModal"));
 
@@ -98,30 +104,19 @@ export default function SettingsPage({
   const settingsReady = profile !== null && !profileLoadError;
 
   // --- Settings nav sections ---
-  const navSections = useMemo(() => [
-    { id: "appearance", labelKey: "settings.appearance" },
-    { id: "engine", labelKey: "settings.engine" },
-    { id: "custom-models", labelKey: "settings.customModels" },
-    { id: "ai-models", labelKey: "settings.aiModels" },
-    { id: "hotkey", labelKey: "settings.hotkeySection" },
-    { id: "shortcuts-behavior", labelKey: "settings.shortcutsBehavior" },
-    { id: "microphone", labelKey: "settings.microphone" },
-    { id: "audio-behavior", labelKey: "settings.audioBehavior" },
-    { id: "input", labelKey: "settings.inputMethod" },
-    { id: "output-behavior", labelKey: "settings.outputBehavior" },
-    { id: "dictation-tools", labelKey: "settings.dictationTools" },
-    { id: "scripting", labelKey: "settings.scripting" },
-    { id: "app-profiles", labelKey: "settings.appProfiles" },
-    { id: "meetings", labelKey: "settings.meetings" },
-    { id: "history-settings", labelKey: "settings.historySettings" },
-    { id: "vocabulary", labelKey: "settings.vocabulary" },
-    { id: "startup", labelKey: "settings.startup" },
-    { id: "labs", labelKey: "settings.labs" },
-    { id: "updates", labelKey: "settings.update" },
-    { id: "support", labelKey: "settings.support" },
-  ] as const, []);
+  const navSections = SETTINGS_SECTIONS;
   const [activeNavSection, setActiveNavSection] = useState("appearance");
+  const [activeGroupId, setActiveGroupId] = useState(() => groupForSection("appearance")?.id ?? SETTINGS_GROUPS[0].id);
   const [navQuery, setNavQuery] = useState("");
+  const searching = navQuery.trim().length > 0;
+  const groupSections = useMemo(() => sectionsInGroup(activeGroupId, navSections), [activeGroupId, navSections]);
+  const matchedSections = useMemo(
+    () => (searching
+      ? navSections.filter(({ id, labelKey }) => settingsSectionMatches(id, t(labelKey), navQuery))
+      : []),
+    [searching, navQuery, navSections, t],
+  );
+  const visibleSections = searching ? matchedSections : groupSections;
   const settingsContentRef = useRef<HTMLDivElement | null>(null);
   const navScrollRef = useRef<HTMLDivElement | null>(null);
   const isNavClickScrolling = useRef(false);
@@ -184,6 +179,10 @@ export default function SettingsPage({
   const handleNavClick = useCallback((id: string) => {
     const container = settingsContentRef.current;
     if (!container) return;
+    // A chip reached through search can belong to another pane; follow it so
+    // the tab strip never disagrees with the section on screen.
+    const owner = groupForSection(id);
+    if (owner) setActiveGroupId(owner.id);
     const target = container.querySelector(`[data-nav-id="${id}"]`) as HTMLElement | null;
     if (!target) return;
     setActiveNavSection(id);
@@ -205,34 +204,33 @@ export default function SettingsPage({
     container.scrollTo({ top, behavior: "smooth" });
   }, []);
 
-  // Hide sections that do not match the nav filter. The nav uses the same
-  // matcher, so the rail and the content never disagree.
+  const handleGroupSelect = useCallback((groupId: string) => {
+    setActiveGroupId(groupId);
+    const first = sectionsInGroup(groupId, SETTINGS_SECTIONS)[0];
+    if (first) setActiveNavSection(first.id);
+    setNavQuery("");
+    settingsContentRef.current?.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "instant" : "smooth" });
+  }, []);
+
+  // Show only the sections the panes list: the active group, or every search
+  // match. Sections with no pane entry (none today) stay hidden rather than
+  // appearing under an unrelated tab.
   useEffect(() => {
     const container = settingsContentRef.current;
     if (!container) return;
-    const filtering = navQuery.trim().length > 0;
-    const matched = new Set<string>(
-      navSections
-        .filter(({ id, labelKey }) => settingsSectionMatches(id, t(labelKey), navQuery))
-        .map(({ id }) => id),
-    );
-    // Hide every section the rail does not list too (for example the Updates
-    // panel), so a filtered rail never sits next to unrelated content.
+    const visible = new Set(visibleSections.map(({ id }) => id));
     container.querySelectorAll<HTMLElement>("[data-nav-id]").forEach((section) => {
-      const id = section.dataset.navId ?? "";
-      section.hidden = filtering && !matched.has(id);
+      section.hidden = !visible.has(section.dataset.navId ?? "");
     });
-  }, [navQuery, navSections, t, settingsReady]);
+  }, [visibleSections, settingsReady]);
 
-  // Keep the scroll-spy on a section the filter still shows.
+  // Keep the scroll-spy on a section the panes still show.
   useEffect(() => {
-    if (!navQuery.trim()) return;
-    const visible = navSections.filter(({ id, labelKey }) =>
-      settingsSectionMatches(id, t(labelKey), navQuery));
-    if (visible.length > 0 && !visible.some(({ id }) => id === activeNavSection)) {
-      setActiveNavSection(visible[0].id);
+    if (visibleSections.length === 0) return;
+    if (!visibleSections.some(({ id }) => id === activeNavSection)) {
+      setActiveNavSection(visibleSections[0].id);
     }
-  }, [navQuery, navSections, t, activeNavSection]);
+  }, [visibleSections, activeNavSection]);
 
   // Auto-scroll the nav bar to keep active tab visible + measure indicator position
   useEffect(() => {
@@ -612,14 +610,18 @@ export default function SettingsPage({
           </div>
         ) : (
           <>
-        {/* Settings nav */}
-        <SettingsNav
-          sections={navSections}
-          activeId={activeNavSection}
+        {/* Settings panes */}
+        <SettingsPanes
+          groups={SETTINGS_GROUPS}
+          sections={visibleSections}
+          activeGroupId={activeGroupId}
+          activeSectionId={activeNavSection}
           query={navQuery}
-          navRef={navScrollRef}
+          searching={searching}
+          chipsRef={navScrollRef}
           onQueryChange={setNavQuery}
-          onSelect={handleNavClick}
+          onSelectGroup={handleGroupSelect}
+          onSelectSection={handleNavClick}
         />
 
         {/* Content */}
