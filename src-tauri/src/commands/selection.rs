@@ -109,6 +109,11 @@ pub async fn set_selection_assistant_config(
     }
 
     if enabled {
+        // Startup skips the toolbar WebView when the assistant is off, so create it here
+        // to keep the first selection as fast as it was for users who enabled it earlier.
+        if let Err(error) = selection_service::create_selection_window(&app_handle) {
+            log::warn!("划词助手窗口预创建失败，首次使用时会重试: {error}");
+        }
         selection_service::start_selection_listener(app_handle.clone())?;
     } else {
         selection_service::set_selection_listener_enabled(false);

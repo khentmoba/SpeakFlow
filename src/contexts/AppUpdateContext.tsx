@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 import { checkAppUpdate, installAppUpdate, type AppUpdateProgress } from "@/api/tauri";
 
 const CHECK_INTERVAL = 60 * 60 * 1000;
+/** Delay before the first automatic check so it cannot compete with first paint. */
+const STARTUP_CHECK_DELAY = 5000;
 
 function useUpdateController(automatic: boolean) {
   const { t } = useTranslation();
@@ -55,11 +57,13 @@ function useUpdateController(automatic: boolean) {
     const checkIfDue = () => {
       if (Date.now() - lastCheck.current >= CHECK_INTERVAL) void handleCheckForUpdates(true);
     };
-    checkIfDue();
+    // The first check waits for the delay so it cannot compete with first paint.
+    const initial = window.setTimeout(checkIfDue, STARTUP_CHECK_DELAY);
     const timer = window.setInterval(checkIfDue, CHECK_INTERVAL);
     window.addEventListener("focus", checkIfDue);
     window.addEventListener("online", checkIfDue);
     return () => {
+      window.clearTimeout(initial);
       window.clearInterval(timer);
       window.removeEventListener("focus", checkIfDue);
       window.removeEventListener("online", checkIfDue);

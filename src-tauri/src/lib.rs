@@ -17,6 +17,8 @@ pub fn cli_entry(args: Vec<String>) -> i32 {
 }
 
 pub fn run() {
+    // Startup timing is logged so a regression in first-paint latency is measurable.
+    let started = std::time::Instant::now();
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -52,7 +54,17 @@ pub fn run() {
                 .build(),
         )
         .manage(AppState::new())
-        .setup(|app| {
+        .on_page_load(move |webview, payload| {
+            if webview.label() == "main"
+                && matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
+            {
+                log::info!(
+                    "startup: main window page loaded in {}ms",
+                    started.elapsed().as_millis()
+                );
+            }
+        })
+        .setup(move |app| {
             if !mark_setup_once() {
                 log::warn!("setup() 被重复调用，已跳过");
                 return Ok(());
@@ -74,7 +86,10 @@ pub fn run() {
                 let loaded = services::profile_service::load_profile();
                 // The main window starts hidden to avoid a flash during autostart.
                 // A normal launch still opens it, regardless of this preference.
-                if !should_start_hidden(loaded.autostart_minimized, std::env::args()) {
+                if should_start_hidden(loaded.autostart_minimized, std::env::args()) {
+                    log::info!("startup: main window stays hidden");
+                } else {
+                    log::info!("startup: main window shown");
                     focus_main_window(&app_handle);
                 }
                 // 迁移旧版 custom API key 到新 keyring key（仅在目标 key 不存在时执行）
@@ -110,12 +125,29 @@ pub fn run() {
                     loaded.audio_behavior.avoid_bluetooth_microphone,
                 );
                 let selected_device = state.selected_input_device_name();
-                services::audio_service::start_preroll_if_eligible(
-                    selected_device,
-                    &loaded.audio_behavior,
-                    &loaded.labs,
-                    false,
-                );
+                let audio_behavior = loaded.audio_behavior.clone();
+                let labs = loaded.labs.clone();
+                let preroll_app = app_handle.clone();
+                // Opening the microphone waits for the stream to start, so keep it off the setup thread.
+                tauri::async_runtime::spawn_blocking(move || {
+                    // A hotkey press can reach stop_preroll_and_take before this task runs, so
+                    // starting a ring now would prepend that recording's audio to the next dictation.
+                    if preroll_app
+                        .state::<AppState>()
+                        .recording
+                        .recording
+                        .lock()
+                        .is_some()
+                    {
+                        return;
+                    }
+                    services::audio_service::start_preroll_if_eligible(
+                        selected_device,
+                        &audio_behavior,
+                        &labs,
+                        false,
+                    );
+                });
                 if let Err(err) = commands::hotkey::sync_extended_hotkeys(
                     &app_handle,
                     &loaded.shortcuts_behavior,
@@ -262,7 +294,6 @@ pub fn run() {
                     spawn_funasr_startup(app_handle);
                 });
             }
-            spawn_subtitle_prewarm(app_handle.clone());
             spawn_profile_maintenance(app_handle.clone());
             // Labs > "Local API and CLI" is the opt-in for the loopback surface,
             // so the server only listens when the user turned it on.
@@ -273,13 +304,17 @@ pub fn run() {
                 services::http_api_service::start_server(app_handle.clone());
             }
             spawn_meeting_call_monitor(app_handle.clone());
-            if let Err(error) = services::selection_service::create_selection_window(&app_handle) {
-                log::warn!("划词助手窗口预创建失败，首次使用时会重试: {error}");
-            }
             if app_handle
                 .state::<AppState>()
                 .with_profile(|profile| profile.selection_assistant.enabled)
             {
+                // Only users who enabled the assistant pay for its WebView at startup.
+                // Otherwise the window is created on the first selection.
+                if let Err(error) =
+                    services::selection_service::create_selection_window(&app_handle)
+                {
+                    log::warn!("划词助手窗口预创建失败，首次使用时会重试: {error}");
+                }
                 if let Err(error) =
                     services::selection_service::start_selection_listener(app_handle.clone())
                 {
@@ -288,6 +323,10 @@ pub fn run() {
             }
             setup_system_tray(&app_handle)?;
 
+            log::info!(
+                "startup: setup completed in {}ms",
+                started.elapsed().as_millis()
+            );
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -548,16 +587,6 @@ fn spawn_funasr_startup(app_handle: tauri::AppHandle) {
                     "message": format!("Failed to start FunASR: {}", err),
                 }),
             );
-        }
-    });
-}
-
-fn spawn_subtitle_prewarm(app_handle: tauri::AppHandle) {
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        match commands::window::create_subtitle_window(app_handle).await {
-            Ok(_) => log::info!("字幕窗口预创建成功"),
-            Err(err) => log::warn!("字幕窗口预创建失败（首次录音会重试）: {}", err),
         }
     });
 }

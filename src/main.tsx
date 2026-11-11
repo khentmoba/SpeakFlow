@@ -145,16 +145,24 @@ function AppWorkspace() {
   }, []);
 
   useEffect(() => {
-    const preloadTimer = window.setTimeout(() => {
+    // Preloading parses two page bundles, so wait for an idle frame instead of
+    // competing with first paint.
+    const preload = () => {
       void loadSettingsPage().catch((error) => {
         console.error("Settings page preload failed:", error);
       });
       void loadHistoryPage().catch((error) => {
         console.error("History page preload failed:", error);
       });
-    }, 400);
+    };
+    const idleHandle = window.requestIdleCallback?.(preload, { timeout: 5000 });
+    const fallbackTimer =
+      idleHandle === undefined ? window.setTimeout(preload, 3000) : undefined;
 
-    return () => window.clearTimeout(preloadTimer);
+    return () => {
+      if (idleHandle !== undefined) window.cancelIdleCallback?.(idleHandle);
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+    };
   }, []);
 
   // Page navigation with directional slide while only mounting the active page
