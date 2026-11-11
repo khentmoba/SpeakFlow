@@ -45,6 +45,28 @@ require_command() {
     command -v "$1" >/dev/null 2>&1 || fail "缺少命令: $1"
 }
 
+engine_will_rebuild() {
+    case "$ENGINE_MODE" in
+        --reuse-engine)
+            return 1
+            ;;
+        --auto-engine)
+            if [[ -s "$ENGINE_ARCHIVE" ]] && python scripts/engine_fingerprint.py --check; then
+                return 1
+            fi
+            return 0
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+require_r2t2_runtime_when_engine_builds() {
+    engine_will_rebuild || return 0
+    python scripts/build_engine.py --check-r2t2 || fail "本次需要重建引擎，但 R2T2 原生运行时缺失或已过期。请先按 docs/r2t2-native.md 构建 CPU 与 CUDA 运行时，再发版。"
+}
+
 preflight() {
     [[ -f "$TAURI_CONF" ]] || fail "请在项目根目录运行此脚本"
     [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
@@ -89,6 +111,7 @@ preflight() {
     ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1 || {
         fail "远端 tag 已存在: $TAG"
     }
+    require_r2t2_runtime_when_engine_builds
 }
 
 update_versions() {
@@ -158,12 +181,12 @@ prepare_engine() {
             echo "按要求复用现有引擎归档。"
             ;;
         --auto-engine)
-            if [[ -s "$ENGINE_ARCHIVE" ]] && python scripts/engine_fingerprint.py --check; then
-                echo "引擎输入未变化，复用现有归档。"
-            else
+            if engine_will_rebuild; then
                 echo "引擎输入已变化或缺少指纹，重新构建。"
                 uv run --locked python scripts/build_engine.py
                 ENGINE_REBUILT=true
+            else
+                echo "引擎输入未变化，复用现有归档。"
             fi
             ;;
         *)

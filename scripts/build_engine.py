@@ -458,6 +458,16 @@ def validate_r2t2_runtime(cpu_only=False):
     return root
 
 
+def check_r2t2_runtime(cpu_only=False):
+    """Return 0 when the native runtimes a rebuild needs are present and current, else 1."""
+    try:
+        validate_r2t2_runtime(cpu_only=cpu_only)
+    except (OSError, ValueError, RuntimeError) as error:
+        print(error, file=sys.stderr)
+        return 1
+    return 0
+
+
 def verify_archive_sources(archive: Path) -> None:
     """Reject stale bundled Python code before building an installer."""
     expected = {
@@ -669,7 +679,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify-archive", type=Path)
     parser.add_argument("--cpu-only", action="store_true")
+    parser.add_argument("--check-r2t2", action="store_true",
+                        help="exit 1 unless the R2T2 runtimes a rebuild needs are present and current")
     args = parser.parse_args()
+    if args.check_r2t2:
+        sys.exit(check_r2t2_runtime(cpu_only=args.cpu_only))
     if args.verify_archive is not None:
         try:
             verify_archive_sources(args.verify_archive)
