@@ -279,7 +279,7 @@ export default function AppProfileRulesSettingsSection({ profile, onSaved }: App
               role="switch"
               aria-checked={rule.enabled}
               aria-label={t("settings.appRuleToggle", { name: rule.name || rule.process_name })}
-              className="toggle-switch app-rule-toggle"
+              className="toggle-switch"
               data-active={rule.enabled}
               disabled={saving}
               onClick={() => {

@@ -123,3 +123,10 @@ is derived from [NetEase Youdao Confucius4-R2T2](https://github.com/netease-youd
 It is subject to the NetEase Youdao Model Use License Agreement, not this
 project's GPL license. A copy is bundled as
 [`R2T2-MODEL-LICENSE.txt`](src-tauri/resources/R2T2-MODEL-LICENSE.txt).
+
+## Inter typeface
+
+The bundled `src/assets/fonts/Inter-latin.woff2` is a Latin subset of
+[Inter](https://github.com/rsms/inter), copyright 2016 The Inter Project
+Authors, distributed under the SIL Open Font License 1.1. The license text is
+retained at [`src/assets/fonts/Inter-LICENSE.txt`](src/assets/fonts/Inter-LICENSE.txt).

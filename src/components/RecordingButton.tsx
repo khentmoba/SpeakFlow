@@ -49,7 +49,7 @@ export default function RecordingButton({
         : t("recording.start");
 
   return (
-    <div className={`record-btn-wrapper${isRecording ? " is-recording" : isProcessing ? " is-processing" : isIdle && isReady ? " is-idle" : ""}`}>
+    <div className={`record-btn-wrapper${isRecording ? " is-recording" : isProcessing ? " is-processing" : ""}`}>
       {/* Ambient acoustic breathing halo */}
       <span className="record-ambient-halo" aria-hidden="true" />
       {isRecording && (
@@ -65,10 +65,9 @@ export default function RecordingButton({
         disabled={!isReady || isProcessing}
         onClick={onToggle}
         style={{
-          border: "1px solid",
-          borderColor: isRecording ? "transparent" : "var(--color-border)",
-          background: isRecording ? "var(--color-accent)" : isProcessing ? "var(--color-bg-tertiary)" : isReady ? "var(--color-accent)" : "var(--color-bg-elevated)",
-          color: isRecording ? "var(--color-text-inverse)" : isProcessing ? "var(--color-text-tertiary)" : isReady ? "var(--color-text-inverse)" : "var(--color-text-tertiary)",
+          border: "none",
+          background: isRecording ? "var(--color-brand)" : isProcessing ? "var(--color-layer-2)" : isReady ? "var(--color-contrast)" : "var(--color-layer-2)",
+          color: isRecording ? "var(--color-brand-ink)" : isProcessing ? "var(--color-text-tertiary)" : isReady ? "var(--color-contrast-ink)" : "var(--color-text-tertiary)",
           boxShadow: "none",
           cursor: !isReady ? "not-allowed" : isProcessing ? "wait" : "pointer",
           opacity: !isReady ? 0.4 : 1,

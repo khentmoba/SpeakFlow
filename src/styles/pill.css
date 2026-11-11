@@ -7,60 +7,74 @@ body,
   overflow: hidden;
 }
 
+/* Hex's capture capsule: a 40px shell on the card surface, floating on a
+   hairline ring, with the recording dot and the live bars inside. */
 .pill {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 100%;
-  padding: 0 16px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-bg-elevated) 94%, transparent);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.38);
+  gap: 9px;
+  height: 40px;
+  margin: 8px auto;
+  padding: 0 14px;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+  border-radius: 20px;
+  background: var(--color-bg-secondary);
+  border: 0.5px solid var(--color-border-strong);
+  box-shadow: var(--shadow-lg);
   color: var(--color-text-primary);
-  font-family: var(--font-sans);
-  font-size: 12px;
-  letter-spacing: 0.02em;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-body);
   white-space: nowrap;
 }
 
 .pill-signal {
   flex: none;
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  background: var(--color-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+  background: var(--color-brand);
 }
+
 .pill[data-phase="idle"] .pill-signal {
   background: var(--color-text-tertiary);
-  box-shadow: none;
 }
+
 .pill[data-phase="starting"] .pill-signal,
 .pill[data-phase="processing"] .pill-signal {
   animation: pill-pulse 1.1s ease-in-out infinite;
 }
 
 .pill-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--color-text-primary);
 }
 
 .pill-bars {
   display: flex;
   align-items: center;
-  gap: 3px;
-  height: 20px;
+  gap: 2px;
+  height: 16px;
   margin-left: auto;
 }
+
 .pill-bars i {
   display: block;
   width: 2px;
   height: 100%;
-  background: var(--color-accent);
+  border-radius: 1px;
+  background: var(--color-brand);
   transform-origin: center;
   transition: transform 90ms linear;
+}
+
+.pill[data-phase="idle"] .pill-bars i {
+  background: var(--color-layer-4);
 }
 
 @keyframes pill-pulse {
