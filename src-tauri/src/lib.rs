@@ -452,6 +452,7 @@ pub fn run() {
             commands::profile::set_translation_hotkey,
             commands::profile::set_custom_prompt,
             commands::profile::set_polish_structure_level,
+            commands::profile::set_polish_reasoning_mode,
             commands::profile::set_openai_fast_mode,
             commands::profile::add_custom_provider,
             commands::profile::update_custom_provider,
@@ -671,6 +672,15 @@ fn spawn_profile_maintenance(app_handle: tauri::AppHandle) {
 
         loop {
             interval.tick().await;
+
+            // Meeting audio expires on a clock, not only when another meeting ends.
+            let (meetings, expire_audio) = app_handle.state::<AppState>().with_profile(|profile| {
+                (profile.meetings.clone(), profile.labs.expire_meeting_audio)
+            });
+            let _ = tauri::async_runtime::spawn_blocking(move || {
+                services::meeting_service::cleanup_expired_meeting_audio(&meetings, expire_audio);
+            })
+            .await;
 
             let should_save_profile = {
                 let state = app_handle.state::<AppState>();

@@ -838,6 +838,19 @@ describe("setPolishStructureLevel payload", () => {
   });
 });
 
+describe("setPolishReasoningMode payload", () => {
+  it("changes only the polish effort through its dedicated command", async () => {
+    const { setPolishReasoningMode } = await import("@/api/tauri");
+    invokeMock.invoke.mockResolvedValueOnce(undefined);
+
+    await setPolishReasoningMode("balanced");
+
+    expect(invokeMock.invoke).toHaveBeenCalledWith("set_polish_reasoning_mode", {
+      mode: "balanced",
+    });
+  });
+});
+
 describe("screen vision IPC payloads", () => {
   it("persists one shared screen-context switch", async () => {
     const { setScreenContextEnabled } = await import("@/api/tauri");

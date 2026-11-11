@@ -61,6 +61,8 @@ import {
   magpieProviderOption,
 } from "@/lib/llmModelOptions";
 import { readLocalStorage, writeLocalStorage } from "@/lib/storage";
+import { withLabsDefaults } from "@/lib/behaviorConfig";
+import { mirrorLabsToStorage } from "@/lib/labsMirror";
 import { useTranslation } from "react-i18next";
 
 import { engineDisplayDescription, engineDisplayLabel } from "@/lib/asrEngineOptions";
@@ -297,6 +299,8 @@ export default function SettingsPage({
     try {
       const p = await getUserProfile();
       setProfile(p);
+      // Profile imports and restores reach the overlay and History only through this mirror.
+      mirrorLabsToStorage(withLabsDefaults(p.labs));
       setProfileLoadError(false);
       setValidationEnabled(Boolean(p.correction_validation_enabled));
       setValidationUseSeparateModel(Boolean(p.llm_provider.validation_use_separate_model));

@@ -1005,6 +1005,15 @@ impl LlmProviderConfig {
         self.polish_reasoning_mode.unwrap_or(self.reasoning_mode)
     }
 
+    /// Sets only the polish effort. The legacy `reasoning_mode` is left alone so
+    /// the assistant mode that falls back to it does not move, and the saved
+    /// selection mode is kept as it is. Selection still follows the polish
+    /// effort when no separate selection model is configured, which is how
+    /// `selection_reasoning_mode` already resolves.
+    pub fn set_polish_reasoning_mode(&mut self, mode: LlmReasoningMode) {
+        self.polish_reasoning_mode = Some(mode);
+    }
+
     pub fn assistant_reasoning_mode(&self) -> LlmReasoningMode {
         self.assistant_reasoning_mode.unwrap_or(self.reasoning_mode)
     }
@@ -1276,6 +1285,26 @@ mod tests {
         HistorySettings, LlmProviderConfig, LlmReasoningMode, PolishStructureLevel,
         SelectionAssistantConfig, UserProfile,
     };
+
+    #[test]
+    fn polish_effort_change_keeps_assistant_selection_and_model() {
+        let mut llm = LlmProviderConfig {
+            custom_model: Some("kept-model".to_string()),
+            reasoning_mode: LlmReasoningMode::Off,
+            assistant_reasoning_mode: None,
+            selection_reasoning_mode: Some(LlmReasoningMode::Deep),
+            ..Default::default()
+        };
+
+        llm.set_polish_reasoning_mode(LlmReasoningMode::Light);
+
+        assert_eq!(llm.polish_reasoning_mode(), LlmReasoningMode::Light);
+        // The assistant inherits the legacy field, so clobbering it would show here.
+        assert_eq!(llm.reasoning_mode, LlmReasoningMode::Off);
+        assert_eq!(llm.assistant_reasoning_mode(), LlmReasoningMode::Off);
+        assert_eq!(llm.selection_reasoning_mode, Some(LlmReasoningMode::Deep));
+        assert_eq!(llm.custom_model.as_deref(), Some("kept-model"));
+    }
 
     fn custom_provider(id: &str) -> CustomProvider {
         CustomProvider {

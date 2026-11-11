@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { getRecordingSnapshot } from "@/api/tauri";
+import { pillLabelKey } from "@/lib/recordingPillLabel";
 import "@/i18n";
 import "../styles/theme.css";
 import "../styles/pill.css";
@@ -12,6 +13,7 @@ interface RecordingStatePayload {
   isStarting?: boolean;
   isRecording?: boolean;
   isProcessing?: boolean;
+  mode?: string | null;
 }
 
 const BAR_COUNT = 7;
@@ -42,6 +44,7 @@ function resampleBars(source: number[]): number[] {
 export default function RecordingPill() {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<PillPhase>("idle");
+  const [mode, setMode] = useState<string | null>(null);
   const [bars, setBars] = useState<number[]>(() =>
     Array.from({ length: BAR_COUNT }, () => MIN_BAR));
 
@@ -52,6 +55,7 @@ export default function RecordingPill() {
     void getRecordingSnapshot()
       .then((snapshot) => {
         if (disposed || !snapshot) return;
+        setMode(snapshot.mode);
         setPhase(phaseFrom({
           isStarting: snapshot.phase === "starting",
           isRecording: snapshot.phase === "recording",
@@ -61,7 +65,9 @@ export default function RecordingPill() {
       .catch(() => undefined);
 
     void listen<RecordingStatePayload>("recording-state", ({ payload }) => {
-      if (!disposed) setPhase(phaseFrom(payload ?? {}));
+      if (disposed) return;
+      setMode(payload?.mode ?? null);
+      setPhase(phaseFrom(payload ?? {}));
     })
       .then((unlisten) => { if (disposed) unlisten(); else disposers.push(unlisten); })
       .catch(() => undefined);
@@ -84,7 +90,7 @@ export default function RecordingPill() {
   return (
     <div className="pill" data-phase={phase} role="status" aria-live="polite">
       <span className="pill-signal" aria-hidden="true" />
-      <span className="pill-label">{t(`pill.${phase}`)}</span>
+      <span className="pill-label">{t(pillLabelKey(phase, mode))}</span>
       {phase === "recording" && (
         <span className="pill-bars" aria-hidden="true">
           {bars.map((level, index) => (

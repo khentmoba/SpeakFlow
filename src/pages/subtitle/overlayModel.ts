@@ -71,8 +71,25 @@ export const RESULT_CLEANUP_DELAY_MS = RESULT_FADE_DELAY_MS + 400;
 export const OUTCOME_FADE_DELAY_MS = 1500;
 export const OUTCOME_CLEANUP_DELAY_MS = OUTCOME_FADE_DELAY_MS + 400;
 export const QUICK_CANCEL_CLEANUP_DELAY_MS = 400;
-export const WAVEFORM_BAR_COUNT = 9;
-export const EMPTY_WAVEFORM_BARS = Array.from({ length: WAVEFORM_BAR_COUNT }, () => 0);
+const PILL_OWNED_PHASES: ReadonlySet<Phase> = new Set<Phase>(["starting", "recording"]);
+
+/**
+ * The floating recording pill is the one listening indicator. It is shown for
+ * every recording, so the subtitle overlay must not draw a second one.
+ */
+export function isPillOwnedPhase(phase: Phase): boolean {
+  return PILL_OWNED_PHASES.has(phase);
+}
+
+export function subtitleIndicatorClass(phase: Phase, isAssistant: boolean): string | null {
+  if (isPillOwnedPhase(phase)) return null;
+  switch (phase) {
+    case "processing": return isAssistant ? "subtitle-dot-assistant-processing" : "subtitle-dot-processing";
+    case "searching": return "subtitle-dot-assistant";
+    case "polishing": return isAssistant ? "subtitle-dot-assistant" : "subtitle-dot-polishing";
+    default: return null;
+  }
+}
 
 export function isValidSessionId(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
@@ -88,13 +105,6 @@ export function isRecordingOutcomeKind(value: unknown): value is RecordingOutcom
     || value === "asr_error"
     || value === "processing_error"
     || value === "start_error";
-}
-
-export function normalizeWaveformBars(bars: number[]): number[] {
-  return Array.from({ length: WAVEFORM_BAR_COUNT }, (_, index) => {
-    const value = bars[index];
-    return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-  });
 }
 
 export function validInterimSegments(payload: TranscriptionResult): InterimSegments | null {

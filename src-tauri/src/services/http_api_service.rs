@@ -17,6 +17,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -57,6 +58,19 @@ pub struct StreamEventEnvelope {
 static STREAM_BUS: OnceLock<broadcast::Sender<StreamEventEnvelope>> = OnceLock::new();
 static ACTIVE_INFO: Mutex<Option<LocalApiInfo>> = Mutex::new(None);
 
+/// The loopback listener that currently owns the port. Sending on `shutdown`
+/// ends its accept loop; `closing` also reaches every accepted connection, so a
+/// long-lived stream cannot outlive the listener. `id` lets a listener that lost
+/// a stop race tell that it no longer owns the slot.
+struct ActiveListener {
+    id: u64,
+    shutdown: tokio::sync::oneshot::Sender<()>,
+    closing: tokio::sync::watch::Sender<bool>,
+}
+
+static LISTENER: Mutex<Option<ActiveListener>> = Mutex::new(None);
+static NEXT_LISTENER_ID: AtomicU64 = AtomicU64::new(1);
+
 fn stream_sender() -> &'static broadcast::Sender<StreamEventEnvelope> {
     STREAM_BUS.get_or_init(|| {
         let (tx, _) = broadcast::channel(128);
@@ -95,58 +109,157 @@ fn generate_auth_token() -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// Starts the loopback API unless it is already running. Called at startup and
+/// when Labs > Local API is switched on.
 pub fn start_server(app_handle: tauri::AppHandle) {
+    let id = NEXT_LISTENER_ID.fetch_add(1, Ordering::Relaxed);
+    let Some((shutdown_rx, closing_rx)) = install_listener(&mut LISTENER.lock(), id) else {
+        return;
+    };
+    tauri::async_runtime::spawn(run_listener(app_handle, id, shutdown_rx, closing_rx));
+}
+
+/// Stops the loopback API now. The auth token and discovery file go with it, and
+/// every accepted connection is told to close, so a disabled API cannot keep
+/// answering until the next restart.
+pub fn stop_server() {
+    let Some(active) = LISTENER.lock().take() else {
+        return;
+    };
+    let _ = active.closing.send(true);
+    let _ = active.shutdown.send(());
+    *ACTIVE_INFO.lock() = None;
+    let _ = std::fs::remove_file(discovery_path());
+    log::info!("SpeakFlow local HTTP API stopped");
+}
+
+/// Brings the running listener in line with the saved toggle. Used by the Labs
+/// switch and by a profile import, which replaces the toggle without going
+/// through that switch.
+pub(crate) fn reconcile_api_listener(app_handle: &tauri::AppHandle, enabled: bool) {
+    match (enabled, is_running()) {
+        (true, false) => start_server(app_handle.clone()),
+        (false, true) => stop_server(),
+        _ => {}
+    }
+}
+
+pub(crate) fn is_running() -> bool {
+    LISTENER.lock().is_some()
+}
+
+fn install_listener(
+    slot: &mut Option<ActiveListener>,
+    id: u64,
+) -> Option<(
+    tokio::sync::oneshot::Receiver<()>,
+    tokio::sync::watch::Receiver<bool>,
+)> {
+    if slot.is_some() {
+        return None;
+    }
+    let (shutdown, shutdown_rx) = tokio::sync::oneshot::channel();
+    let (closing, closing_rx) = tokio::sync::watch::channel(false);
+    *slot = Some(ActiveListener {
+        id,
+        shutdown,
+        closing,
+    });
+    Some((shutdown_rx, closing_rx))
+}
+
+/// Resolves once the API is stopped. A receiver created after the stop returns at
+/// once, so a connection accepted just before the stop still closes.
+async fn wait_closing(closing: &mut tokio::sync::watch::Receiver<bool>) {
+    let _ = closing.wait_for(|closing| *closing).await;
+}
+
+fn release_listener(id: u64) {
+    let mut slot = LISTENER.lock();
+    if slot.as_ref().is_some_and(|active| active.id == id) {
+        *slot = None;
+    }
+}
+
+async fn bind_listener(configured_port: u16) -> Option<TcpListener> {
+    match TcpListener::bind(("127.0.0.1", configured_port)).await {
+        Ok(listener) => Some(listener),
+        Err(first_err) => {
+            log::warn!(
+                "Local API port {} unavailable ({first_err}), binding ephemeral loopback port",
+                configured_port
+            );
+            match TcpListener::bind(("127.0.0.1", 0)).await {
+                Ok(listener) => Some(listener),
+                Err(err) => {
+                    log::error!("Failed to bind local HTTP API listener: {err}");
+                    None
+                }
+            }
+        }
+    }
+}
+
+async fn run_listener(
+    app_handle: tauri::AppHandle,
+    id: u64,
+    mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+    closing_rx: tokio::sync::watch::Receiver<bool>,
+) {
     let configured_port = std::env::var("SPEAK_FLOW_API_PORT")
         .ok()
         .and_then(|v| v.trim().parse::<u16>().ok())
         .unwrap_or(DEFAULT_API_PORT);
 
-    tauri::async_runtime::spawn(async move {
-        let listener = match TcpListener::bind(("127.0.0.1", configured_port)).await {
-            Ok(l) => l,
-            Err(first_err) => {
-                log::warn!(
-                    "Local API port {} unavailable ({first_err}), binding ephemeral loopback port",
-                    configured_port
-                );
-                match TcpListener::bind(("127.0.0.1", 0)).await {
-                    Ok(l) => l,
-                    Err(err) => {
-                        log::error!("Failed to bind local HTTP API listener: {err}");
-                        return;
-                    }
-                }
-            }
-        };
-
-        let Ok(addr) = listener.local_addr() else {
+    let bound = tokio::select! {
+        biased;
+        _ = &mut shutdown_rx => return,
+        bound = bind_listener(configured_port) => bound,
+    };
+    let Some(listener) = bound else {
+        release_listener(id);
+        return;
+    };
+    let Ok(addr) = listener.local_addr() else {
+        release_listener(id);
+        return;
+    };
+    let port = addr.port();
+    let info = LocalApiInfo {
+        host: "127.0.0.1".to_string(),
+        port,
+        pid: std::process::id(),
+        started_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        auth_token: generate_auth_token(),
+        base_url: format!("http://127.0.0.1:{port}"),
+    };
+    {
+        // A stop that raced the bind has already cleared the slot. Publishing
+        // now would hand out a token for a listener that is about to close.
+        let slot = LISTENER.lock();
+        if slot.as_ref().is_none_or(|active| active.id != id) {
             return;
-        };
-        let port = addr.port();
-        let token = generate_auth_token();
-        let info = LocalApiInfo {
-            host: "127.0.0.1".to_string(),
-            port,
-            pid: std::process::id(),
-            started_at: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-            auth_token: token,
-            base_url: format!("http://127.0.0.1:{port}"),
-        };
+        }
         *ACTIVE_INFO.lock() = Some(info.clone());
         if let Ok(json) = serde_json::to_string_pretty(&info) {
             let _ = paths::atomic_write(&discovery_path(), json.as_bytes());
         }
-        log::info!("SpeakFlow local HTTP API listening on http://127.0.0.1:{port}");
+    }
+    log::info!("SpeakFlow local HTTP API listening on http://127.0.0.1:{port}");
 
-        loop {
-            match listener.accept().await {
+    loop {
+        tokio::select! {
+            biased;
+            _ = &mut shutdown_rx => break,
+            accepted = listener.accept() => match accepted {
                 Ok((stream, _peer)) => {
                     let app = app_handle.clone();
+                    let closing = closing_rx.clone();
                     tokio::spawn(async move {
-                        if let Err(err) = handle_connection(stream, app).await {
+                        if let Err(err) = handle_connection(stream, app, closing).await {
                             log::debug!("Local HTTP connection closed: {err}");
                         }
                     });
@@ -155,9 +268,10 @@ pub fn start_server(app_handle: tauri::AppHandle) {
                     log::warn!("Local HTTP accept error: {err}");
                     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 }
-            }
+            },
         }
-    });
+    }
+    log::info!("SpeakFlow local HTTP API closed on port {port}");
 }
 
 fn is_allowed_origin(origin: Option<&str>) -> bool {
@@ -172,7 +286,11 @@ fn is_allowed_origin(origin: Option<&str>) -> bool {
         || lower.starts_with("tauri://localhost")
 }
 
-async fn handle_connection(stream: TcpStream, app_handle: tauri::AppHandle) -> Result<(), String> {
+async fn handle_connection(
+    stream: TcpStream,
+    app_handle: tauri::AppHandle,
+    closing: tokio::sync::watch::Receiver<bool>,
+) -> Result<(), String> {
     let (reader_half, mut writer_half) = stream.into_split();
     let mut reader = BufReader::new(reader_half);
 
@@ -256,7 +374,7 @@ async fn handle_connection(stream: TcpStream, app_handle: tauri::AppHandle) -> R
     }
 
     if method == "GET" && path == "/streams" {
-        return handle_sse_stream(writer_half, &app_handle).await;
+        return handle_sse_stream(writer_half, &app_handle, closing).await;
     }
 
     match (method.as_str(), path) {
@@ -582,6 +700,7 @@ async fn execute_control_action(
 async fn handle_sse_stream(
     mut writer: tokio::net::tcp::OwnedWriteHalf,
     app_handle: &tauri::AppHandle,
+    mut closing: tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), String> {
     let header = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n";
     writer
@@ -608,9 +727,13 @@ async fn handle_sse_stream(
     let mut rx = stream_sender().subscribe();
     let mut keepalive = tokio::time::interval(std::time::Duration::from_secs(15));
     keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let closing = wait_closing(&mut closing);
+    tokio::pin!(closing);
 
     loop {
         tokio::select! {
+            biased;
+            _ = &mut closing => break,
             msg = rx.recv() => {
                 match msg {
                     Ok(envelope) => {
@@ -759,5 +882,45 @@ mod tests {
         assert!(!is_authorized_bearer(Some("secret-token-123")));
         assert!(!is_authorized_bearer(Some("Bearer wrong")));
         *ACTIVE_INFO.lock() = prev;
+    }
+
+    #[test]
+    fn listener_slot_has_one_owner_until_it_is_stopped() {
+        let mut slot = None;
+        let (mut first, _closing) =
+            install_listener(&mut slot, 1).expect("first listener claims the slot");
+        assert!(install_listener(&mut slot, 2).is_none());
+
+        let active = slot.take().expect("slot holds the first listener");
+        active.closing.send(true).expect("listener is still open");
+        active.shutdown.send(()).expect("listener is still waiting");
+        assert!(first.try_recv().is_ok());
+        assert!(install_listener(&mut slot, 3).is_some());
+    }
+
+    #[tokio::test]
+    async fn stopping_the_api_releases_streams_that_are_already_open() {
+        let (closing, mut open_stream) = tokio::sync::watch::channel(false);
+        let waiting = tokio::spawn(async move { wait_closing(&mut open_stream).await });
+
+        closing.send(true).expect("stream is still subscribed");
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), waiting)
+            .await
+            .expect("open stream closes on stop")
+            .expect("waiter task did not panic");
+    }
+
+    #[tokio::test]
+    async fn a_stream_accepted_after_the_stop_does_not_wait_for_another_signal() {
+        let (closing, mut late_stream) = tokio::sync::watch::channel(false);
+        closing.send(true).expect("no receiver yet is fine");
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            wait_closing(&mut late_stream),
+        )
+        .await
+        .expect("a stream accepted after the stop returns at once");
     }
 }

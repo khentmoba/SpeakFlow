@@ -815,6 +815,19 @@ pub async fn set_custom_prompt(
     Ok(())
 }
 
+/// Changes only the polish effort. Assistant and selection keep their own modes,
+/// and the saved model is left as it is.
+#[tauri::command]
+pub async fn set_polish_reasoning_mode(
+    state: tauri::State<'_, AppState>,
+    mode: LlmReasoningMode,
+) -> Result<(), AppError> {
+    profile_service::update_profile_and_schedule(state.inner(), |profile| {
+        profile.llm_provider.set_polish_reasoning_mode(mode);
+    });
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn set_polish_structure_level(
     state: tauri::State<'_, AppState>,
@@ -859,7 +872,7 @@ pub async fn export_user_profile(
 
 #[tauri::command]
 pub async fn import_user_profile(
-    _app_handle: tauri::AppHandle,
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     json_data: String,
 ) -> Result<(), AppError> {
@@ -872,6 +885,9 @@ pub async fn import_user_profile(
     profile_service::save_profile_async(state.inner())
         .await
         .map_err(|e| format!("Failed to save profile: {}", e))?;
+    // The imported profile replaces the Labs toggle without going through it.
+    let api_enabled = state.with_profile(|profile| profile.labs.api_processing);
+    crate::services::http_api_service::reconcile_api_listener(&app_handle, api_enabled);
     Ok(())
 }
 
@@ -1189,7 +1205,7 @@ pub async fn set_labs_config(
     state: tauri::State<'_, AppState>,
     labs: LabsConfig,
 ) -> Result<(), AppError> {
-    let sanitized = labs;
+    let previous = state.with_profile(|p| p.labs.clone());
     let (audio_behavior, shortcuts_behavior, selected_device, is_idle) = state.with_profile(|p| {
         (
             p.audio_behavior.clone(),
@@ -1199,21 +1215,24 @@ pub async fn set_labs_config(
         )
     });
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
-        profile.labs = sanitized.clone();
+        profile.labs = labs.clone();
     });
+    if labs.api_processing != previous.api_processing {
+        crate::services::http_api_service::reconcile_api_listener(&app_handle, labs.api_processing);
+    }
+    if labs.expire_meeting_audio && !previous.expire_meeting_audio {
+        let meetings = state.with_profile(|p| p.meetings.clone());
+        crate::services::meeting_service::cleanup_expired_meeting_audio(&meetings, true);
+    }
     if is_idle {
         crate::services::audio_service::start_preroll_if_eligible(
             selected_device,
             &audio_behavior,
-            &sanitized,
+            &labs,
             false,
         );
     }
-    let _ = crate::commands::hotkey::sync_extended_hotkeys(
-        &app_handle,
-        &shortcuts_behavior,
-        &sanitized,
-    );
+    let _ = crate::commands::hotkey::sync_extended_hotkeys(&app_handle, &shortcuts_behavior, &labs);
     Ok(())
 }
 

@@ -375,6 +375,10 @@
       "preferences",
       "profile-save"
     ],
+    "commands::profile::set_polish_reasoning_mode": [
+      "preferences",
+      "profile-save"
+    ],
     "commands::profile::set_openai_fast_mode": [
       "preferences",
       "profile-save"
@@ -2444,6 +2448,7 @@
     "commands::profile::set_translation_hotkey": "src-tauri/src/commands/profile.rs#fn set_translation_hotkey(",
     "commands::profile::set_custom_prompt": "src-tauri/src/commands/profile.rs#fn set_custom_prompt(",
     "commands::profile::set_polish_structure_level": "src-tauri/src/commands/profile.rs#fn set_polish_structure_level(",
+    "commands::profile::set_polish_reasoning_mode": "src-tauri/src/commands/profile.rs#fn set_polish_reasoning_mode(",
     "commands::profile::set_openai_fast_mode": "src-tauri/src/commands/profile.rs#fn set_openai_fast_mode(",
     "commands::profile::set_external_correction_learning": "src-tauri/src/commands/profile.rs#fn set_external_correction_learning(",
     "commands::profile::set_correction_validation_config": "src-tauri/src/commands/profile.rs#fn set_correction_validation_config(",

@@ -48,11 +48,10 @@ import {
   OUTCOME_FADE_DELAY_MS,
   OUTCOME_CLEANUP_DELAY_MS,
   QUICK_CANCEL_CLEANUP_DELAY_MS,
-  EMPTY_WAVEFORM_BARS,
   isValidSessionId,
   isValidRevision,
   isRecordingOutcomeKind,
-  normalizeWaveformBars,
+  subtitleIndicatorClass,
   validInterimSegments,
   mergeAssistantSources,
 } from "@/pages/subtitle/overlayModel";
@@ -70,7 +69,6 @@ export default function SubtitleOverlay() {
   const [fadingOut, setFadingOut] = useState(false);
   const [outcome, setOutcome] = useState<RecordingOutcomeKind | null>(null);
   const [streamTokens, setStreamTokens] = useState(0);
-  const [waveformBars, setWaveformBars] = useState<number[]>(EMPTY_WAVEFORM_BARS);
   const [mode, setMode] = useState<"dictation" | "assistant">("dictation");
   const [capsuleSessionId, setCapsuleSessionId] = useState(0);
   const [assistantCopied, setAssistantCopied] = useState(false);
@@ -257,7 +255,6 @@ export default function SubtitleOverlay() {
       setText("");
       setInterimSegments(null);
       setOutcome(null);
-      setWaveformBars(EMPTY_WAVEFORM_BARS);
       setStreamTokens(0);
       setAssistantCopied(false);
       shouldAutoScrollRef.current = true;
@@ -271,7 +268,6 @@ export default function SubtitleOverlay() {
       clearFadeTimer();
       setFadingOut(false);
       setOutcome(null);
-      setWaveformBars(EMPTY_WAVEFORM_BARS);
       updatePhase("processing");
       return;
     }
@@ -305,7 +301,6 @@ export default function SubtitleOverlay() {
       cleanupTimerRef.current = setTimeout(() => {
         if (latestSessionIdRef.current !== expectedSessionId) return;
         setOutcome(null);
-        setWaveformBars(EMPTY_WAVEFORM_BARS);
         updatePhase("idle");
         cleanupTimerRef.current = null;
       }, QUICK_CANCEL_CLEANUP_DELAY_MS);
@@ -334,7 +329,6 @@ export default function SubtitleOverlay() {
         : ""
     ));
     setInterimSegments(null);
-    setWaveformBars(EMPTY_WAVEFORM_BARS);
     setStreamTokens(0);
     setAssistantCopied(false);
     setOutcome(nextOutcome);
@@ -371,7 +365,6 @@ export default function SubtitleOverlay() {
       setText("");
       setInterimSegments(null);
       setOutcome(null);
-      setWaveformBars(EMPTY_WAVEFORM_BARS);
       setStreamTokens(0);
       setAssistantCopied(false);
       setFadingOut(true);
@@ -673,34 +666,6 @@ export default function SubtitleOverlay() {
     };
   }, [t]);
 
-  // 监听录音波形数据
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | null = null;
-
-    void (async () => {
-      try {
-        unlisten = await listen<{ sessionId?: number; bars: number[] }>("waveform", (event) => {
-          const { sessionId, bars } = event.payload;
-          if (!isValidSessionId(sessionId) || sessionId !== latestSessionIdRef.current) return;
-          if (phaseRef.current !== "starting" && phaseRef.current !== "recording") return;
-          setWaveformBars(normalizeWaveformBars(bars));
-        });
-        if (disposed && unlisten) {
-          unlisten();
-          unlisten = null;
-        }
-      } catch {
-        // ignore
-      }
-    })();
-
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, []);
-
   useEffect(() => {
     if (!assistantPanelActive) {
       shouldAutoScrollRef.current = true;
@@ -803,7 +768,6 @@ export default function SubtitleOverlay() {
               updatePhase("idle");
               setFadingOut(false);
               setStreamTokens(0);
-              setWaveformBars(EMPTY_WAVEFORM_BARS);
               cleanupTimerRef.current = null;
             }, RESULT_CLEANUP_DELAY_MS);
           }
@@ -829,17 +793,10 @@ export default function SubtitleOverlay() {
   const hasText = (showLiveTranscript || phase === "result") && (interimSegments ? text : smoothText).length > 0;
   const isAssistant = mode === "assistant";
 
-  let indicatorClass: string | null = null;
-  switch (phase) {
-    case "processing": indicatorClass = isAssistant ? "subtitle-dot-assistant-processing" : "subtitle-dot-processing"; break;
-    case "searching":  indicatorClass = "subtitle-dot-assistant"; break;
-    case "polishing":  indicatorClass = isAssistant ? "subtitle-dot-assistant" : "subtitle-dot-polishing"; break;
-  }
+  const indicatorClass = subtitleIndicatorClass(phase, isAssistant);
 
   let hintText: string | null = null;
   switch (phase) {
-    case "starting":   hintText = t("subtitle.connectingMicrophone"); break;
-    case "recording":  hintText = isAssistant ? t("subtitle.aiListening") : t("subtitle.listening"); break;
     case "processing": hintText = isAssistant ? t("subtitle.aiGenerating") : t("subtitle.recognizing"); break;
     case "searching":  hintText = t("subtitle.webSearching"); break;
     case "polishing":
@@ -854,13 +811,13 @@ export default function SubtitleOverlay() {
     [outcome],
   );
   const outcomeText = outcome && failureNoticesEnabled ? t(`recording.outcome.${outcome}`) : null;
+  const capsuleIdle = !assistantPanelActive && !conversationOpen && !hasText && !indicatorClass && !hintText && !outcomeText;
   const closeAssistantOverlay = useCallback(() => {
     clearFadeTimer();
     setFadingOut(false);
     setText("");
     setInterimSegments(null);
     setOutcome(null);
-    setWaveformBars(EMPTY_WAVEFORM_BARS);
     setAssistantCopied(false);
     resetConversationState();
     updatePhase("idle");
@@ -1092,7 +1049,7 @@ export default function SubtitleOverlay() {
       <div
         key={capsuleSessionId}
         className={
-          `subtitle-capsule${fadingOut ? " subtitle-fade-out" : ""}${assistantPanelActive ? " subtitle-capsule-assistant" : ""}${assistantInteractive ? " subtitle-capsule-interactive" : ""}${conversationOpen ? " subtitle-capsule-conversation" : ""}`
+          `subtitle-capsule${fadingOut ? " subtitle-fade-out" : ""}${assistantPanelActive ? " subtitle-capsule-assistant" : ""}${assistantInteractive ? " subtitle-capsule-interactive" : ""}${conversationOpen ? " subtitle-capsule-conversation" : ""}${capsuleIdle ? " subtitle-capsule-idle" : ""}`
         }
         role="presentation"
         onClick={assistantInteractive ? (event) => event.stopPropagation() : undefined}
@@ -1147,21 +1104,9 @@ export default function SubtitleOverlay() {
                 </button>
               </div>
             )}
-            {(hasText || phase === "starting" || phase === "recording" || indicatorClass) && (
-              <span className="subtitle-status-indicator" data-visible={phase === "starting" || phase === "recording" || !!indicatorClass} aria-hidden="true">
-                {(phase === "starting" || phase === "recording") ? (
-                  <span className={`subtitle-waveform-indicator${mode === "assistant" ? " is-assistant" : ""}`}>
-                    {waveformBars.map((h, i) => (
-                      <span
-                        key={i}
-                        className="subtitle-waveform-indicator-bar"
-                        style={{ height: `${Math.max(2, h * 16)}px` }}
-                      />
-                    ))}
-                  </span>
-                ) : indicatorClass ? (
-                  <span className={indicatorClass} />
-                ) : null}
+            {(hasText || indicatorClass) && (
+              <span className="subtitle-status-indicator" data-visible={!!indicatorClass} aria-hidden="true">
+                {indicatorClass && <span className={indicatorClass} />}
               </span>
             )}
             {hasText && (
