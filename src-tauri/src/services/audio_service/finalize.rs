@@ -324,6 +324,21 @@ pub(crate) fn restart_idle_preroll_if_eligible(state: &AppState) {
     super::capture::start_preroll_if_eligible(selected, &audio_behavior, &labs, false);
 }
 
+/// How long finalize waits for the capture thread to stop before finishing without it.
+const AUDIO_THREAD_JOIN_BUDGET: Duration = Duration::from_secs(5);
+
+/// Waits a bounded time for the capture thread. Returns false when it is still running.
+///
+/// Finish is sent to the native stream only after this join, and the ASR lease stays
+/// held until Finish arrives. An unbounded join would therefore queue every later
+/// dictation behind a stuck capture device.
+async fn join_capture_thread(handle: std::thread::JoinHandle<()>, budget: Duration) -> bool {
+    let join = tokio::task::spawn_blocking(move || {
+        let _ = handle.join();
+    });
+    tokio::time::timeout(budget, join).await.is_ok()
+}
+
 pub async fn finalize_recording(app_handle: tauri::AppHandle, session: RecordingSession) {
     let RecordingSession {
         context_capture,
@@ -352,10 +367,12 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
     crate::services::audio_service::restore_audio();
 
     if let Some(h) = audio_thread {
-        let _ = tokio::task::spawn_blocking(move || {
-            let _ = h.join();
-        })
-        .await;
+        if !join_capture_thread(h, AUDIO_THREAD_JOIN_BUDGET).await {
+            log::warn!(
+                "Audio capture thread did not stop within {}s; finishing without waiting for it",
+                AUDIO_THREAD_JOIN_BUDGET.as_secs()
+            );
+        }
     }
     // 等待 interim 任务自然结束；超时则 abort 以释放 funasr_process 锁
     let mut reference_context = match context_capture {
@@ -1204,10 +1221,12 @@ pub async fn discard_recording(session: RecordingSession) {
         grab.abort();
     }
     if let Some(h) = session.audio_thread {
-        let _ = tokio::task::spawn_blocking(move || {
-            let _ = h.join();
-        })
-        .await;
+        if !join_capture_thread(h, AUDIO_THREAD_JOIN_BUDGET).await {
+            log::warn!(
+                "Audio capture thread did not stop within {}s; discarding without waiting for it",
+                AUDIO_THREAD_JOIN_BUDGET.as_secs()
+            );
+        }
     }
     if let Some(t) = session.interim_task {
         let abort_handle = t.abort_handle();
@@ -1690,6 +1709,24 @@ async fn do_paste(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn capture_thread_join_gives_up_on_a_thread_that_never_stops() {
+        let (release, parked) = std::sync::mpsc::channel::<()>();
+        let stuck = std::thread::spawn(move || {
+            let _ = parked.recv();
+        });
+        let started = Instant::now();
+        assert!(!join_capture_thread(stuck, Duration::from_millis(50)).await);
+        assert!(started.elapsed() < Duration::from_secs(2));
+        drop(release);
+    }
+
+    #[tokio::test]
+    async fn capture_thread_join_waits_for_a_thread_that_stops() {
+        let stopped = std::thread::spawn(|| {});
+        assert!(join_capture_thread(stopped, Duration::from_secs(5)).await);
+    }
 
     #[test]
     fn polish_failure_keeps_local_spelling_corrections() {

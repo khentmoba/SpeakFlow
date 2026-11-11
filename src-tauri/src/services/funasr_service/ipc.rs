@@ -41,9 +41,12 @@ pub(super) struct CommandProcessGuard<'a, R: tauri::Runtime> {
 
 impl<R: tauri::Runtime> Drop for CommandProcessGuard<'_, R> {
     fn drop(&mut self) {
-        if self.process.is_none() {
+        let Some(process) = self.process.take() else {
             return;
-        }
+        };
+        // The process can outlive a timeout or broken pipe (a stalled decode, for example).
+        // Its reply can no longer be matched to a session, and a leftover copy would compete
+        // with the replacement for GPU memory, so the recovery task ends it first.
         log::warn!("FunASR communication interrupted; releasing the process for restart");
         self.state.set_funasr_ready(false);
         self.state.set_inline_audio_transport(None);
@@ -56,6 +59,9 @@ impl<R: tauri::Runtime> Drop for CommandProcessGuard<'_, R> {
                 }),
             );
         }
+        // Recovery reads its own app handle, so it must run even for commands sent
+        // without one; otherwise those failures leave the engine down for good.
+        request_engine_recovery(Some(process));
     }
 }
 

@@ -71,6 +71,7 @@ pub fn run() {
             }
 
             let app_handle = app.handle().clone();
+            services::funasr_service::register_engine_recovery_app(app_handle.clone());
             log::info!(
                 "SpeakFlow 应用启动，数据目录: {:?}",
                 utils::paths::get_data_dir()

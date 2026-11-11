@@ -1,5 +1,71 @@
 use super::*;
 
+/// Lets the IPC layer restart the engine without a command-scoped app handle.
+static ENGINE_RECOVERY_APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+pub fn register_engine_recovery_app(app_handle: tauri::AppHandle) {
+    let _ = ENGINE_RECOVERY_APP.set(app_handle);
+}
+
+/// How long recovery waits for a lost process to exit before starting a replacement.
+const LOST_PROCESS_EXIT_BUDGET: Duration = Duration::from_secs(5);
+
+/// Ends the lost process, waits for it to exit, then runs `start`.
+///
+/// A replacement that loads while the old process still holds GPU memory can fail
+/// its CUDA load and fall back to a slower backend, so the exit is awaited first.
+/// Returns whether the engine came back.
+pub(super) async fn restart_engine_after_exit<F, Fut>(
+    previous: Option<FunasrProcess>,
+    start: F,
+) -> bool
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<(), AppError>>,
+{
+    if let Some(mut process) = previous {
+        let _ = process.child.start_kill();
+        if tokio::time::timeout(LOST_PROCESS_EXIT_BUDGET, process.child.wait())
+            .await
+            .is_err()
+        {
+            log::warn!(
+                "Lost FunASR process did not exit within {}s; restarting anyway",
+                LOST_PROCESS_EXIT_BUDGET.as_secs()
+            );
+        }
+    }
+    match start().await {
+        Ok(()) => {
+            log::info!("FunASR engine restarted after its process was lost");
+            true
+        }
+        Err(err) => {
+            log::warn!("FunASR engine restart after a lost process failed: {err}");
+            false
+        }
+    }
+}
+
+/// Restarts the local engine in the background after its process was lost mid-session.
+///
+/// Frontend polling stops once the engine reports ready, so a process that dies during
+/// a dictation used to stay down until the app restarted. `start_server` ignores the
+/// request while another start runs or a switch has blocked starts, so repeats are safe.
+pub(super) fn request_engine_recovery(previous: Option<FunasrProcess>) {
+    let Some(app_handle) = ENGINE_RECOVERY_APP.get().cloned() else {
+        return;
+    };
+    tauri::async_runtime::spawn(async move {
+        use tauri::Manager;
+        if paths::is_online_engine(&paths::read_engine_config()) {
+            return;
+        }
+        let state = app_handle.state::<AppState>();
+        restart_engine_after_exit(previous, || start_server(&app_handle, state.inner())).await;
+    });
+}
+
 /// 启动 FunASR Python 服务器
 pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Result<(), AppError> {
     let (ticket, mut starting_guard) = {
