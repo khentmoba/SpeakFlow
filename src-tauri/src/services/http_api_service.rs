@@ -133,6 +133,21 @@ pub fn stop_server() {
     log::info!("SpeakFlow local HTTP API stopped");
 }
 
+/// Brings the running listener in line with the saved toggle. Used by the Labs
+/// switch and by a profile import, which replaces the toggle without going
+/// through that switch.
+pub(crate) fn reconcile_api_listener(app_handle: &tauri::AppHandle, enabled: bool) {
+    match (enabled, is_running()) {
+        (true, false) => start_server(app_handle.clone()),
+        (false, true) => stop_server(),
+        _ => {}
+    }
+}
+
+pub(crate) fn is_running() -> bool {
+    LISTENER.lock().is_some()
+}
+
 fn install_listener(
     slot: &mut Option<ActiveListener>,
     id: u64,
