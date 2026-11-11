@@ -1,7 +1,7 @@
 {
   "name": "speak-flow",
   "private": true,
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "SpeakFlow - local and cloud speech-to-text for Windows",
   "author": "Khent Felary G Sanco <khentplaysmoba@gmail.com>",
   "license": "GPL-3.0-only",
