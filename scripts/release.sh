@@ -173,6 +173,7 @@ run_local_checks() {
 }
 
 ENGINE_REBUILT=false
+CI_WATCH_PID=""
 
 prepare_engine() {
     echo "[4/9] 准备 Python 引擎"
@@ -363,12 +364,12 @@ main() {
     run_local_checks
     commit_candidate
 
-    local candidate_sha ci_log ci_pid
+    local candidate_sha ci_log
     candidate_sha="$(git rev-parse HEAD)"
     ci_log="$(mktemp)"
     wait_for_ci "$candidate_sha" >"$ci_log" 2>&1 &
-    ci_pid=$!
-    trap 'kill "$ci_pid" 2>/dev/null || true' EXIT
+    CI_WATCH_PID=$!
+    trap 'if [[ -n "$CI_WATCH_PID" ]]; then kill "$CI_WATCH_PID" 2>/dev/null || true; fi' EXIT
 
     prepare_engine
     verify_engine_archive
@@ -376,7 +377,7 @@ main() {
     verify_installer
 
     echo "[8/9] 等待候选提交 ${candidate_sha} 的 CI"
-    if ! wait "$ci_pid"; then
+    if ! wait "$CI_WATCH_PID"; then
         cat "$ci_log" >&2
         fail "候选提交 ${candidate_sha} 的 CI 未通过"
     fi
