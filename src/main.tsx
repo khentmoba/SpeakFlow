@@ -104,9 +104,9 @@ function AppWorkspace() {
       }
     };
 
-    void (async () => {
-      await register("meeting-hotkey-toggle", () => { void toggleMeeting(); });
-      await register("meeting-call-detected", (payload) => {
+    void Promise.all([
+      register("meeting-hotkey-toggle", () => { void toggleMeeting(); }),
+      register("meeting-call-detected", (payload) => {
         const appName = (payload as { appName?: string | null } | null)?.appName;
         toast.info(
           i18n.t("meetingsCallDetected", {
@@ -119,14 +119,14 @@ function AppWorkspace() {
             },
           },
         );
-      });
+      }),
       // The typed-text hotkey only reaches here when nothing was selected, so
       // bring the window forward instead of dropping the key press.
-      await register("open-typed-text", () => {
+      register("open-typed-text", () => {
         const window = getCurrentWindow();
         void window.show().then(() => window.setFocus()).catch(() => undefined);
-      });
-      await register("keyboard-engine-switched", (payload) => {
+      }),
+      register("keyboard-engine-switched", (payload) => {
         const switched = payload as { locale?: string; engine?: string } | null;
         if (!switched?.engine) return;
         toast.info(
@@ -135,8 +135,8 @@ function AppWorkspace() {
             locale: switched.locale ?? "",
           }),
         );
-      });
-    })();
+      }),
+    ]);
 
     return () => {
       disposed = true;

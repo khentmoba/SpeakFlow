@@ -374,82 +374,101 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
             );
         }
     }
-    // 等待 interim 任务自然结束；超时则 abort 以释放 funasr_process 锁
-    let mut reference_context = match context_capture {
-        Some(mut task) => match tokio::time::timeout(Duration::from_millis(300), &mut task).await {
-            Ok(Ok(context)) => context,
-            _ => {
-                task.abort();
-                crate::services::context_awareness::CapturedContext {
-                    sources: context_sources.clone(),
+    let (reference_context, native_outcome, (), (edit_context, edit_grab_status)) = tokio::join!(
+        async {
+            let mut reference_context = match context_capture {
+                Some(mut task) => {
+                    match tokio::time::timeout(Duration::from_millis(300), &mut task).await {
+                        Ok(Ok(context)) => context,
+                        _ => {
+                            task.abort();
+                            crate::services::context_awareness::CapturedContext {
+                                sources: context_sources.clone(),
+                                ..Default::default()
+                            }
+                        }
+                    }
+                }
+                None => crate::services::context_awareness::CapturedContext {
+                    sources: context_sources,
                     ..Default::default()
+                },
+            };
+            if state.recording.session_counter.load(Ordering::Acquire) == session_id {
+                reference_context.refresh_clipboard(&app_handle);
+            }
+            reference_context
+        },
+        async {
+            // The capture thread is joined: Finish now includes its final samples and
+            // the resampler tail. A native result never falls back to whole-clip ASR.
+            match native_recording {
+                Some(recording) => {
+                    let started = Instant::now();
+                    let result = recording.finish().await.map_err(|error| error.to_string());
+                    Some((result, elapsed_ms(started)))
+                }
+                None => None,
+            }
+        },
+        async {
+            // 等待 interim 任务自然结束；超时则 abort 以释放 funasr_process 锁
+            if let Some(t) = interim_task {
+                let abort_handle = t.abort_handle();
+                if tokio::time::timeout(std::time::Duration::from_secs(5), t)
+                    .await
+                    .is_err()
+                {
+                    log::warn!("Interim task timed out (5s), aborting forcibly");
+                    abort_handle.abort();
                 }
             }
         },
-        None => crate::services::context_awareness::CapturedContext {
-            sources: context_sources,
-            ..Default::default()
-        },
-    };
-    if state.recording.session_counter.load(Ordering::Acquire) == session_id {
-        reference_context.refresh_clipboard(&app_handle);
-    }
-
-    if let Some(t) = interim_task {
-        let abort_handle = t.abort_handle();
-        if tokio::time::timeout(std::time::Duration::from_secs(5), t)
-            .await
-            .is_err()
-        {
-            log::warn!("Interim task timed out (5s), aborting forcibly");
-            abort_handle.abort();
-        }
-    }
-
-    // The capture thread is joined: Finish now includes its final samples and
-    // the resampler tail. A native result never falls back to whole-clip ASR.
-    let native_finish_start = Instant::now();
-    let native_result = match native_recording {
-        Some(recording) => Some(recording.finish().await.map_err(|error| error.to_string())),
-        None => None,
-    };
-    let native_finish_ms = native_result
-        .as_ref()
-        .map(|_| elapsed_ms(native_finish_start));
-
-    // 选中文本保留在本地变量里，不写全局。两个 finalize 并发时也彼此隔离：
-    // edit_grab 来自各自 session 的 RecordingSession，edit_context 只在本函数
-    // 作用域存活，不存在跨会话串位的机会。
-    let (edit_context, edit_grab_status): (Option<String>, EditGrabStatus) = match edit_grab {
-        Some(handle) => {
-            let abort_handle = handle.abort_handle();
-            match tokio::time::timeout(std::time::Duration::from_millis(EDIT_GRAB_WAIT_MS), handle)
-                .await
-            {
-                Ok(Ok(Some(selected))) => (Some(selected), EditGrabStatus::Ok),
-                Ok(Ok(None)) => {
-                    log::debug!("Selected text capture complete: no text currently selected");
-                    (None, EditGrabStatus::Empty)
+        async {
+            // 选中文本保留在本地变量里，不写全局。两个 finalize 并发时也彼此隔离：
+            // edit_grab 来自各自 session 的 RecordingSession，edit_context 只在本函数
+            // 作用域存活，不存在跨会话串位的机会。
+            match edit_grab {
+                Some(handle) => {
+                    let abort_handle = handle.abort_handle();
+                    match tokio::time::timeout(
+                        std::time::Duration::from_millis(EDIT_GRAB_WAIT_MS),
+                        handle,
+                    )
+                    .await
+                    {
+                        Ok(Ok(Some(selected))) => (Some(selected), EditGrabStatus::Ok),
+                        Ok(Ok(None)) => {
+                            log::debug!(
+                                "Selected text capture complete: no text currently selected"
+                            );
+                            (None, EditGrabStatus::Empty)
+                        }
+                        Ok(Err(join_err)) => {
+                            log::debug!("Selected text capture task join failed: {}", join_err);
+                            (None, EditGrabStatus::Unsupported)
+                        }
+                        Err(_) => {
+                            log::warn!(
+                                "Selected text capture exceeded {}ms; falling back to ordinary dictation (session {})",
+                                EDIT_GRAB_WAIT_MS,
+                                session_id
+                            );
+                            abort_handle.abort();
+                            (None, EditGrabStatus::Timeout)
+                        }
+                    }
                 }
-                Ok(Err(join_err)) => {
-                    log::debug!("Selected text capture task join failed: {}", join_err);
+                None => {
+                    log::debug!("Current session has no selected text capture task");
                     (None, EditGrabStatus::Unsupported)
                 }
-                Err(_) => {
-                    log::warn!(
-                        "Selected text capture exceeded {}ms; falling back to ordinary dictation (session {})",
-                        EDIT_GRAB_WAIT_MS,
-                        session_id
-                    );
-                    abort_handle.abort();
-                    (None, EditGrabStatus::Timeout)
-                }
             }
-        }
-        None => {
-            log::debug!("Current session has no selected text capture task");
-            (None, EditGrabStatus::Unsupported)
-        }
+        },
+    );
+    let (native_result, native_finish_ms) = match native_outcome {
+        Some((result, ms)) => (Some(result), Some(ms)),
+        None => (None, None),
     };
 
     let app_profile = state
@@ -1543,28 +1562,40 @@ pub(crate) fn flush_pending_paste(app: &tauri::AppHandle) {
                             }
                         }
                     }
-                    let before = if state.with_profile(|p| p.external_correction_learning)
-                        && !output.options.copy_only
-                    {
-                        tokio::task::spawn_blocking(
-                            crate::services::external_correction_service::capture,
-                        )
-                        .await
-                        .ok()
-                        .flatten()
-                    } else {
-                        None
-                    };
-                    let delivered_text = if output.options.smart_spacing
-                        && !output.options.copy_only
-                    {
-                        let target_win = output.target_window;
-                        let prev_char = tokio::task::spawn_blocking(move || {
-                            crate::commands::clipboard::grab_preceding_char_for_target(target_win)
-                        })
-                        .await
-                        .ok()
-                        .flatten();
+                    let learn_corrections = state.with_profile(|p| p.external_correction_learning)
+                        && !output.options.copy_only;
+                    let smart_spacing = output.options.smart_spacing && !output.options.copy_only;
+                    let target_win = output.target_window;
+                    // Both reads inspect the focused field without writing to it, so they overlap.
+                    let (before, prev_char) = tokio::join!(
+                        async move {
+                            if learn_corrections {
+                                tokio::task::spawn_blocking(
+                                    crate::services::external_correction_service::capture,
+                                )
+                                .await
+                                .ok()
+                                .flatten()
+                            } else {
+                                None
+                            }
+                        },
+                        async move {
+                            if smart_spacing {
+                                tokio::task::spawn_blocking(move || {
+                                    crate::commands::clipboard::grab_preceding_char_for_target(
+                                        target_win,
+                                    )
+                                })
+                                .await
+                                .ok()
+                                .flatten()
+                            } else {
+                                None
+                            }
+                        },
+                    );
+                    let delivered_text = if smart_spacing {
                         super::output::apply_smart_spacing(&output.text, prev_char)
                     } else {
                         output.text.clone()
