@@ -321,35 +321,11 @@ pub(crate) fn extract_openai_compat_error_message(body_text: &str) -> Option<Str
     }
 }
 
-/// Terminal auth/policy/quota failures cannot be recovered by changing transport.
-pub(crate) fn is_terminal_provider_error(error: &str) -> bool {
-    error.contains("CHATGPT_PLAN_ERROR:")
-        || error.contains("API returned error 401")
-        || error.contains("API returned error 402")
-        || error.contains("API returned error 403")
-        || error.contains("API 返回错误 401")
-        || error.contains("API 返回错误 402")
-        || error.contains("API 返回错误 403")
-        || error.contains("subscription_sharing_usage_limit_exceeded")
-        || error.contains("subscription_sharing_user_not_eligible")
-        || error.contains("CHATGPT_REAUTH_REQUIRED")
-        || error.contains("CODEX_REAUTH_REQUIRED")
-        || error.contains("ChatGPT authentication route updated")
-        || error.contains("authentication route updated")
-        || error.contains("认证路线已更新")
-        || error.contains("ChatGPT account switched")
-        || error.contains("Grok account switched")
-        || error.contains("account switched")
-        || error.contains("账户已切换")
-        || error.contains("ChatGPT has been signed out")
-        || error.contains("signed out")
-        || error.contains("已退出登录")
-        || error.contains("sign-in expired")
-        || error.contains("authorization expired")
-        || error.contains("登录已失效")
-        || error.contains("ChatGPT plan usage is not authorized")
-        || error.contains("plan usage is not authorized")
-        || error.contains("套餐使用未获授权")
+/// The provider's machine-readable error code, when the body has one.
+pub(crate) fn extract_api_error_code(body_text: &str) -> Option<String> {
+    let json = serde_json::from_str::<Value>(body_text).ok()?;
+    let error = json.get("error").unwrap_or(&json);
+    error["code"].as_str().map(String::from)
 }
 
 pub(crate) fn extract_api_error_message(endpoint: &LlmEndpoint, body_text: &str) -> String {

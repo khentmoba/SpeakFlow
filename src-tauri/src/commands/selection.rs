@@ -391,7 +391,7 @@ async fn send_selection_request(
     input: &LlmUserInput,
     user_content_len: usize,
     options: LlmRequestOptions<'_>,
-) -> Result<String, String> {
+) -> Result<String, llm_client::LlmError> {
     let options = LlmRequestOptions {
         auth_context: Some((app_handle, state)),
         ..options
@@ -407,7 +407,11 @@ async fn send_selection_request(
         options,
     )
     .await?;
-    llm_client::ensure_non_empty_llm_content(content, endpoint, "selection_transport")
+    Ok(llm_client::ensure_non_empty_llm_content(
+        content,
+        endpoint,
+        "selection_transport",
+    )?)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -436,16 +440,17 @@ async fn send_selection_with_transport_fallback(
         streaming,
     )
     .await
+    .map_err(|error| (error.is_terminal(), String::from(error)))
     {
         Ok(content) => return Ok(content),
-        Err(error) if llm_client::is_terminal_provider_error(&error) => return Err(error),
-        Err(error)
+        Err((true, error)) => return Err(error),
+        Err((_, error))
             if !input.images.is_empty()
                 && llm_provider::looks_like_image_input_unsupported_error(&error) =>
         {
             return Err(error);
         }
-        Err(error) => error,
+        Err((_, error)) => error,
     };
 
     log::warn!("Selection assistant streaming request failed; falling back to non-streaming: {stream_error}");
@@ -461,6 +466,7 @@ async fn send_selection_with_transport_fallback(
         fallback,
     )
     .await
+    .map_err(String::from)
     {
         Ok(content) => Ok(content),
         Err(error)

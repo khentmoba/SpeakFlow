@@ -311,7 +311,8 @@ async fn openrouter_required_reasoning_errors_stop_after_auth_or_second_rejectio
                 options,
             )
             .await
-            .expect_err("auth failures and a rejected fallback must stop compatibility retries");
+            .expect_err("auth failures and a rejected fallback must stop compatibility retries")
+            .to_string();
             assert!(
                 error.contains("reasoning cannot be disabled"),
                 "the final provider rejection must survive: {error}"
@@ -357,7 +358,8 @@ async fn required_reasoning_message_does_not_change_other_providers_retry_behavi
         options,
     )
     .await
-    .expect_err("the OpenRouter-specific rejection must not broaden generic compatibility retries");
+    .expect_err("the OpenRouter-specific rejection must not broaden generic compatibility retries")
+    .to_string();
     assert!(error.contains("reasoning cannot be disabled"));
     assert_eq!(server.await.unwrap(), vec![body]);
 }

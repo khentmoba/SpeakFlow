@@ -1264,6 +1264,7 @@ async fn generate_content_inner(
         request_options,
     )
     .await
+    .map_err(String::from)
     {
         Ok(content) => {
             if !user_input.images.is_empty() {
@@ -1315,7 +1316,7 @@ async fn generate_content_inner(
                 request_options,
             )
             .await
-            .map_err(AppError::Other)?
+            .map_err(|err| AppError::Other(err.into()))?
         }
         Err(err)
             if use_native_search && llm_provider::looks_like_web_search_unsupported_error(&err) =>
@@ -1346,7 +1347,7 @@ async fn generate_content_inner(
                 fallback_options,
             )
             .await
-            .map_err(AppError::Other)?
+            .map_err(|err| AppError::Other(err.into()))?
         }
         Err(err) => return Err(AppError::Other(err)),
     };

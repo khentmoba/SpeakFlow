@@ -10,7 +10,7 @@ pub(super) async fn send_ai_polish_request(
     user_content_len: usize,
     app_handle: Option<&tauri::AppHandle>,
     options: LlmRequestOptions<'_>,
-) -> Result<String, String> {
+) -> Result<String, llm_client::LlmError> {
     let body = llm_client::build_llm_body(endpoint, system_prompt, user_input, options);
     llm_client::send_llm_request(
         &state.http_client,
@@ -139,18 +139,17 @@ pub(super) async fn send_llm_request_with_transport_fallback(
         stage1,
     )
     .await
+    .map_err(|err| (err.is_terminal(), String::from(err)))
     {
         Ok(content) => {
             let _ = state.take_ai_polish_stream_started(session_id);
             return Ok(content);
         }
-        Err(err) => {
+        Err((terminal, err)) => {
             // 空响应是模型/prompt 层面的问题，换 transport 大概率仍然回空——
             // 直接抛错，省下 3 次 LLM 请求；用户能从错误里看到 provider/model
             // 诊断信息。
-            if llm_client::is_empty_llm_response_error(&err)
-                || llm_client::is_terminal_provider_error(&err)
-            {
+            if terminal || llm_client::is_empty_llm_response_error(&err) {
                 let _ = state.take_ai_polish_stream_started(session_id);
                 log::warn!(
                     "AI 润色 {} 遇到不可通过传输回退恢复的错误: {}",
@@ -195,15 +194,13 @@ pub(super) async fn send_llm_request_with_transport_fallback(
             stage,
         )
         .await
+        .map_err(|err| (err.is_terminal(), String::from(err)))
         {
             Ok(content) => {
                 let _ = state.take_ai_polish_stream_started(session_id);
                 return Ok(content);
             }
-            Err(err)
-                if llm_client::is_empty_llm_response_error(&err)
-                    || llm_client::is_terminal_provider_error(&err) =>
-            {
+            Err((terminal, err)) if terminal || llm_client::is_empty_llm_response_error(&err) => {
                 let _ = state.take_ai_polish_stream_started(session_id);
                 log::warn!(
                     "AI 润色 {} 遇到不可通过传输回退恢复的错误，停止剩余 fallback: {}",
@@ -212,7 +209,7 @@ pub(super) async fn send_llm_request_with_transport_fallback(
                 );
                 return Err(err);
             }
-            Err(err) if stage.json_output => {
+            Err((_, err)) if stage.json_output => {
                 if !llm_provider::looks_like_json_output_unsupported_error(&err) {
                     let _ = state.take_ai_polish_stream_started(session_id);
                     return Err(format!("AI polish {} failed: {}", stage_label, err));
@@ -234,7 +231,7 @@ pub(super) async fn send_llm_request_with_transport_fallback(
                     return Err(format!("All transport strategies failed: {}", err));
                 }
             }
-            Err(err) => {
+            Err((_, err)) => {
                 if is_last_stage {
                     let _ = state.take_ai_polish_stream_started(session_id);
                     return Err(format!("All transport strategies failed: {}", err));

@@ -91,7 +91,8 @@ pub async fn describe_images(
         None,
         options,
     )
-    .await;
+    .await
+    .map_err(String::from);
 
     match result {
         Ok(content) => {

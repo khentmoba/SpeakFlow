@@ -8,6 +8,7 @@ use crate::services::llm_provider;
 use crate::services::llm_provider::LlmEndpoint;
 use crate::state::user_profile::{ApiFormat, LlmReasoningMode};
 
+use super::error::LlmError;
 use super::protocol::{
     adapt_body_for_backend, cached_output_token_limit_unsupported, ensure_non_empty_llm_content,
     extract_api_error_message, extract_content, has_output_token_limit,
@@ -177,7 +178,7 @@ async fn dispatch_with_auth_recovery<F, Fut>(
         Option<String>,
         reqwest::header::HeaderMap,
     ),
-    String,
+    LlmError,
 >
 where
     F: FnOnce() -> Fut,
@@ -186,9 +187,12 @@ where
     let mut response =
         dispatch_request(client, endpoint, auth, headers.clone(), body, deadline).await?;
     let replacement = if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        // Recovery only runs after a 401, so its failure means the credentials
+        // are unusable, not that another transport might work.
         tokio::time::timeout_at(deadline, recover())
             .await
-            .map_err(|_| "Authentication refresh timed out")??
+            .map_err(|_| LlmError::from("Authentication refresh timed out"))?
+            .map_err(LlmError::Auth)?
     } else {
         None
     };
@@ -216,7 +220,7 @@ pub async fn send_llm_request(
     text_len: usize,
     app_handle: Option<&tauri::AppHandle>,
     options: LlmRequestOptions<'_>,
-) -> Result<String, String> {
+) -> Result<String, LlmError> {
     crate::services::local_only::ensure("Use an AI model")?;
     let deepseek_responses_endpoint = uses_deepseek_v4_responses(endpoint).then(|| LlmEndpoint {
         provider: endpoint.provider.clone(),
@@ -284,18 +288,16 @@ pub async fn send_llm_request(
         ctx: &ReasoningRetryContext<'_>,
         base_body: &Value,
         initial_status: reqwest::StatusCode,
-        mut error_message: String,
-    ) -> Result<reqwest::Response, String> {
+        initial_body: &str,
+    ) -> Result<reqwest::Response, LlmError> {
         let endpoint = ctx.endpoint;
         let is_responses_api = uses_responses_api(endpoint);
         if llm_provider::cached_auto_reasoning_strategy(endpoint, is_responses_api, ctx.mode)
             == Some(llm_provider::AutoReasoningStrategy::NoControls)
         {
-            return Err(format!(
-                "API returned error {}: {}",
-                initial_status, error_message
-            ));
+            return Err(LlmError::http(endpoint, initial_status, initial_body));
         }
+        let mut error_message = extract_api_error_message(endpoint, initial_body);
 
         let mut output_token_limit_unsupported = false;
         for (strategy, mut fallback_body) in llm_provider::auto_reasoning_fallback_bodies(
@@ -369,7 +371,7 @@ pub async fn send_llm_request(
                 error_message = extract_api_error_message(endpoint, &body_text);
             }
             if !llm_provider::looks_like_reasoning_unsupported_error(&error_message) {
-                return Err(format!("API returned error {}: {}", status, error_message));
+                return Err(LlmError::http(endpoint, status, &body_text));
             }
         }
 
@@ -396,7 +398,7 @@ pub async fn send_llm_request(
         if !retry_response.status().is_success() {
             let mut status = retry_response.status();
             let mut body_text = read_error_body(retry_response, ctx.deadline).await?;
-            let mut error_message = extract_api_error_message(endpoint, &body_text);
+            let error_message = extract_api_error_message(endpoint, &body_text);
             if looks_like_output_token_limit_unsupported_error(&error_message)
                 && has_output_token_limit(&fallback_body)
             {
@@ -430,9 +432,8 @@ pub async fn send_llm_request(
                 }
                 status = retry_response.status();
                 body_text = read_error_body(retry_response, ctx.deadline).await?;
-                error_message = extract_api_error_message(endpoint, &body_text);
             }
-            return Err(format!("API returned error {}: {}", status, error_message));
+            return Err(LlmError::http(endpoint, status, &body_text));
         }
         if output_token_limit_unsupported {
             remember_output_token_limit_unsupported(endpoint);
@@ -512,8 +513,8 @@ pub async fn send_llm_request(
                     break;
                 }
                 status = retry_response.status();
-                let retry_body_text = read_error_body(retry_response, deadline).await?;
-                error_message = extract_api_error_message(endpoint, &retry_body_text);
+                body_text = read_error_body(retry_response, deadline).await?;
+                error_message = extract_api_error_message(endpoint, &body_text);
                 if !is_retryable_overload_error(status, &error_message) {
                     break;
                 }
@@ -542,8 +543,7 @@ pub async fn send_llm_request(
             if !response.status().is_success() {
                 status = response.status();
                 body_text = read_error_body(response, deadline).await?;
-                error_message = extract_api_error_message(endpoint, &body_text);
-                return Err(format!("API 返回错误 {}: {}", status, error_message));
+                return Err(LlmError::http(endpoint, status, &body_text));
             }
             remember_output_token_limit_unsupported(endpoint);
         } else if looks_like_output_token_limit_unsupported_error(&error_message)
@@ -579,12 +579,12 @@ pub async fn send_llm_request(
                         &reasoning_retry_context,
                         &fallback_body,
                         status,
-                        error_message,
+                        &body_text,
                     )
                     .await?;
                     remember_output_token_limit_unsupported(endpoint);
                 } else {
-                    return Err(format!("API returned error {}: {}", status, error_message));
+                    return Err(LlmError::http(endpoint, status, &body_text));
                 }
             } else {
                 remember_output_token_limit_unsupported(endpoint);
@@ -597,11 +597,11 @@ pub async fn send_llm_request(
                 &reasoning_retry_context,
                 &request_body,
                 status,
-                error_message,
+                &body_text,
             )
             .await?;
         } else {
-            return Err(format!("API returned error {}: {}", status, error_message));
+            return Err(LlmError::http(endpoint, status, &body_text));
         }
     }
 
@@ -625,12 +625,12 @@ pub async fn send_llm_request(
     // (build_llm_body may skip stream due to provider constraints, e.g. Cerebras json_object)
     if transport_stream {
         if requested_stream && app_handle.is_none() {
-            return Err("Streaming request missing app_handle".to_string());
+            return Err("Streaming request missing app_handle".into());
         }
         let stream_app_handle = if requested_stream { app_handle } else { None };
         let progress_timeout = stream_progress_timeout(options);
         let total_timeout = stream_total_timeout(options);
-        match endpoint.api_format {
+        Ok(match endpoint.api_format {
             ApiFormat::Anthropic => {
                 read_anthropic_sse_stream(
                     endpoint,
@@ -641,7 +641,7 @@ pub async fn send_llm_request(
                     progress_timeout,
                     total_timeout,
                 )
-                .await
+                .await?
             }
             ApiFormat::OpenaiCompat => {
                 if uses_responses_api(endpoint) {
@@ -655,7 +655,7 @@ pub async fn send_llm_request(
                         total_timeout,
                         codex_oauth_service::is_chatgpt_plan_auth(api_key),
                     )
-                    .await
+                    .await?
                 } else {
                     read_sse_stream(
                         endpoint,
@@ -666,20 +666,20 @@ pub async fn send_llm_request(
                         progress_timeout,
                         total_timeout,
                     )
-                    .await
+                    .await?
                 }
             }
-        }
+        })
     } else {
         let json: Value = tokio::time::timeout_at(deadline, response.json())
             .await
             .map_err(|_| "Response reading timed out".to_string())?
             .map_err(|e| format!("Failed to parse response: {}", e))?;
-        ensure_non_empty_llm_content(
+        Ok(ensure_non_empty_llm_content(
             extract_content(endpoint, &json).unwrap_or_default(),
             endpoint,
             "non_stream",
-        )
+        )?)
     }
 }
 

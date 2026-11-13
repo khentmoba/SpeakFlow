@@ -4,10 +4,11 @@ use serde_json::Value;
 
 use crate::services::llm_provider::LlmEndpoint;
 
+use super::error::{is_terminal_plan_code, LlmError};
 use super::events::{emit_stream_citations, emit_stream_error_event, emit_stream_event};
 use super::protocol::{
-    ensure_non_empty_llm_content, extract_content, extract_openai_compat_error_message,
-    finalize_responses_sse_accumulated,
+    ensure_non_empty_llm_content, extract_api_error_code, extract_content,
+    extract_openai_compat_error_message, finalize_responses_sse_accumulated,
 };
 use super::request::LlmRequestOptions;
 
@@ -216,7 +217,7 @@ pub async fn read_openai_responses_sse_stream(
     progress_timeout: Option<Duration>,
     total_timeout: Duration,
     require_completed: bool,
-) -> Result<String, String> {
+) -> Result<String, LlmError> {
     use eventsource_stream::Eventsource;
     use tokio_stream::StreamExt;
 
@@ -228,11 +229,9 @@ pub async fn read_openai_responses_sse_stream(
     let mut last_progress_at = started_at;
     let mut stream = response.bytes_stream().eventsource();
     let incomplete_error = || {
-        let message =
-            "CHATGPT_PLAN_ERROR: Responses stream incomplete; response.completed not received."
-                .to_string();
+        let message = "Responses stream incomplete; response.completed not received.".to_string();
         emit_stream_error_event(app_handle, event_name, session_id, &message);
-        message
+        LlmError::Auth(message)
     };
 
     loop {
@@ -246,7 +245,7 @@ pub async fn read_openai_responses_sse_stream(
             Ok(budget) => budget,
             Err(message) => {
                 emit_stream_error_event(app_handle, event_name, session_id, &message);
-                return Err(message);
+                return Err(message.into());
             }
         };
         match tokio::time::timeout(read_budget, stream.next()).await {
@@ -259,12 +258,12 @@ pub async fn read_openai_responses_sse_stream(
                     if require_completed {
                         return Err(incomplete_error());
                     }
-                    return finalize_responses_sse_accumulated(
+                    return Ok(finalize_responses_sse_accumulated(
                         accumulated,
                         fallback_content,
                         endpoint,
                         "openai_responses_sse_done",
-                    );
+                    )?);
                 }
 
                 let Ok(json) = serde_json::from_str::<Value>(data) else {
@@ -325,11 +324,11 @@ pub async fn read_openai_responses_sse_stream(
                                 .or_else(|| fallback_content.clone())
                                 .unwrap_or_default();
                         }
-                        return ensure_non_empty_llm_content(
+                        return Ok(ensure_non_empty_llm_content(
                             accumulated,
                             endpoint,
                             "openai_responses_sse_completed",
-                        );
+                        )?);
                     }
                     Some("response.failed") | Some("error") | Some("response.incomplete") => {
                         let response_error =
@@ -342,14 +341,17 @@ pub async fn read_openai_responses_sse_stream(
                                 |r| format!("Response incomplete: {r}"),
                             )
                         });
-                        let prefix = if require_completed {
-                            "CHATGPT_PLAN_ERROR: "
-                        } else {
-                            ""
-                        };
-                        let message = format!("{prefix}Responses streaming error: {message}");
+                        let code = extract_api_error_code(&json["response"].to_string())
+                            .or_else(|| extract_api_error_code(data));
+                        let message = format!("Responses streaming error: {message}");
                         emit_stream_error_event(app_handle, event_name, session_id, &message);
-                        return Err(message);
+                        return Err(
+                            if require_completed || is_terminal_plan_code(code.as_deref()) {
+                                LlmError::Auth(message)
+                            } else {
+                                LlmError::Other(message)
+                            },
+                        );
                     }
                     _ => {}
                 }
@@ -357,18 +359,18 @@ pub async fn read_openai_responses_sse_stream(
             Ok(Some(Err(e))) => {
                 let message = format!("Failed to read stream: {}", e);
                 emit_stream_error_event(app_handle, event_name, session_id, &message);
-                return Err(message);
+                return Err(message.into());
             }
             Ok(None) => {
                 if require_completed {
                     return Err(incomplete_error());
                 }
-                return finalize_responses_sse_accumulated(
+                return Ok(finalize_responses_sse_accumulated(
                     accumulated,
                     fallback_content,
                     endpoint,
                     "openai_responses_sse_eos",
-                );
+                )?);
             }
             Err(_) => {
                 let message = stream_timeout_error(
@@ -378,7 +380,7 @@ pub async fn read_openai_responses_sse_stream(
                     progress_timeout,
                 );
                 emit_stream_error_event(app_handle, event_name, session_id, &message);
-                return Err(message);
+                return Err(message.into());
             }
         }
     }
