@@ -148,22 +148,22 @@ mod runtime_readiness_tests {
     }
 }
 
-/// 模型文件检查结果
+/// Result of checking local model files
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelCheckResult {
-    /// 所有必需的模型是否都已就位
+    /// Whether all required models are present
     pub all_present: bool,
-    /// ASR（语音识别）模型是否存在
+    /// Whether the ASR (speech recognition) model exists
     pub asr_model: bool,
-    /// VAD（语音活动检测）模型是否存在
+    /// Whether the VAD (voice activity detection) model exists
     pub vad_model: bool,
-    /// 标点符号模型是否存在
+    /// Whether the punctuation model exists
     pub punc_model: bool,
-    /// 当前引擎
+    /// Current engine
     pub engine: String,
-    /// 模型缓存目录的路径
+    /// Path to the model cache directory
     pub cache_path: String,
-    /// 缺失的模型列表
+    /// List of missing models
     pub missing_models: Vec<String>,
     pub model_state: ModelState,
     pub corrupt_models: Vec<String>,
@@ -239,8 +239,8 @@ impl EngineProgressGate {
     }
 }
 
-/// 启动守卫：异常返回或 future 被取消时同步杀掉尚未 promote 的子进程，
-/// 清理 matching starting slot，并且只释放自己的 owner。
+/// Startup guard: synchronously kills an unpromoted child process on early return
+/// or future cancellation, clears the matching starting slot, and releases only its own owner.
 struct StartingFlagGuard<'a> {
     engine: &'a EngineState,
     owner: u64,
@@ -364,7 +364,7 @@ fn report_model_repo_file_state(
 }
 
 // ============================================================
-// 核心功能实现
+// Core implementation
 // ============================================================
 
 #[cfg(test)]
@@ -402,9 +402,9 @@ async fn try_send_exit_command(process: &mut FunasrProcess) -> Result<(), AppErr
     Ok(())
 }
 
-/// 把 GPU 空闲秒数发给正在运行的 Python 进程。进程不在时只保留配置。
+/// Sends the GPU idle timeout (in seconds) to the running Python process, or only saves the config when stopped.
 ///
-/// 不修改 ready：卸载后的 status 仍由既有粘滞逻辑保持就绪。
+/// Does not modify `ready`: post-unload status remains ready via the existing sticky logic.
 pub async fn push_gpu_idle_seconds(state: &AppState, seconds: u64) -> Result<(), AppError> {
     let has_process = {
         let guard = state.engine.funasr_process.lock().await;
@@ -448,8 +448,8 @@ pub async fn push_model_dirs(state: &AppState) -> Result<(), AppError> {
     Ok(())
 }
 
-/// 检查 FunASR 服务器的状态
-// 需要引入 Emitter trait 才能使用 emit 方法
+/// Checks the status of the FunASR server
+// Emitter trait is required for the emit method
 use tauri::Emitter;
 
 #[cfg(test)]

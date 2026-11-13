@@ -944,7 +944,7 @@ mod tests {
         let request_function = source
             .split("pub async fn google_grounded_search")
             .nth(1)
-            .and_then(|source| source.split("// ── 公共工具").next())
+            .and_then(|source| source.split("// ── Shared utilities").next())
             .expect("Google Grounding request function must remain inspectable");
 
         assert!(request_function.contains("/v1beta/interactions"));

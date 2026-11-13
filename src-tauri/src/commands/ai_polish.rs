@@ -1031,7 +1031,7 @@ pub async fn set_assistant_api_key(
 
     llm_provider::save_or_delete_api_key(&app_handle, &keyring_user, &api_key)?;
 
-    log::info!("助手 API Key 已更新: provider={}", provider);
+    log::info!("Assistant API key updated: provider={}", provider);
     Ok(())
 }
 
