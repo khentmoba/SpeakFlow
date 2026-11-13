@@ -15,6 +15,7 @@ import {
 import { findCatalogModel, formatModelSize } from "@/lib/asrCatalog";
 import { readLocalStorage } from "@/lib/storage";
 import { ONBOARDING_DISMISSED_KEY } from "@/lib/constants";
+import { useTauriEvent } from "@/hooks/useTauriEvent";
 export type ModelStage =
   | "checking"
   | "need_download"
@@ -326,75 +327,58 @@ export function useModelStatus(): UseModelStatusReturn {
     };
   }, [checkStatus, clearDownloadWatchdog, clearPolling, invalidateDownload, startPolling]);
 
+  type FunasrStatusPayload = {
+    status: string;
+    message?: string;
+    device?: string | null;
+    gpu_name?: string | null;
+  } & Pick<FunASRStatus, "models_present" | "missing_models" | "model_state" | "corrupt_models">;
+
   // Listen for funasr-status events (loading progress, crashed, etc.)
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
+  useTauriEvent<FunasrStatusPayload>("funasr-status", (payload) => {
+    if (!mountedRef.current) return;
+    const { status, message } = payload;
+    applyStatusSnapshot(payload);
 
-    type FunasrStatusPayload = {
-      status: string;
-      message?: string;
-      device?: string | null;
-      gpu_name?: string | null;
-    } & Pick<FunASRStatus, "models_present" | "missing_models" | "model_state" | "corrupt_models">;
+    if (payload.model_state === "corrupt") {
+      enterNeedRepairState();
+      return;
+    }
+    if (payload.model_state === "missing") {
+      enterNeedDownloadState();
+      return;
+    }
 
-    const setup = async () => {
-      unlisten = await listen<FunasrStatusPayload>(
-        "funasr-status",
-        (event) => {
-          if (disposed || !mountedRef.current) return;
-          const { status, message } = event.payload;
-          applyStatusSnapshot(event.payload);
-
-          if (event.payload.model_state === "corrupt") {
-            enterNeedRepairState();
-            return;
-          }
-          if (event.payload.model_state === "missing") {
-            enterNeedDownloadState();
-            return;
-          }
-
-          if (status === "ready") {
-            setStage("ready");
-            setError(null);
-            clearPolling();
-          } else if (status === "need_api_key") {
-            setStage("error");
-            setError(message ?? i18n.t("model.needApiKey"));
-            clearPolling();
-          } else if (status === "loading") {
-            setStage("loading");
-            setDownloadMessage(message ?? null);
-          } else if (status === "error") {
-            if (!event.payload.model_state && message?.includes("Model files have not been downloaded")) {
-              enterNeedDownloadState();
-              return;
-            }
-            enterErrorState(message ?? getEngineStartFallbackMessage());
-          } else if (status === "crashed") {
-            setStage("loading");
-            setError(null);
-            setDownloadMessage(message ?? i18n.t("model.serviceRestarting"));
-            // Reset counters and trigger restart via polling
-            startFailuresRef.current = 0;
-            restartAttemptedRef.current = false;
-            loadingChecksRef.current = 0;
-            // Ensure polling is active
-            void checkStatus();
-            startPolling();
-          }
-        }
-      );
-      if (disposed) unlisten();
-    };
-
-    setup();
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [applyStatusSnapshot, checkStatus, clearPolling, enterErrorState, enterNeedDownloadState, enterNeedRepairState, startPolling]);
+    if (status === "ready") {
+      setStage("ready");
+      setError(null);
+      clearPolling();
+    } else if (status === "need_api_key") {
+      setStage("error");
+      setError(message ?? i18n.t("model.needApiKey"));
+      clearPolling();
+    } else if (status === "loading") {
+      setStage("loading");
+      setDownloadMessage(message ?? null);
+    } else if (status === "error") {
+      if (!payload.model_state && message?.includes("Model files have not been downloaded")) {
+        enterNeedDownloadState();
+        return;
+      }
+      enterErrorState(message ?? getEngineStartFallbackMessage());
+    } else if (status === "crashed") {
+      setStage("loading");
+      setError(null);
+      setDownloadMessage(message ?? i18n.t("model.serviceRestarting"));
+      // Reset counters and trigger restart via polling
+      startFailuresRef.current = 0;
+      restartAttemptedRef.current = false;
+      loadingChecksRef.current = 0;
+      // Ensure polling is active
+      void checkStatus();
+      startPolling();
+    }
+  });
 
   useEffect(() => {
     let disposed = false;

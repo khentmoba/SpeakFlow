@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "sonner";
 import i18n from "@/i18n";
+import { useTauriEvent } from "@/hooks/useTauriEvent";
 import { copyToClipboard, startRecording as invokeStartRecording, stopRecording as invokeStopRecording } from "@/api/tauri";
 import type {
   EditGrabStatus,
@@ -53,29 +53,6 @@ interface TranscriptionPayload {
   originalText?: string;
   editGrabStatus?: EditGrabStatus;
   timing?: TranscriptionTiming;
-}
-
-/** 封装 Tauri 事件监听的 useEffect 样板 */
-function useTauriEvent<T>(event: string, handler: (payload: T) => void) {
-  useEffect(() => {
-    let unlisten: UnlistenFn | null = null;
-    let disposed = false;
-
-    listen<T>(event, (e) => {
-      if (!disposed) handler(e.payload);
-    })
-      .then((fn) => {
-        if (disposed) fn();
-        else unlisten = fn;
-      })
-      .catch(() => {});
-
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  // handler is intentionally excluded - callers use refs or stable callbacks
-  }, [event]);
 }
 
 export function useRecording(): UseRecordingReturn {
