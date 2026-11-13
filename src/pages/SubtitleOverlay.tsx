@@ -1,4 +1,5 @@
 import { useLiveTranscript } from "@/hooks/useLiveTranscript";
+import { useTauriEvent } from "@/hooks/useTauriEvent";
 import {
   lazy,
   Suspense,
@@ -51,6 +52,8 @@ import {
   isValidSessionId,
   isValidRevision,
   isRecordingOutcomeKind,
+  admitLiveEvent,
+  shouldHydrateSnapshot,
   subtitleIndicatorClass,
   validInterimSegments,
   mergeAssistantSources,
@@ -159,29 +162,22 @@ export default function SubtitleOverlay() {
     revision: unknown,
     allowEqualRevision = false,
   ) => {
-    if (!isValidSessionId(sessionId)) return null;
-    if (revision !== undefined && !isValidRevision(revision)) return null;
-    if (sessionId < latestSessionIdRef.current) return null;
-
-    const isNewSession = sessionId > latestSessionIdRef.current;
-    if (isNewSession) {
-      latestSessionIdRef.current = sessionId;
+    const liveEvent = admitLiveEvent(
+      { latestSessionId: latestSessionIdRef.current, latestRevision: latestRevisionRef.current },
+      sessionId,
+      revision,
+      allowEqualRevision,
+    );
+    if (liveEvent?.isNewSession) {
+      latestSessionIdRef.current = liveEvent.sessionId;
       finalTranscriptionSessionIdRef.current = 0;
       latestRevisionRef.current = -1;
       pairedOutcomeRevisionRef.current = null;
       terminalSessionIdRef.current = 0;
-      setCapsuleSessionId(sessionId);
+      setCapsuleSessionId(liveEvent.sessionId);
       resetConversationState();
     }
-    // Revision-less payloads exist only in legacy frontend tests. Once a real
-    // revision fence exists for a session, an unversioned event cannot cross it.
-    if (revision === undefined && !isNewSession && latestRevisionRef.current >= 0) return null;
-    if (isValidRevision(revision)) {
-      if (revision < latestRevisionRef.current) return null;
-      if (revision === latestRevisionRef.current && !allowEqualRevision) return null;
-    }
-
-    return { sessionId, revision: isValidRevision(revision) ? revision : null, isNewSession };
+    return liveEvent;
   }, [resetConversationState]);
 
   const clearFadeTimer = useCallback(() => {
@@ -351,10 +347,7 @@ export default function SubtitleOverlay() {
   }, [clearFadeTimer, prepareLiveEvent, updatePhase]);
 
   const hydrateRecordingSnapshot = useCallback((snapshot: RecordingSnapshot | null) => {
-    if (!snapshot || !isValidSessionId(snapshot.sessionId) || !isValidRevision(snapshot.revision)) return;
-    // Live listeners own an observed session. A late snapshot may only hydrate
-    // a session the overlay has never seen, so Active can never regress to Starting.
-    if (snapshot.sessionId <= latestSessionIdRef.current) return;
+    if (!shouldHydrateSnapshot(snapshot, latestSessionIdRef.current)) return;
 
     if (snapshot.phase === "idle") {
       latestSessionIdRef.current = snapshot.sessionId;
@@ -447,147 +440,105 @@ export default function SubtitleOverlay() {
   }, [applyRecordingOutcome, applyRecordingState, clearFadeTimer, hydrateRecordingSnapshot]);
 
   // 监听 AI 润色状态（含流式进度）
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | null = null;
+  useTauriEvent<{ status: string; tokens?: number; sessionId?: number }>("ai-polish-status", (payload) => {
+    const { status, tokens, sessionId } = payload;
+    if (typeof sessionId === "number" && sessionId < latestSessionIdRef.current) return;
+    if (sessionId === terminalSessionIdRef.current) return;
+    if (status === "polishing") {
+      clearFadeTimer();
+      setFadingOut(false);
+      setStreamTokens(0);
+      updatePhase("polishing");
+    } else if (status === "fallback") {
+      clearFadeTimer();
+      setFadingOut(false);
+      setStreamTokens(0);
+      updatePhase("polishing");
+    } else if (status === "streaming" && typeof tokens === "number" && tokens > 0) {
+      setStreamTokens(tokens);
+    }
+  });
 
-    void (async () => {
-      try {
-        unlisten = await listen<{ status: string; tokens?: number; sessionId?: number }>("ai-polish-status", (event) => {
-          const { status, tokens, sessionId } = event.payload;
-          if (typeof sessionId === "number" && sessionId < latestSessionIdRef.current) return;
-          if (sessionId === terminalSessionIdRef.current) return;
-          if (status === "polishing") {
-            clearFadeTimer();
-            setFadingOut(false);
-            setStreamTokens(0);
-            updatePhase("polishing");
-          } else if (status === "fallback") {
-            clearFadeTimer();
-            setFadingOut(false);
-            setStreamTokens(0);
-            updatePhase("polishing");
-          } else if (status === "streaming" && typeof tokens === "number" && tokens > 0) {
-            setStreamTokens(tokens);
-          }
-        });
+  useTauriEvent<AssistantStreamEvent>("assistant-stream", (payload) => {
+    const {
+      sessionId, chunk, status, request, source, sources, query,
+      searchProvider, elapsedMs, searchElapsedMs, googleSearchEntryPoint, message,
+    } = payload;
+    if (sessionId === terminalSessionIdRef.current) return;
+    if (typeof sessionId === "number") {
+      if (sessionId < latestSessionIdRef.current) return;
+      latestSessionIdRef.current = sessionId;
+    }
 
-        if (disposed && unlisten) {
-          unlisten();
-          unlisten = null;
-        }
-      } catch {
-        // 忽略事件监听初始化失败
+    setMode("assistant");
+
+    if (status === "started") {
+      clearFadeTimer();
+      setFadingOut(false);
+      setText("");
+      setInterimSegments(null);
+      setOutcome(null);
+      setAssistantCopied(false);
+      setAssistantSearchError(null);
+      setAssistantGoogleSearchEntryPoint("");
+      setAssistantSearchQuery("");
+      setAssistantSearchElapsedMs(null);
+      setAssistantElapsedMs(null);
+      if (request?.trim()) setAssistantRequest(request.trim());
+      if (searchProvider) setAssistantSearchProvider(searchProvider);
+      shouldAutoScrollRef.current = true;
+      updatePhase("polishing");
+      return;
+    }
+
+    if (status === "searching") {
+      clearFadeTimer();
+      setFadingOut(false);
+      if (query?.trim()) setAssistantSearchQuery(query.trim());
+      if (searchProvider) setAssistantSearchProvider(searchProvider);
+      updatePhase("searching");
+      return;
+    }
+
+    if (status === "search_complete" && Array.isArray(sources)) {
+      setAssistantSources((current) => mergeAssistantSources(current, sources));
+      if (typeof googleSearchEntryPoint === "string") {
+        setAssistantGoogleSearchEntryPoint(googleSearchEntryPoint);
       }
-    })();
+      setAssistantSearchError(sources.length === 0 ? t("subtitle.conversation.searchNoResults") : null);
+      if (query?.trim()) setAssistantSearchQuery(query.trim());
+      if (searchProvider) setAssistantSearchProvider(searchProvider);
+      if (typeof elapsedMs === "number") setAssistantSearchElapsedMs(elapsedMs);
+      return;
+    }
 
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [clearFadeTimer, updatePhase]);
+    if (status === "citation" && source) {
+      setAssistantSources((current) => mergeAssistantSources(current, [source]));
+      return;
+    }
 
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | null = null;
+    if (status === "search_error") {
+      setAssistantSearchError(t(searchNoticeKey(message)));
+      if (query?.trim()) setAssistantSearchQuery(query.trim());
+      if (searchProvider) setAssistantSearchProvider(searchProvider);
+      if (typeof elapsedMs === "number") setAssistantSearchElapsedMs(elapsedMs);
+      return;
+    }
 
-    void (async () => {
-      try {
-        unlisten = await listen<AssistantStreamEvent>("assistant-stream", (event) => {
-          const {
-            sessionId, chunk, status, request, source, sources, query,
-            searchProvider, elapsedMs, searchElapsedMs, googleSearchEntryPoint, message,
-          } = event.payload;
-          if (sessionId === terminalSessionIdRef.current) return;
-          if (typeof sessionId === "number") {
-            if (sessionId < latestSessionIdRef.current) return;
-            latestSessionIdRef.current = sessionId;
-          }
+    if (status === "done") {
+      if (typeof elapsedMs === "number") setAssistantElapsedMs(elapsedMs);
+      if (typeof searchElapsedMs === "number") setAssistantSearchElapsedMs(searchElapsedMs);
+      if (searchProvider) setAssistantSearchProvider(searchProvider);
+      return;
+    }
 
-          setMode("assistant");
-
-          if (status === "started") {
-            clearFadeTimer();
-            setFadingOut(false);
-            setText("");
-            setInterimSegments(null);
-            setOutcome(null);
-            setAssistantCopied(false);
-            setAssistantSearchError(null);
-            setAssistantGoogleSearchEntryPoint("");
-            setAssistantSearchQuery("");
-            setAssistantSearchElapsedMs(null);
-            setAssistantElapsedMs(null);
-            if (request?.trim()) setAssistantRequest(request.trim());
-            if (searchProvider) setAssistantSearchProvider(searchProvider);
-            shouldAutoScrollRef.current = true;
-            updatePhase("polishing");
-            return;
-          }
-
-          if (status === "searching") {
-            clearFadeTimer();
-            setFadingOut(false);
-            if (query?.trim()) setAssistantSearchQuery(query.trim());
-            if (searchProvider) setAssistantSearchProvider(searchProvider);
-            updatePhase("searching");
-            return;
-          }
-
-          if (status === "search_complete" && Array.isArray(sources)) {
-            setAssistantSources((current) => mergeAssistantSources(current, sources));
-            if (typeof googleSearchEntryPoint === "string") {
-              setAssistantGoogleSearchEntryPoint(googleSearchEntryPoint);
-            }
-            setAssistantSearchError(sources.length === 0 ? t("subtitle.conversation.searchNoResults") : null);
-            if (query?.trim()) setAssistantSearchQuery(query.trim());
-            if (searchProvider) setAssistantSearchProvider(searchProvider);
-            if (typeof elapsedMs === "number") setAssistantSearchElapsedMs(elapsedMs);
-            return;
-          }
-
-          if (status === "citation" && source) {
-            setAssistantSources((current) => mergeAssistantSources(current, [source]));
-            return;
-          }
-
-          if (status === "search_error") {
-            setAssistantSearchError(t(searchNoticeKey(message)));
-            if (query?.trim()) setAssistantSearchQuery(query.trim());
-            if (searchProvider) setAssistantSearchProvider(searchProvider);
-            if (typeof elapsedMs === "number") setAssistantSearchElapsedMs(elapsedMs);
-            return;
-          }
-
-          if (status === "done") {
-            if (typeof elapsedMs === "number") setAssistantElapsedMs(elapsedMs);
-            if (typeof searchElapsedMs === "number") setAssistantSearchElapsedMs(searchElapsedMs);
-            if (searchProvider) setAssistantSearchProvider(searchProvider);
-            return;
-          }
-
-          if (chunk) {
-            clearFadeTimer();
-            setFadingOut(false);
-            updatePhase("polishing");
-            setText((prev) => prev + chunk);
-          }
-        });
-
-        if (disposed && unlisten) {
-          unlisten();
-          unlisten = null;
-        }
-      } catch {
-        // ignore
-      }
-    })();
-
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [clearFadeTimer, updatePhase]);
+    if (chunk) {
+      clearFadeTimer();
+      setFadingOut(false);
+      updatePhase("polishing");
+      setText((prev) => prev + chunk);
+    }
+  });
 
   useEffect(() => {
     let disposed = false;
@@ -702,92 +653,70 @@ export default function SubtitleOverlay() {
   }, [conversationInput, conversationOpen]);
 
   // 监听转写结果（中间结果 interim=true，最终结果 interim=false）
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | null = null;
+  useTauriEvent<TranscriptionResult>("transcription-result", (payload) => {
+    const { sessionId, interim } = payload;
+    if (sessionId === terminalSessionIdRef.current) return;
+    if (typeof sessionId === "number") {
+      if (sessionId < latestSessionIdRef.current) return;
+      if (sessionId > latestSessionIdRef.current) finalTranscriptionSessionIdRef.current = 0;
+      if (interim && sessionId === finalTranscriptionSessionIdRef.current) return;
+      latestSessionIdRef.current = sessionId;
+    }
+    setMode(payload.mode ?? "dictation");
 
-    void (async () => {
-      try {
-        unlisten = await listen<TranscriptionResult>("transcription-result", (event) => {
-          const { sessionId, interim } = event.payload;
-          if (sessionId === terminalSessionIdRef.current) return;
-          if (typeof sessionId === "number") {
-            if (sessionId < latestSessionIdRef.current) return;
-            if (sessionId > latestSessionIdRef.current) finalTranscriptionSessionIdRef.current = 0;
-            if (interim && sessionId === finalTranscriptionSessionIdRef.current) return;
-            latestSessionIdRef.current = sessionId;
-          }
-          setMode(event.payload.mode ?? "dictation");
+    const incomingText = payload.text || "";
+    setOutcome(null);
+    setText(incomingText);
+    setInterimSegments(interim ? validInterimSegments(payload) : null);
 
-          const incomingText = event.payload.text || "";
-          setOutcome(null);
-          setText(incomingText);
-          setInterimSegments(interim ? validInterimSegments(event.payload) : null);
+    if (interim) {
+      setFadingOut(false);
+      return;
+    }
+    if (typeof sessionId === "number") finalTranscriptionSessionIdRef.current = sessionId;
 
-          if (interim) {
-            setFadingOut(false);
-            return;
-          }
-          if (typeof sessionId === "number") finalTranscriptionSessionIdRef.current = sessionId;
+    const finalText = incomingText.trim();
+    clearFadeTimer();
 
-          const finalText = incomingText.trim();
-          clearFadeTimer();
+    // Empty final text: keep processing hint and fade out directly
+    // to avoid the capsule shrinking into a tiny blank pill.
+    if (!finalText) {
+      setText("");
+      updatePhase("processing");
+      setFadingOut(true);
+      return;
+    }
 
-          // Empty final text: keep processing hint and fade out directly
-          // to avoid the capsule shrinking into a tiny blank pill.
-          if (!finalText) {
-            setText("");
-            updatePhase("processing");
-            setFadingOut(true);
-            return;
-          }
+    setText(finalText);
+    setPolishFlash(Boolean(payload.polished));
+    updatePhase("result");
+    setFadingOut(false);
+    if (payload.mode === "assistant") {
+      conversationInitialResponseRef.current = finalText;
+    }
 
-          setText(finalText);
-          setPolishFlash(Boolean(event.payload.polished));
-          updatePhase("result");
-          setFadingOut(false);
-          if (event.payload.mode === "assistant") {
-            conversationInitialResponseRef.current = finalText;
-          }
-
-          if (event.payload.mode !== "assistant") {
-            const expectedSessionId = latestSessionIdRef.current;
-            fadeTimerRef.current = setTimeout(() => {
-              if (latestSessionIdRef.current !== expectedSessionId) return;
-              setFadingOut(true);
-              fadeTimerRef.current = null;
-            }, RESULT_FADE_DELAY_MS);
-            // After the fade animation finishes, clear stale state so the next
-            // recording does not flash the previous result for one frame when
-            // the still-alive subtitle window is re-shown.
-            cleanupTimerRef.current = setTimeout(() => {
-              if (latestSessionIdRef.current !== expectedSessionId) return;
-              setText("");
-              setInterimSegments(null);
-              setOutcome(null);
-              updatePhase("idle");
-              setFadingOut(false);
-              setStreamTokens(0);
-              cleanupTimerRef.current = null;
-            }, RESULT_CLEANUP_DELAY_MS);
-          }
-        });
-
-        if (disposed && unlisten) {
-          unlisten();
-          unlisten = null;
-        }
-      } catch {
-        // 忽略事件监听初始化失败
-      }
-    })();
-
-    return () => {
-      disposed = true;
-      unlisten?.();
-      clearFadeTimer();
-    };
-  }, [clearFadeTimer, updatePhase]);
+    if (payload.mode !== "assistant") {
+      const expectedSessionId = latestSessionIdRef.current;
+      fadeTimerRef.current = setTimeout(() => {
+        if (latestSessionIdRef.current !== expectedSessionId) return;
+        setFadingOut(true);
+        fadeTimerRef.current = null;
+      }, RESULT_FADE_DELAY_MS);
+      // After the fade animation finishes, clear stale state so the next
+      // recording does not flash the previous result for one frame when
+      // the still-alive subtitle window is re-shown.
+      cleanupTimerRef.current = setTimeout(() => {
+        if (latestSessionIdRef.current !== expectedSessionId) return;
+        setText("");
+        setInterimSegments(null);
+        setOutcome(null);
+        updatePhase("idle");
+        setFadingOut(false);
+        setStreamTokens(0);
+        cleanupTimerRef.current = null;
+      }, RESULT_CLEANUP_DELAY_MS);
+    }
+  });
 
   const isStreaming = !interimSegments && text.length > 0 && smoothText.length < text.length;
   const hasText = (showLiveTranscript || phase === "result") && (interimSegments ? text : smoothText).length > 0;

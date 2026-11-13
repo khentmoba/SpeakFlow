@@ -107,6 +107,60 @@ export function isRecordingOutcomeKind(value: unknown): value is RecordingOutcom
     || value === "start_error";
 }
 
+/** The newest session and revision the overlay has accepted. */
+export interface LiveEventFence {
+  latestSessionId: number;
+  latestRevision: number;
+}
+
+export interface AdmittedLiveEvent {
+  sessionId: number;
+  revision: number | null;
+  isNewSession: boolean;
+}
+
+/**
+ * Decide whether a lifecycle event is newer than everything already shown.
+ * Returns null for stale or malformed events. A newer session always passes,
+ * and its caller must reset per-session state before applying it.
+ */
+export function admitLiveEvent(
+  fence: LiveEventFence,
+  sessionId: unknown,
+  revision: unknown,
+  allowEqualRevision = false,
+): AdmittedLiveEvent | null {
+  if (!isValidSessionId(sessionId)) return null;
+  if (revision !== undefined && !isValidRevision(revision)) return null;
+  if (sessionId < fence.latestSessionId) return null;
+
+  const isNewSession = sessionId > fence.latestSessionId;
+  const latestRevision = isNewSession ? -1 : fence.latestRevision;
+  // Revision-less payloads exist only in legacy frontend tests. Once a real
+  // revision fence exists for a session, an unversioned event cannot cross it.
+  if (revision === undefined && !isNewSession && latestRevision >= 0) return null;
+  if (isValidRevision(revision)) {
+    if (revision < latestRevision) return null;
+    if (revision === latestRevision && !allowEqualRevision) return null;
+  }
+
+  return { sessionId, revision: isValidRevision(revision) ? revision : null, isNewSession };
+}
+
+/**
+ * Live listeners own an observed session. A late snapshot may only hydrate a
+ * session the overlay has never seen, so Active can never regress to Starting.
+ */
+export function shouldHydrateSnapshot(
+  snapshot: RecordingSnapshot | null,
+  latestSessionId: number,
+): snapshot is RecordingSnapshot {
+  return snapshot !== null
+    && isValidSessionId(snapshot.sessionId)
+    && isValidRevision(snapshot.revision)
+    && snapshot.sessionId > latestSessionId;
+}
+
 export function validInterimSegments(payload: TranscriptionResult): InterimSegments | null {
   const { stableText, tentativeText, text } = payload;
   if (typeof stableText !== "string" || typeof tentativeText !== "string") return null;
