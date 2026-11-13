@@ -33,7 +33,7 @@ pub fn run() {
             if should_start_hidden(minimized, args.into_iter()) {
                 return;
             }
-            // 已有实例运行时，聚焦主窗口
+            // When an instance is already running, focus the main window
             focus_main_window(app);
         }))
         .plugin(tauri_plugin_keyring::init())
@@ -66,14 +66,14 @@ pub fn run() {
         })
         .setup(move |app| {
             if !mark_setup_once() {
-                log::warn!("setup() 被重复调用，已跳过");
+                log::warn!("setup() was called more than once; skipped");
                 return Ok(());
             }
 
             let app_handle = app.handle().clone();
             services::funasr_service::register_engine_recovery_app(app_handle.clone());
             log::info!(
-                "SpeakFlow 应用启动，数据目录: {:?}",
+                "SpeakFlow app started, data directory: {:?}",
                 utils::paths::get_data_dir()
             );
 
@@ -81,7 +81,7 @@ pub fn run() {
             // in memory before any service can start one.
             services::local_only::load();
 
-            // 启动时加载用户画像
+            // Load the user profile at startup
             {
                 let state = app_handle.state::<AppState>();
                 let loaded = services::profile_service::load_profile();
@@ -93,7 +93,7 @@ pub fn run() {
                     log::info!("startup: main window shown");
                     focus_main_window(&app_handle);
                 }
-                // 迁移旧版 custom API key 到新 keyring key（仅在目标 key 不存在时执行）
+                // Migrate the legacy custom API key to the new keyring key (only when the target key does not exist)
                 if loaded.llm_provider.active == "custom_migrated" {
                     use tauri_plugin_keyring::KeyringExt;
                     let new_user =
@@ -116,7 +116,7 @@ pub fn run() {
                                 &new_user,
                                 &old_key,
                             );
-                            log::info!("已迁移 custom API key 到 {}", new_user);
+                            log::info!("Migrated custom API key to {}", new_user);
                         }
                     }
                 }
@@ -154,9 +154,9 @@ pub fn run() {
                     &loaded.shortcuts_behavior,
                     &loaded.labs,
                 ) {
-                    log::warn!("启动同步扩展热键失败: {err}");
+                    log::warn!("Failed to sync extended hotkeys at startup: {err}");
                 }
-                log::info!("已加载用户画像");
+                log::info!("User profile loaded");
             }
 
             {
@@ -168,7 +168,7 @@ pub fn run() {
                         if let Err(error) =
                             app_handle.emit_to("main", "profile-save-status", status)
                         {
-                            log::warn!("发送设置保存状态失败: {error}");
+                            log::warn!("Failed to send the settings-saved status: {error}");
                         }
                     }
                 });
@@ -178,31 +178,31 @@ pub fn run() {
                 let app_handle = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(error) = services::history_service::initialize().await {
-                        log::warn!("初始化本地转写历史失败: {error}");
+                        log::warn!("Failed to initialize local transcription history: {error}");
                         return;
                     }
                     let retention_days = app_handle
                         .state::<AppState>()
                         .with_profile(|profile| profile.history_settings.retention_days);
                     if let Err(error) = services::history_service::cleanup(retention_days).await {
-                        log::warn!("清理过期转写历史失败: {error}");
+                        log::warn!("Failed to clean up expired transcription history: {error}");
                     }
                 });
             }
 
-            // 注册翻译/助手热键
+            // Register the translation/assistant hotkeys
             {
                 type HotkeyRegisterFn =
                     dyn Fn(tauri::AppHandle, Option<String>) -> Result<String, utils::AppError>;
                 let state = app_handle.state::<AppState>();
                 let hotkeys: [(&str, &HotkeyRegisterFn, Option<String>); 2] = [
                     (
-                        "翻译",
+                        "translation",
                         &commands::hotkey::register_translation_hotkey_inner,
                         state.with_profile(|p| p.translation_hotkey.clone()),
                     ),
                     (
-                        "助手",
+                        "assistant",
                         &commands::hotkey::register_assistant_hotkey_inner,
                         state.with_profile(|p| p.assistant_hotkey.clone()),
                     ),
@@ -210,13 +210,13 @@ pub fn run() {
                 for (label, register, shortcut) in hotkeys {
                     if let Some(s) = shortcut.filter(|v| !v.trim().is_empty()) {
                         if let Err(err) = register(app_handle.clone(), Some(s)) {
-                            log::warn!("注册{}热键失败: {}", label, err);
+                            log::warn!("Failed to register the {} hotkey: {}", label, err);
                         }
                     }
                 }
             }
 
-            // 启动时在后台从系统密钥环加载 API Key，避免同步阻塞主线程启动
+            // At startup, load API keys from the system keyring in the background to avoid blocking the main thread
             {
                 let app_handle = app_handle.clone();
                 tauri::async_runtime::spawn_blocking(move || {
@@ -226,17 +226,17 @@ pub fn run() {
                     let key =
                         services::llm_provider::load_api_key_for_provider(&app_handle, &provider);
                     if !key.is_empty() {
-                        log::info!("已从密钥环加载 AI 润色 API Key (provider: {})", provider);
+                        log::info!("Loaded the AI polish API key from the keyring (provider: {})", provider);
                     }
-                    // 从密钥环加载当前活跃在线引擎对应的 API Key（GLM / Alibaba-CN / Alibaba-Intl）
+                    // Load the API key for the currently active online engine from the keyring (GLM / Alibaba-CN / Alibaba-Intl)
                     commands::funasr::reload_online_asr_key(&app_handle, state.inner());
                     if !state.read_online_asr_api_key().is_empty() {
                         log::info!(
-                            "已从密钥环加载在线 ASR API Key ({})",
+                            "Loaded the online ASR API key from the keyring ({})",
                             commands::funasr::active_online_keyring_user()
                         );
                     }
-                    // 加载需要密钥的联网搜索提供商（密钥始终保存在系统密钥环）。
+                    // Load web search providers that need a key (keys are always stored in the system keyring).
                     for search_provider in [
                         crate::state::user_profile::WebSearchProvider::Exa,
                         crate::state::user_profile::WebSearchProvider::Tavily,
@@ -259,7 +259,7 @@ pub fn run() {
                                     &search_provider,
                                 );
                                 state.set_web_search_api_key(cache_key, ws_key);
-                                log::info!("已从密钥环加载联网搜索 API Key ({})", cache_key);
+                                log::info!("Loaded the web search API key from the keyring ({})", cache_key);
                             }
                         });
                     }
@@ -272,7 +272,7 @@ pub fn run() {
                     )
                     .is_some()
                     {
-                        log::info!("已从密钥环加载 OpenAI Codex OAuth 会话");
+                        log::info!("Loaded the OpenAI Codex OAuth session from the keyring");
                         spawn_openai_codex_oauth_prewarm(app_handle.clone());
                     }
                     if services::grok_build_oauth_service::sync_runtime_session(
@@ -281,7 +281,7 @@ pub fn run() {
                     )
                     .is_some()
                     {
-                        log::info!("已从密钥环加载 Grok Build OAuth 会话");
+                        log::info!("Loaded the Grok Build OAuth session from the keyring");
                         spawn_grok_build_oauth_prewarm(app_handle.clone());
                     }
                     if services::claude_oauth_service::sync_runtime_session(
@@ -290,7 +290,7 @@ pub fn run() {
                     )
                     .is_some()
                     {
-                        log::info!("已从密钥环加载 Anthropic Claude OAuth 会话");
+                        log::info!("Loaded the Anthropic Claude OAuth session from the keyring");
                     }
                     spawn_funasr_startup(app_handle);
                 });
@@ -314,12 +314,12 @@ pub fn run() {
                 if let Err(error) =
                     services::selection_service::create_selection_window(&app_handle)
                 {
-                    log::warn!("划词助手窗口预创建失败，首次使用时会重试: {error}");
+                    log::warn!("Selection assistant window pre-creation failed; will retry on first use: {error}");
                 }
                 if let Err(error) =
                     services::selection_service::start_selection_listener(app_handle.clone())
                 {
-                    log::error!("启动划词助手监听失败: {error}");
+                    log::error!("Failed to start the selection assistant listener: {error}");
                 }
             }
             setup_system_tray(&app_handle)?;
@@ -530,7 +530,7 @@ pub fn run() {
             commands::support::get_free_disk_space,
         ]))
         .run(tauri::generate_context!())
-        .expect("启动SpeakFlow 时发生错误");
+        .expect("error while starting SpeakFlow");
 }
 
 fn mark_setup_once() -> bool {
@@ -572,16 +572,16 @@ fn spawn_funasr_startup(app_handle: tauri::AppHandle) {
                 }),
             );
             log::info!(
-                "在线引擎 {}，跳过 Python 启动 (has_key={})",
+                "Online engine {}; skipping Python startup (has_key={})",
                 engine,
                 has_key
             );
             return;
         }
 
-        log::info!("正在后台启动 FunASR 服务器...");
+        log::info!("Starting the FunASR server in the background...");
         if let Err(err) = services::funasr_service::start_server(&app_handle, state.inner()).await {
-            log::error!("FunASR 服务器启动失败: {}", err);
+            log::error!("Failed to start the FunASR server: {}", err);
             let _ = app_handle.emit(
                 "funasr-status",
                 serde_json::json!({
@@ -640,7 +640,7 @@ fn spawn_openai_codex_oauth_prewarm(app_handle: tauri::AppHandle) {
         if let Err(err) =
             services::codex_oauth_service::prewarm_runtime_session(&app_handle, state.inner()).await
         {
-            log::warn!("OpenAI Codex OAuth 启动预热失败: {}", err);
+            log::warn!("OpenAI Codex OAuth startup warm-up failed: {}", err);
         }
     });
 }
@@ -652,7 +652,7 @@ fn spawn_grok_build_oauth_prewarm(app_handle: tauri::AppHandle) {
             services::grok_build_oauth_service::prewarm_runtime_session(&app_handle, state.inner())
                 .await
         {
-            log::warn!("Grok Build OAuth 启动预热失败: {}", err);
+            log::warn!("Grok Build OAuth startup warm-up failed: {}", err);
         }
     });
 }
@@ -661,7 +661,7 @@ fn spawn_profile_maintenance(app_handle: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         const HOT_WORD_CLEANUP_INTERVAL_SECS: u64 = 24 * 60 * 60;
         log::info!(
-            "已启动定期热词清理任务，周期 {} 秒",
+            "Periodic hotword cleanup task started, interval {} seconds",
             HOT_WORD_CLEANUP_INTERVAL_SECS
         );
 
@@ -687,7 +687,7 @@ fn spawn_profile_maintenance(app_handle: tauri::AppHandle) {
                 let cleanup = state.update_profile_mut(services::profile_service::cleanup_profile);
                 if cleanup.removed_hot_words > 0 || cleanup.removed_corrections > 0 {
                     log::info!(
-                        "定期画像清理完成：热词移除 {} 条，纠错移除 {} 条",
+                        "Periodic profile cleanup complete: removed {} hotwords, {} corrections",
                         cleanup.removed_hot_words,
                         cleanup.removed_corrections
                     );
@@ -701,11 +701,14 @@ fn spawn_profile_maintenance(app_handle: tauri::AppHandle) {
                 let state = app_handle.state::<AppState>();
                 if let Err(err) = services::profile_service::save_profile_async(state.inner()).await
                 {
-                    log::warn!("定期热词清理后保存用户画像失败: {}", err);
+                    log::warn!(
+                        "Failed to save the user profile after periodic hotword cleanup: {}",
+                        err
+                    );
                 }
             }
 
-            // LLM 纠错审核：启用且距上次超过 24h 时自动执行
+            // LLM correction review: runs automatically when enabled and more than 24h since the last run
             let should_validate = {
                 let state = app_handle.state::<AppState>();
                 state.with_profile(|p| {
@@ -726,10 +729,13 @@ fn spawn_profile_maintenance(app_handle: tauri::AppHandle) {
                 match commands::profile::run_correction_validation(&app_handle, state.inner()).await
                 {
                     Ok(removed) if removed > 0 => {
-                        log::info!("定期 LLM 纠错审核完成：删除 {} 条", removed);
+                        log::info!(
+                            "Periodic LLM correction review complete: deleted {}",
+                            removed
+                        );
                     }
                     Err(err) => {
-                        log::warn!("定期 LLM 纠错审核失败: {}", err);
+                        log::warn!("Periodic LLM correction review failed: {}", err);
                     }
                     _ => {}
                 }
@@ -784,7 +790,7 @@ fn stop_funasr_on_exit(app: &tauri::AppHandle) {
         match tokio::time::timeout(std::time::Duration::from_secs(2), funasr_process.lock()).await {
             Ok(mut guard) => {
                 if let Some(ref mut process) = *guard {
-                    log::info!("正在停止 FunASR 进程...");
+                    log::info!("Stopping the FunASR process...");
                     let _ = process.child.start_kill();
                     let _ = tokio::time::timeout(
                         std::time::Duration::from_secs(3),
@@ -794,7 +800,7 @@ fn stop_funasr_on_exit(app: &tauri::AppHandle) {
                 }
             }
             Err(_) => {
-                log::warn!("退出时获取 FunASR 进程锁超时，进程可能未被清理");
+                log::warn!("Timed out acquiring the FunASR process lock on exit; the process may not have been cleaned up");
             }
         }
     });
@@ -811,7 +817,7 @@ fn refresh_tray_icon(app: &tauri::AppHandle, icon_size: u32) {
     let light = tray_icon::taskbar_is_light();
     if let Some(tray) = app.tray_by_id("main-tray") {
         if let Err(error) = tray.set_icon(Some(tray_icon::image(icon_size, recording, light))) {
-            log::warn!("更新托盘图标失败: {error}");
+            log::warn!("Failed to update the tray icon: {error}");
         }
     }
 }
@@ -850,11 +856,11 @@ fn setup_system_tray(app_handle: &tauri::AppHandle) -> Result<(), Box<dyn std::e
             "show" => focus_main_window(app),
             "hide" => hide_main_window(app),
             "quit" => {
-                log::info!("用户请求退出应用");
+                log::info!("User requested to quit the app");
                 stop_funasr_on_exit(app);
                 app.exit(0);
             }
-            _ => log::warn!("未知托盘菜单项: {:?}", event.id()),
+            _ => log::warn!("Unknown tray menu item: {:?}", event.id()),
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {

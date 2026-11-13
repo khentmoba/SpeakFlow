@@ -111,7 +111,7 @@ fn send_inputs_to_target(inputs: &[INPUT], target: Option<isize>) -> Result<(), 
     Ok(())
 }
 
-/// 释放所有可能残留的修饰键，防止后续 SendInput 被 OS 解读为组合键
+/// Release any lingering modifier keys so the OS does not read the following SendInput as a key combination
 #[cfg(target_os = "windows")]
 fn release_stuck_modifiers() -> Result<(), AppError> {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
@@ -131,13 +131,13 @@ fn release_stuck_modifiers() -> Result<(), AppError> {
         .collect();
 
     if !release.is_empty() {
-        log::debug!("释放 {} 个残留修饰键", release.len());
+        log::debug!("Released {} lingering modifier keys", release.len());
         send_inputs(&release)?;
     }
     Ok(())
 }
 
-/// 通过 UIA TextPattern 读取前台焦点控件的选中文本。零副作用。
+/// Read the selected text of the focused foreground control via UIA TextPattern. No side effects.
 pub fn grab_selected_text() -> Option<String> {
     #[cfg(target_os = "windows")]
     {
@@ -168,7 +168,7 @@ pub fn grab_selected_text_robust(app_handle: &tauri::AppHandle) -> Option<String
         let snapshot = match capture_clipboard_snapshot() {
             Ok(snapshot) => snapshot,
             Err(error) => {
-                log::warn!("划词读取无法保存当前剪贴板，跳过 Ctrl+C 回退: {error}");
+                log::warn!("Selection read cannot save the current clipboard; skipping Ctrl+C fallback: {error}");
                 return None;
             }
         };
@@ -203,11 +203,15 @@ pub fn grab_selected_text_robust(app_handle: &tauri::AppHandle) -> Option<String
         if should_restore {
             if let Ok(clipboard) = Clipboard::open() {
                 if let Err(error) = clipboard.restore(snapshot) {
-                    log::warn!("恢复划词读取前的剪贴板失败: {error}");
+                    log::warn!(
+                        "Failed to restore the clipboard from before the selection read: {error}"
+                    );
                 }
             }
         } else {
-            log::debug!("划词读取期间剪贴板已变化，保留新的剪贴板内容");
+            log::debug!(
+                "Clipboard changed during the selection read; keeping the new clipboard content"
+            );
         }
 
         if copy_result.is_err() {
@@ -270,7 +274,7 @@ fn try_get_selection(element: &uiautomation::UIElement) -> Option<String> {
     if trimmed.is_empty() {
         None
     } else {
-        log::info!("UIA 检测到选中文本（{} 字符）", trimmed.len());
+        log::info!("UIA detected selected text ({} chars)", trimmed.len());
         Some(trimmed.to_string())
     }
 }
@@ -281,7 +285,7 @@ pub async fn copy_to_clipboard(
     text: String,
 ) -> Result<String, AppError> {
     write_text_to_clipboard(&app_handle, &text)?;
-    log::info!("已复制 {} 个字符到剪贴板", text.len());
+    log::info!("Copied {} characters to the clipboard", text.len());
     Ok("Copied to clipboard".to_string())
 }
 
@@ -540,7 +544,10 @@ pub(crate) async fn paste_text_with_strategy(
         if let Some(last_ch) = text.chars().last() {
             *LAST_PASTED_TRAIL.lock() = Some((target, last_ch));
         }
-        log::info!("已复制 {} 个字符到剪贴板（仅复制模式）", text.len());
+        log::info!(
+            "Copied {} characters to the clipboard (copy-only mode)",
+            text.len()
+        );
         return Ok("Copied to clipboard".to_string());
     }
 
@@ -645,7 +652,7 @@ pub(crate) async fn paste_text_with_strategy(
                         }
                     }
                 } else {
-                    log::debug!("剪贴板内容已变化，跳过恢复以保留用户的新剪贴板内容");
+                    log::debug!("Clipboard content changed; skipping restore to preserve the user's new clipboard content");
                 }
             }
 
@@ -659,17 +666,17 @@ pub(crate) async fn paste_text_with_strategy(
             const IMC_GETOPENSTATUS: usize = 0x0005;
             const IMC_SETOPENSTATUS: usize = 0x0006;
 
-            // ① 释放残留修饰键
+            // ① Release lingering modifier keys
             release_stuck_modifiers()?;
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             ensure_paste_target(target)?;
 
-            // ② 临时关闭前台窗口的输入法，防止 Unicode 输入被 IME 拦截
+            // ② Temporarily disable the foreground window's IME so Unicode input is not intercepted
             // SAFETY: GetForegroundWindow takes no arguments and returns a window handle value or null.
             let hwnd = unsafe { GetForegroundWindow() };
             // SAFETY: ImmGetDefaultIMEWnd receives only an HWND value; a stale or null handle yields null or failure without touching our memory.
             let ime_wnd_ptr = unsafe { ImmGetDefaultIMEWnd(hwnd) };
-            // 将 *mut c_void 转为 usize 以跨越 await（HWND 本质是个数值句柄）
+            // Convert *mut c_void to usize to cross the await (an HWND is essentially a numeric handle)
             let ime_wnd = ime_wnd_ptr as usize;
             let ime_was_open = if ime_wnd != 0 {
                 let open =
@@ -680,7 +687,7 @@ pub(crate) async fn paste_text_with_strategy(
                     unsafe {
                         SendMessageW(ime_wnd as _, WM_IME_CONTROL, IMC_SETOPENSTATUS, 0);
                     }
-                    log::debug!("已临时关闭前台窗口输入法");
+                    log::debug!("Temporarily disabled the foreground window IME");
                     true
                 } else {
                     false
@@ -689,7 +696,7 @@ pub(crate) async fn paste_text_with_strategy(
                 false
             };
 
-            // ③ 构建并发送 Unicode 输入事件
+            // ③ Build and send the Unicode input events
             let mut inputs: Vec<INPUT> = Vec::new();
             for ch in text.chars() {
                 match ch {
@@ -720,14 +727,14 @@ pub(crate) async fn paste_text_with_strategy(
                 Ok(())
             };
 
-            // ④ 无论发送成功与否都必须恢复输入法，否则用户 IME 会卡在关闭状态
+            // ④ Always restore the IME whether or not sending succeeded, or the user's IME stays disabled
             if ime_was_open {
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 // SAFETY: IMC_SETOPENSTATUS passes no pointer, and ime_wnd is the handle ImmGetDefaultIMEWnd returned earlier.
                 unsafe {
                     SendMessageW(ime_wnd as _, WM_IME_CONTROL, IMC_SETOPENSTATUS, 1);
                 }
-                log::debug!("已恢复前台窗口输入法");
+                log::debug!("Restored the foreground window IME");
             }
 
             send_result?;
@@ -745,7 +752,7 @@ pub(crate) async fn paste_text_with_strategy(
         ));
     }
 
-    log::info!("已输入 {} 个字符", text.len());
+    log::info!("Typed {} characters", text.len());
     if let Some(last_ch) = text.chars().last() {
         *LAST_PASTED_TRAIL.lock() = Some((target, last_ch));
     }

@@ -1,6 +1,6 @@
 use super::*;
 
-/// LLM 提供商配置
+/// LLM provider configuration
 pub struct LlmEndpoint {
     pub provider: String,
     pub api_url: String,
@@ -21,7 +21,7 @@ pub(super) const CUSTOM: &str = "custom";
 pub(super) const CLAUDE: &str = "claude";
 pub(super) const MAGPIE: &str = "magpie";
 
-/// 预置服务商列表（用于判断是否为预置）
+/// List of preset providers (used to decide whether one is a preset)
 pub(super) const PRESET_PROVIDERS: &[&str] = &[
     CEREBRAS,
     OPENAI,
@@ -177,7 +177,7 @@ pub(super) fn is_preset(provider: &str) -> bool {
     PRESET_PROVIDERS.contains(&provider)
 }
 
-/// 根据后端配置获取 LLM 端点
+/// Get the LLM endpoint from the backend configuration
 pub fn endpoint_for_config(config: &LlmProviderConfig) -> LlmEndpoint {
     endpoint_for_provider(config, &config.resolve_active_provider(), None)
 }
@@ -410,14 +410,18 @@ pub async fn probe_image_support_from_provider_metadata(
         let response = match request.send().await {
             Ok(response) => response,
             Err(err) => {
-                log::debug!("探测模型图片能力失败: url={}, err={}", url, err);
+                log::debug!(
+                    "Failed to probe model image capability: url={}, err={}",
+                    url,
+                    err
+                );
                 continue;
             }
         };
 
         if !response.status().is_success() {
             log::debug!(
-                "模型图片能力探测返回非成功状态: status={}, url={}",
+                "Model image capability probe returned a non-success status: status={}, url={}",
                 response.status(),
                 url
             );
@@ -427,7 +431,11 @@ pub async fn probe_image_support_from_provider_metadata(
         let payload = match response.json::<Value>().await {
             Ok(payload) => payload,
             Err(err) => {
-                log::debug!("解析模型图片能力元数据失败: url={}, err={}", url, err);
+                log::debug!(
+                    "Failed to parse model image capability metadata: url={}, err={}",
+                    url,
+                    err
+                );
                 continue;
             }
         };
@@ -692,8 +700,8 @@ pub fn is_cerebras_like_endpoint(endpoint: &LlmEndpoint) -> bool {
     endpoint.provider == CEREBRAS || endpoint_host_matches(endpoint, "cerebras.ai")
 }
 
-/// OpenRouter 统一使用 `reasoning` 对象控制思考强度，并与顶层 `reasoning_effort`
-/// 互为简写。按 host 判定，因此预置项与自定义接入都能命中。
+/// OpenRouter uses a unified `reasoning` object to control thinking effort, which is
+/// shorthand for the top-level `reasoning_effort` and vice versa. Detected by host, so both presets and custom integrations match.
 pub fn is_openrouter_like_endpoint(endpoint: &LlmEndpoint) -> bool {
     endpoint.api_format == ApiFormat::OpenaiCompat
         && (endpoint.provider == OPENROUTER || endpoint_host_matches(endpoint, "openrouter.ai"))

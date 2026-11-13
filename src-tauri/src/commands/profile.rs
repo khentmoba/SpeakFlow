@@ -52,7 +52,7 @@ pub async fn submit_user_correction(
         });
         return Ok(());
     }
-    // 用 LLM 结合 ASR 原文和当前显示文本，提取词级纠错
+    // Use the LLM with the raw ASR text and the current displayed text to extract word-level corrections
     let corrections = extract_corrections_via_llm(
         &app_handle,
         &state,
@@ -99,7 +99,7 @@ pub async fn submit_user_correction(
     Ok(())
 }
 
-/// 调用 LLM 结合 ASR 原文和当前显示文本，提取词级别纠错
+/// Call the LLM with the raw ASR text and the current displayed text to extract word-level corrections
 async fn extract_corrections_via_llm(
     app_handle: &tauri::AppHandle,
     state: &AppState,
@@ -123,7 +123,7 @@ async fn extract_corrections_via_llm(
     {
         Ok(api_key) => api_key,
         Err(err) => {
-            log::warn!("用户纠错 LLM 鉴权解析失败: {}", err);
+            log::warn!("User-correction LLM auth resolution failed: {}", err);
             return Vec::new();
         }
     };
@@ -182,26 +182,29 @@ async fn extract_corrections_via_llm(
     {
         Ok(content) => content,
         Err(err) => {
-            log::warn!("用户纠错 LLM 请求失败: {}", err);
+            log::warn!("User-correction LLM request failed: {}", err);
             return Vec::new();
         }
     };
 
     let raw = raw.trim();
     if raw.is_empty() {
-        log::warn!("用户纠错 LLM 响应中未找到文本内容");
+        log::warn!("No text content found in the user-correction LLM response");
         return Vec::new();
     }
 
-    log::info!("用户纠错 LLM 响应完成 ({}字符)", raw.chars().count());
+    log::info!(
+        "User-correction LLM response complete ({} chars)",
+        raw.chars().count()
+    );
 
-    // 解析 JSON 数组或包含数组的对象
+    // Parse a JSON array or an object containing an array
     let pairs = parse_correction_pairs(raw);
     if pairs.is_empty() {
-        log::info!("LLM 未提取到词级纠错，回退到本地 diff 学习");
+        log::info!("LLM extracted no word-level corrections; falling back to local diff learning");
         Vec::new()
     } else {
-        log::info!("LLM 提取到 {} 条用户纠错", pairs.len());
+        log::info!("LLM extracted {} user corrections", pairs.len());
         pairs
     }
 }
@@ -251,7 +254,7 @@ pub async fn retry_profile_save(state: tauri::State<'_, AppState>) -> Result<(),
     profile_service::save_profile_async(state.inner())
         .await
         .map_err(|error| {
-            log::warn!("重试保存用户画像失败: {error}");
+            log::warn!("Retrying to save user profile failed: {error}");
             AppError::Other("Failed to save settings. Please try again.".to_string())
         })
 }
@@ -282,8 +285,8 @@ pub async fn set_history_settings(
             "History retention cannot exceed 3,650 days".into(),
         ));
     }
-    // 清理是可能失败的 I/O；先完成它再提交内存/profile 状态，避免命令报错但
-    // 设置实际上已经改变。
+    // Cleanup is I/O that can fail; finish it before committing in-memory/profile state, so the command
+    // cannot report an error while the settings have actually changed.
     history_service::cleanup(retention_days).await?;
     profile_service::update_profile_and_schedule(state.inner(), |profile| {
         profile.history_settings = HistorySettings {
@@ -408,7 +411,7 @@ pub async fn set_llm_provider_config(
         if let Some(mode) = claude_auth_mode {
             profile.llm_provider.claude_auth_mode = Some(mode);
         }
-        // 自定义 provider → 同步到 custom_providers，不污染旧字段
+        // Custom provider → sync to custom_providers without polluting the legacy fields
         if let Some(cp) = profile
             .llm_provider
             .custom_providers
@@ -527,8 +530,8 @@ pub async fn get_llm_reasoning_support(
     })
 }
 
-/// 校验单个 provider 字段：name。trim 后非空、字符数不超过 128。
-/// 拆出来是为了让 `update_custom_provider` 的 Optional 校验复用同一份语义。
+/// Validate a single provider field: name. Non-empty after trim and at most 128 characters.
+/// Split out so the Optional validation in `update_custom_provider` reuses the same semantics.
 fn validate_provider_name(name: &str) -> Result<String, String> {
     let name = name.trim();
     if name.is_empty() {
@@ -540,8 +543,8 @@ fn validate_provider_name(name: &str) -> Result<String, String> {
     Ok(name.to_string())
 }
 
-/// 校验单个 provider 字段：base_url。trim 后非空、是合法 URL、scheme 仅 http/https。
-/// 末尾斜杠归一化掉，避免 "https://x/" 与 "https://x" 在后续比较时不一致。
+/// Validate a single provider field: base_url. Non-empty after trim, a valid URL, scheme only http/https.
+/// The trailing slash is normalized away so "https://x/" and "https://x" do not compare as different later.
 fn validate_provider_base_url(base_url: &str) -> Result<String, String> {
     let url = base_url.trim();
     if url.is_empty() {
@@ -560,7 +563,7 @@ fn validate_provider_base_url(base_url: &str) -> Result<String, String> {
     Ok(url.trim_end_matches('/').to_string())
 }
 
-/// 校验单个 provider 字段：model。trim 后非空。
+/// Validate a single provider field: model. Non-empty after trim.
 fn validate_provider_model(model: &str) -> Result<String, String> {
     let model = model.trim();
     if model.is_empty() {
@@ -569,12 +572,12 @@ fn validate_provider_model(model: &str) -> Result<String, String> {
     Ok(model.to_string())
 }
 
-/// 校验并归一化自定义 provider 字段。
+/// Validate and normalize custom provider fields.
 ///
-/// 这里不卡白名单 host（自托管 OpenAI 兼容服务很常见），但要求：
-/// - name/model trim 后非空，name 控制在 128 字符内（防止前端 UI 撑爆）
-/// - base_url 是合法 URL，scheme 仅允许 http/https
-/// - 末尾斜杠归一化掉，避免 "https://x/" 与 "https://x" 在后续比较时不一致
+/// No host allowlist here (self-hosted OpenAI-compatible services are common), but it requires:
+/// - name/model are non-empty after trim, and name is within 128 characters (keeps the frontend UI from overflowing)
+/// - base_url is a valid URL with scheme http/https only
+/// - the trailing slash is normalized away so "https://x/" and "https://x" do not compare as different later
 fn normalize_custom_provider_fields(
     name: &str,
     base_url: &str,
@@ -633,8 +636,8 @@ pub async fn add_custom_provider(
     api_format: ApiFormat,
 ) -> Result<String, AppError> {
     let (name, base_url, model) = normalize_custom_provider_fields(&name, &base_url, &model)?;
-    // 用毫秒时间戳生成 id 在 UI 快速点击时可能撞 ID（同一毫秒两次添加）；
-    // 拼一段随机后缀 + 在 push 前查重，确保 id 唯一。
+    // IDs generated from a millisecond timestamp can collide on rapid UI clicks (two adds in the same millisecond);
+    // append a random suffix and check for duplicates before push to keep ids unique.
     use rand::Rng;
     let mut rng = rand::thread_rng();
     let mut id = format!(
@@ -646,7 +649,7 @@ pub async fn add_custom_provider(
         rng.gen::<u32>()
     );
     let assigned_id = profile_service::update_profile_and_schedule(state.inner(), |profile| {
-        // 极小概率撞 ID 时再随机一次。
+        // On the rare ID collision, randomize again.
         while profile
             .llm_provider
             .custom_providers
@@ -677,7 +680,7 @@ pub async fn update_custom_provider(
     model: Option<String>,
     api_format: Option<ApiFormat>,
 ) -> Result<(), AppError> {
-    // 先校验入参，再进 profile 闭包。这样校验失败不会污染 profile 状态。
+    // Validate the input first, then enter the profile closure, so a validation failure cannot pollute profile state.
     let normalized_name = match name.as_deref() {
         Some(n) => Some(validate_provider_name(n)?),
         None => None,
@@ -743,7 +746,7 @@ pub async fn remove_custom_provider(
     Ok(())
 }
 
-/// 设置翻译目标语言。返回是否自动开启了 AI 润色。
+/// Set the translation target language. Returns whether AI polish was turned on automatically.
 #[tauri::command]
 pub async fn set_translation_target(
     state: tauri::State<'_, AppState>,
@@ -999,7 +1002,7 @@ pub async fn run_correction_validation(
         {
             Ok(content) => content,
             Err(err) => {
-                log::warn!("纠错审核 LLM 请求失败: {}", err);
+                log::warn!("Correction review LLM request failed: {}", err);
                 continue;
             }
         };
@@ -1019,7 +1022,7 @@ pub async fn run_correction_validation(
     }
 
     let removed = all_invalid.len() as u32;
-    log::info!("LLM 审核删除 {} 条 AI 纠错规则", removed);
+    log::info!("LLM review removed {} AI correction rules", removed);
 
     profile_service::update_profile_and_schedule(state, |profile| {
         profile.correction_patterns.retain(|p| {
@@ -1032,7 +1035,7 @@ pub async fn run_correction_validation(
     Ok(removed)
 }
 
-/// LLM 审核 AI 来源的纠错规则（Tauri command 入口）
+/// LLM review of AI-sourced correction rules (Tauri command entry point)
 #[tauri::command]
 pub async fn validate_corrections(
     app_handle: tauri::AppHandle,

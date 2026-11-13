@@ -18,7 +18,11 @@ pub fn get_data_dir() -> &'static PathBuf {
                 base.join(APP_IDENTIFIER)
             });
         if let Err(err) = std::fs::create_dir_all(&app_dir) {
-            log::warn!("创建应用数据目录失败 {}: {}", app_dir.display(), err);
+            log::warn!(
+                "Failed to create the app data directory {}: {}",
+                app_dir.display(),
+                err
+            );
         }
         app_dir
     })
@@ -127,10 +131,10 @@ const ALIBABA_ENDPOINT_DOMESTIC: &str = "https://dashscope.aliyuncs.com";
 
 pub const ALIBABA_DEFAULT_MODEL: &str = "qwen-audio-3.1-asr-flash";
 
-/// 运行时抓取失败时使用的 ASR / Omni 兜底列表，更新于 2026-10-18。
-/// 抓取成功后以账号实际可见模型为准，不受此列表限制。
+/// Fallback ASR / Omni list used when the runtime fetch fails, updated 2026-10-18.
+/// After a successful fetch, the models actually visible to the account take precedence and are not limited by this list.
 ///
-/// 走哪条 HTTP 路径由 `alibaba_model_uses_omni_chat` 运行时决定：
+/// Which HTTP path is used is decided at runtime by `alibaba_model_uses_omni_chat`:
 /// - Qwen Audio / Qwen3 ASR → `/api/v1/services/aigc/multimodal-generation/generation`
 /// - `*omni*` → `/compatible-mode/v1/chat/completions`
 pub const ALIBABA_FALLBACK_MODEL_IDS: &[&str] = &[
@@ -143,10 +147,10 @@ pub const ALIBABA_FALLBACK_MODEL_IDS: &[&str] = &[
     "qwen-omni-turbo",
 ];
 
-/// 模型 ID 是否可能胜任 ASR（作为语音转文字使用）。
+/// Whether a model ID can plausibly do ASR (used for speech-to-text).
 ///
-/// 用于过滤 DashScope `/v1/models` 返回的完整模型清单：包含 asr/omni/audio 关键词
-/// 的模型入围，同时排除明确不做转写的 realtime / tts / vl / coder 等家族。
+/// Used to filter the full model list returned by DashScope `/v1/models`: models containing the asr/omni/audio keywords
+/// make the cut, while realtime / tts / vl / coder and other families that clearly do not transcribe are excluded.
 pub fn is_asr_capable_model_id(id: &str) -> bool {
     let id = id.to_ascii_lowercase();
     let looks_asr =
@@ -154,7 +158,7 @@ pub fn is_asr_capable_model_id(id: &str) -> bool {
     if !looks_asr {
         return false;
     }
-    // 精确匹配：`-vl-` / `-vl` 尾部（避免误伤 "novel"/"evaluation" 等普通词）
+    // Exact match: `-vl-` / trailing `-vl` (avoids hitting ordinary words like "novel"/"evaluation")
     const BLOCK_SUBSTR: &[&str] = &[
         "realtime",
         "tts",
@@ -171,15 +175,15 @@ pub fn is_asr_capable_model_id(id: &str) -> bool {
     if BLOCK_SUBSTR.iter().any(|b| id.contains(b)) {
         return false;
     }
-    // vision-language 模型（qwen2.5-vl-*, qwen3-vl-*）走段边界匹配
+    // vision-language models (qwen2.5-vl-*, qwen3-vl-*) use segment-boundary matching
     if id.contains("-vl-") || id.ends_with("-vl") {
         return false;
     }
     true
 }
 
-/// Omni 家族模型走 OpenAI-compat chat.completions 路径；
-/// 其它走 ASR 专用的 multimodal-generation 路径。
+/// Omni-family models use the OpenAI-compat chat.completions path;
+/// everything else uses the ASR-specific multimodal-generation path.
 pub fn alibaba_model_uses_omni_chat(model: &str) -> bool {
     model.contains("omni")
 }
@@ -218,26 +222,31 @@ fn read_engine_json() -> serde_json::Value {
     }
 
     match std::fs::read_to_string(&path) {
-        Ok(data) => match serde_json::from_str::<serde_json::Value>(&data) {
-            Ok(value) => {
-                if !value.is_object() {
-                    log::warn!("engine.json 是有效 JSON 但不是对象，已按空配置处理");
+        Ok(data) => {
+            match serde_json::from_str::<serde_json::Value>(&data) {
+                Ok(value) => {
+                    if !value.is_object() {
+                        log::warn!("engine.json is valid JSON but not an object; treated as an empty config");
+                    }
+                    let clean = engine_json_object_or_empty(value);
+                    let mut cache = ENGINE_JSON_CACHE.write();
+                    *cache = Some(CachedEngineJson {
+                        path,
+                        mtime,
+                        len,
+                        value: clean.clone(),
+                    });
+                    clean
                 }
-                let clean = engine_json_object_or_empty(value);
-                let mut cache = ENGINE_JSON_CACHE.write();
-                *cache = Some(CachedEngineJson {
-                    path,
-                    mtime,
-                    len,
-                    value: clean.clone(),
-                });
-                clean
+                Err(err) => {
+                    log::warn!(
+                        "Failed to parse engine.json; treated as an empty config: {}",
+                        err
+                    );
+                    serde_json::json!({})
+                }
             }
-            Err(err) => {
-                log::warn!("engine.json 解析失败，已按空配置处理: {}", err);
-                serde_json::json!({})
-            }
-        },
+        }
         Err(_) => {
             if meta.is_none() {
                 let mut cache = ENGINE_JSON_CACHE.write();
@@ -348,20 +357,20 @@ fn read_region_field(field: &str) -> String {
     }
 }
 
-/// 返回 GLM-ASR 区域标识：`"international"` 或 `"domestic"`
+/// Return the GLM-ASR region identifier: `"international"` or `"domestic"`
 pub fn read_glm_region() -> String {
     read_region_field("glm_endpoint")
 }
 
-/// 返回 Alibaba ASR 区域标识：`"international"` 或 `"domestic"`
+/// Return the Alibaba ASR region identifier: `"international"` or `"domestic"`
 pub fn read_alibaba_region() -> String {
     read_region_field("alibaba_region")
 }
 
-/// 返回 Alibaba ASR 当前选择的模型 ID。
+/// Return the model ID currently selected for Alibaba ASR.
 ///
-/// 这里不再对值做白名单校验——DashScope 上架速度快于硬编码列表的更新频率，
-/// 运行时抓取回来的新模型应该能直接用。非法字符由 write_alibaba_model 入口过滤。
+/// The value is no longer allowlist-checked here, because DashScope lists models faster than the hardcoded list is updated,
+/// and newly fetched models should be usable directly. Illegal characters are filtered at the write_alibaba_model entry.
 pub fn read_alibaba_model() -> String {
     read_engine_json()
         .get("alibaba_model")
@@ -371,7 +380,7 @@ pub fn read_alibaba_model() -> String {
         .unwrap_or_else(|| ALIBABA_DEFAULT_MODEL.to_string())
 }
 
-/// 返回当前活跃在线引擎的区域标识。
+/// Return the region identifier of the currently active online engine.
 pub fn read_online_asr_region() -> String {
     match read_engine_config().as_str() {
         "alibaba-asr" => read_alibaba_region(),
@@ -379,7 +388,7 @@ pub fn read_online_asr_region() -> String {
     }
 }
 
-/// 返回当前活跃在线引擎的端点域名（不含路径）。
+/// Return the endpoint domain of the currently active online engine (without path).
 pub fn read_online_asr_endpoint() -> String {
     match read_engine_config().as_str() {
         "alibaba-asr" => read_alibaba_endpoint(),
@@ -387,7 +396,7 @@ pub fn read_online_asr_endpoint() -> String {
     }
 }
 
-/// 返回 GLM-ASR 端点域名（不含路径）。
+/// Return the GLM-ASR endpoint domain (without path).
 pub fn read_glm_endpoint() -> String {
     match read_glm_region().as_str() {
         "domestic" => GLM_ENDPOINT_DOMESTIC.to_string(),
@@ -395,7 +404,7 @@ pub fn read_glm_endpoint() -> String {
     }
 }
 
-/// 返回 Alibaba DashScope 端点域名（不含路径）。
+/// Return the Alibaba DashScope endpoint domain (without path).
 pub fn read_alibaba_endpoint() -> String {
     match read_alibaba_region().as_str() {
         "domestic" => ALIBABA_ENDPOINT_DOMESTIC.to_string(),
@@ -416,22 +425,22 @@ fn update_engine_json_field(key: &str, value: &str) -> Result<(), std::io::Error
     update_engine_json(|obj| obj[key] = serde_json::Value::String(value.to_string()))
 }
 
-/// 写入 GLM-ASR 区域。`region`: `"international"` 或 `"domestic"`
+/// Write the GLM-ASR region. `region`: `"international"` or `"domestic"`
 pub fn write_glm_region(region: &str) -> Result<(), std::io::Error> {
     update_engine_json_field("glm_endpoint", region)
 }
 
-/// 写入 Alibaba ASR 区域。`region`: `"international"` 或 `"domestic"`
+/// Write the Alibaba ASR region. `region`: `"international"` or `"domestic"`
 pub fn write_alibaba_region(region: &str) -> Result<(), std::io::Error> {
     update_engine_json_field("alibaba_region", region)
 }
 
-/// 写入 Alibaba ASR 当前选择的模型 ID。
+/// Write the Alibaba ASR model ID currently selected.
 pub fn write_alibaba_model(model: &str) -> Result<(), std::io::Error> {
     update_engine_json_field("alibaba_model", model)
 }
 
-/// 根据当前引擎写入对应区域配置。
+/// Write the matching region config for the current engine.
 pub fn write_online_asr_endpoint(region: &str) -> Result<(), std::io::Error> {
     match read_engine_config().as_str() {
         "alibaba-asr" => write_alibaba_region(region),
@@ -439,9 +448,9 @@ pub fn write_online_asr_endpoint(region: &str) -> Result<(), std::io::Error> {
     }
 }
 
-/// 查找已解压的 engine.exe
+/// Find the extracted engine.exe
 ///
-/// 仅检查数据目录（从引擎归档解压后的位置）。
+/// Only checks the data directory (the location after extraction from the engine archive).
 pub fn get_engine_exe_path(_app: &tauri::AppHandle) -> Option<PathBuf> {
     let data_engine = get_data_dir().join("engine").join("engine.exe");
     if data_engine.exists() {
@@ -450,7 +459,7 @@ pub fn get_engine_exe_path(_app: &tauri::AppHandle) -> Option<PathBuf> {
     None
 }
 
-/// 查找资源目录中的 engine.exe（开发时直接放置 python-dist 的情况）。
+/// Find engine.exe in the resource directory (the case where python-dist is placed directly during development).
 pub fn get_resource_engine_exe_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     if let Ok(resource_dir) = app.path().resource_dir() {
         let resource_engine = resource_dir
@@ -465,9 +474,9 @@ pub fn get_resource_engine_exe_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     None
 }
 
-/// 查找打包的引擎归档（NSIS 安装后存在于资源目录）
+/// Find the bundled engine archive (present in the resource directory after an NSIS install)
 ///
-/// 跳过空文件（build.rs 为 dev 模式创建的占位文件）。
+/// Skips empty files (placeholder files build.rs creates for dev mode).
 pub fn get_engine_archive_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     if let Ok(resource_dir) = app.path().resource_dir() {
         let resources_dir = resource_dir.join("resources");
@@ -481,7 +490,7 @@ pub fn get_engine_archive_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     None
 }
 
-/// 获取 engine 解压目标目录
+/// Get the engine extraction target directory
 pub fn get_engine_dir() -> PathBuf {
     get_data_dir().join("engine")
 }
@@ -490,7 +499,7 @@ pub fn write_engine_config(engine: &str) -> Result<(), std::io::Error> {
     update_engine_json_field("engine", engine)
 }
 
-/// 用户未配置时关闭。0 表示不自动卸载 GPU 模型。
+/// Off when the user has not configured it. 0 means the GPU model is never auto-unloaded.
 pub const MAX_GPU_IDLE_SECONDS: u64 = 7 * 24 * 60 * 60;
 
 pub fn parse_gpu_idle_seconds(value: Option<&serde_json::Value>) -> u64 {
@@ -774,7 +783,7 @@ pub fn write_gpu_idle_seconds(
     })
 }
 
-/// 读取用户自定义模型目录（None 表示使用默认 HF 缓存）
+/// Read the user-defined model directory (None means use the default HF cache)
 pub fn read_models_dir() -> Option<String> {
     read_engine_json()
         .get("models_dir")
@@ -783,7 +792,7 @@ pub fn read_models_dir() -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// 写入自定义模型目录（None 表示恢复默认）
+/// Write the custom model directory (None means restore the default)
 pub fn write_models_dir(dir: Option<&str>) -> Result<(), std::io::Error> {
     update_engine_json(|obj| {
         if let Some(map) = obj.as_object_mut() {
@@ -802,7 +811,7 @@ pub fn write_models_dir(dir: Option<&str>) -> Result<(), std::io::Error> {
     })
 }
 
-/// 默认 HF 缓存根目录（不考虑自定义配置）
+/// Default HF cache root directory (ignoring custom config)
 pub fn get_default_models_dir() -> PathBuf {
     if let Ok(hf_home) = std::env::var("HF_HOME") {
         return PathBuf::from(hf_home).join("hub");
@@ -813,7 +822,7 @@ pub fn get_default_models_dir() -> PathBuf {
     PathBuf::from(".cache").join("huggingface").join("hub")
 }
 
-/// 获取生效的模型缓存目录：自定义路径 > HF_HOME > 默认
+/// Get the effective model cache directory: custom path > HF_HOME > default
 pub fn get_effective_models_dir() -> PathBuf {
     if let Some(custom) = read_models_dir() {
         return PathBuf::from(custom);

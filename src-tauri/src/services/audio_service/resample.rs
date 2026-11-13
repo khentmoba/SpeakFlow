@@ -8,7 +8,7 @@ const MAX_RESAMPLE_CHUNK_FRAMES: usize = 4096;
 
 const INV_32768_F32: f32 = 1.0 / 32768.0;
 
-// ---------- 采样格式转换 ----------
+// ---------- Sample format conversion ----------
 
 pub(super) fn f32_to_i16(s: f32) -> i16 {
     let c = s.clamp(-1.0, 1.0);
@@ -23,7 +23,7 @@ pub(super) fn u16_to_i16(s: u16) -> i16 {
     (s as i32 - 32768) as i16
 }
 
-// ---------- 重采样（rubato 快速插值） ----------
+// ---------- Resampling (rubato fast interpolation) ----------
 
 pub(super) struct ChunkedResampler {
     input_rate: u32,

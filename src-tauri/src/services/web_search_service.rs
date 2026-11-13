@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-/// 单条搜索结果
+/// A single search result
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResult {
@@ -65,7 +65,7 @@ fn redact_search_secret(text: &str, secret: &str) -> String {
 
 // ── Exa MCP ─────────────────────────────────────────────────────────
 
-/// JSON-RPC 2.0 响应
+/// JSON-RPC 2.0 response
 #[derive(Deserialize)]
 struct JsonRpcResponse {
     result: Option<McpResult>,
@@ -133,7 +133,7 @@ pub async fn exa_search(
         ));
     }
 
-    // 响应可能是 SSE（text/event-stream）或纯 JSON
+    // The response may be SSE (text/event-stream) or plain JSON
     let raw = resp.text().await.map_err(|error| {
         format!(
             "{}: Failed to read Exa response",
@@ -193,7 +193,7 @@ fn push_content_line(content: &mut String, line: &str) {
     content.push_str(line);
 }
 
-/// 解析 Exa MCP 的带标签文本块：
+/// Parse the labeled text blocks of Exa MCP:
 /// ```text
 /// Title: ...
 /// URL: ...
@@ -258,7 +258,7 @@ fn extract_final_json_data_line(raw: &str) -> Option<&str> {
         })
 }
 
-// ── Tavily（API，需要 Key）─────────────────────────────────────────
+// ── Tavily (API, requires a key) ───────────────────────────────────
 
 #[derive(Deserialize)]
 struct TavilyResponse {
@@ -333,7 +333,7 @@ pub async fn tavily_search(
         .collect())
 }
 
-// ── Google Search Grounding（Gemini API，需要 Google AI API Key）────
+// ── Google Search Grounding (Gemini API, requires a Google AI API key) ────
 
 fn google_grounding_request(query: &str) -> serde_json::Value {
     serde_json::json!({
@@ -568,7 +568,7 @@ fn parse_google_grounding_response(
         return parse_google_interaction_response(value, max_results);
     }
 
-    // 兼容旧 generateContent 响应，便于解析历史 fixtures 和服务端回退。
+    // Compatible with the legacy generateContent response, which helps parse historical fixtures and server-side fallbacks.
     let candidate = value
         .get("candidates")
         .and_then(serde_json::Value::as_array)
@@ -638,8 +638,8 @@ fn parse_google_grounding_response(
         results.push(SearchResult {
             title,
             url: url.to_string(),
-            // Grounding 返回的是带来源约束的综合摘要，而不是每个页面的抓取正文。
-            // 只放入第一条，避免同一摘要重复占用提示词预算。
+            // Grounding returns a source-constrained synthesized summary rather than the scraped body of each page.
+            // Only the first one is included, so the same summary does not take up the prompt budget repeatedly.
             content: if results.is_empty() {
                 answer.clone()
             } else {
@@ -710,7 +710,7 @@ pub async fn google_grounded_search(
     let endpoint = "https://generativelanguage.googleapis.com/v1beta/interactions";
     let started = Instant::now();
     log::info!(
-        "Google Search Grounding 请求开始: model={}, API=v1beta/interactions, query_chars={}, max_results={}",
+        "Google Search Grounding request started: model={}, API=v1beta/interactions, query_chars={}, max_results={}",
         GOOGLE_GROUNDING_MODEL,
         query.chars().count(),
         max_results.clamp(1, 10)
@@ -769,9 +769,9 @@ pub async fn google_grounded_search(
     })
 }
 
-// ── 公共工具 ────────────────────────────────────────────────────────
+// ── Shared utilities ────────────────────────────────────────────────
 
-/// UTF-8 安全的字符串截断
+/// UTF-8-safe string truncation
 fn truncate_str(s: &str, max_bytes: usize) -> &str {
     if s.len() <= max_bytes {
         return s;
@@ -783,7 +783,7 @@ fn truncate_str(s: &str, max_bytes: usize) -> &str {
     &s[..end]
 }
 
-/// 将不可信搜索结果渲染为用户侧 XML 上下文（使用 CDATA 转义）。
+/// Render untrusted search results as user-side XML context (escaped with CDATA).
 pub fn dedupe_search_results(results: Vec<SearchResult>) -> Vec<SearchResult> {
     let mut seen = HashSet::new();
     results

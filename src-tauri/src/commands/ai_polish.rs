@@ -129,7 +129,7 @@ pub async fn set_screen_context_enabled(
     Ok(())
 }
 
-/// Anthropic 硬编码模型列表
+/// Hardcoded Anthropic model list
 fn anthropic_models() -> Vec<AiModelInfo> {
     [
         "claude-opus-4-6",
@@ -419,7 +419,7 @@ fn cached_codex_fallback(
     now: Instant,
 ) -> Option<AiModelListPayload> {
     let models = cache_key.and_then(|key| cached_codex_models(key, now))?;
-    log::warn!("Codex 模型目录刷新失败，继续使用最近成功目录: {error}");
+    log::warn!("Failed to refresh Codex model catalog, continuing with the last successful catalog: {error}");
     Some(AiModelListPayload {
         models,
         source_url: source_url.to_string(),
@@ -541,7 +541,7 @@ pub async fn list_ai_models(
         }
     }
 
-    // 构建请求（Anthropic 用 x-api-key，其他用 Bearer）
+    // Build the request (Anthropic uses x-api-key, others use Bearer)
     let mut req = state
         .http_client
         .get(&source_url)
@@ -614,7 +614,7 @@ pub async fn list_ai_models(
     let response = match result {
         Ok(r) if r.status().is_success() => r,
         _ if is_anthropic => {
-            // Anthropic API 查询失败（代理不支持等），回退硬编码
+            // Anthropic API query failed (e.g. proxy does not support it); fall back to the hardcoded list
             return Ok(AiModelListPayload {
                 models: anthropic_models(),
                 source_url,
@@ -691,7 +691,7 @@ pub async fn list_ai_models(
         // Only catalog metadata: no account identifiers, tokens or response bodies.
         let entries = payload["models"].as_array();
         log::info!(
-            "模型目录 source={} received={} selectable={} entries={:?}",
+            "Model catalog source={} received={} selectable={} entries={:?}",
             source_url,
             entries.map_or(0, Vec::len),
             models.len(),

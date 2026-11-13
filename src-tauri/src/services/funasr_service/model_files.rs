@@ -1,16 +1,16 @@
 use super::*;
 
-/// 获取 HuggingFace 缓存根目录
+/// Get the HuggingFace cache root directory
 ///
-/// 优先使用用户自定义模型目录，其次按 HuggingFace 标准规则。
+/// Prefers the user's custom model directory, then follows the standard HuggingFace rules.
 pub(super) fn get_hf_cache_root() -> PathBuf {
     paths::get_effective_models_dir()
 }
 
-/// 检查 HuggingFace 模型是否已缓存且包含实际模型权重文件
+/// Check whether a HuggingFace model is cached and contains actual model weight files
 ///
-/// 仅检查目录结构不够——下载中途取消会留下空壳目录（refs/snapshots 存在但无权重文件），
-/// 导致后续加载卡死。这里额外验证 snapshots 中存在 >1MB 的模型权重文件（.pt/.bin/.safetensors/.onnx）。
+/// Checking only the directory structure is not enough: cancelling a download midway leaves an empty shell directory (refs/snapshots exist but no weight files),
+/// which later hangs loading. This additionally verifies that snapshots contains a model weight file larger than 1MB (.pt/.bin/.safetensors/.onnx).
 #[cfg(test)]
 pub(super) fn is_hf_repo_ready(repo_id: &str, required_file: Option<&str>) -> bool {
     hf_repo_model_state(repo_id, required_file) == ModelState::Ready
@@ -22,7 +22,7 @@ pub(super) fn hf_repo_model_state(repo_id: &str, required_file: Option<&str>) ->
     let repo_dir = cache_root.join(&dir_name);
 
     log::info!(
-        "模型检查: repo={}, cache_root={}, repo_dir={}, exists={}",
+        "Model check: repo={}, cache_root={}, repo_dir={}, exists={}",
         repo_id,
         cache_root.display(),
         repo_dir.display(),
@@ -40,7 +40,7 @@ pub(super) fn hf_repo_model_state(repo_id: &str, required_file: Option<&str>) ->
         Ok(e) => e,
         Err(err) => {
             log::warn!(
-                "无法读取 snapshots 目录: {} — {}",
+                "Cannot read the snapshots directory: {} — {}",
                 snapshots_dir.display(),
                 err
             );
@@ -80,7 +80,7 @@ pub(super) fn hf_repo_model_state(repo_id: &str, required_file: Option<&str>) ->
         }) {
             continue;
         }
-        log::info!("检查 snapshot: {}", snapshot_path.display());
+        log::info!("Checking snapshot: {}", snapshot_path.display());
         let manifest_present = !matches!(
             std::fs::symlink_metadata(snapshot_path.join(HF_COMPLETE_MANIFEST_NAME)),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound
@@ -91,12 +91,15 @@ pub(super) fn hf_repo_model_state(repo_id: &str, required_file: Option<&str>) ->
             snapshot_matches_legacy_weight_check(&snapshot_path)
         };
         if ready {
-            log::info!("模型就绪: {} (在 {})", repo_id, snapshot_path.display());
+            log::info!("Model ready: {} (in {})", repo_id, snapshot_path.display());
             return ModelState::Ready;
         }
     }
 
-    log::warn!("模型未就绪: {} — 未找到完整下载清单或文件校验失败", repo_id);
+    log::warn!(
+        "Model not ready: {} — no complete download manifest found or file verification failed",
+        repo_id
+    );
     model_state
 }
 
@@ -114,7 +117,11 @@ pub(super) fn snapshot_matches_completion_manifest_for_file(
     let data = match std::fs::read_to_string(&manifest_path) {
         Ok(data) => data,
         Err(err) => {
-            log::warn!("缺少模型完整性清单 {}: {}", manifest_path.display(), err);
+            log::warn!(
+                "Missing model integrity manifest {}: {}",
+                manifest_path.display(),
+                err
+            );
             return false;
         }
     };
@@ -122,7 +129,7 @@ pub(super) fn snapshot_matches_completion_manifest_for_file(
         Ok(value) => value,
         Err(err) => {
             log::warn!(
-                "模型完整性清单解析失败 {}: {}",
+                "Failed to parse model integrity manifest {}: {}",
                 manifest_path.display(),
                 err
             );
@@ -229,7 +236,7 @@ pub(super) fn snapshot_matches_legacy_weight_check(snapshot_path: &std::path::Pa
     let ready = visit(snapshot_path, WEIGHT_EXTS, MIN_SIZE).unwrap_or(false);
     if ready {
         log::warn!(
-            "模型 snapshot 缺少完整性清单，按旧版权重文件检查兼容放行: {}",
+            "Model snapshot has no integrity manifest; allowing it through via the legacy weight-file check for compatibility: {}",
             snapshot_path.display()
         );
     }
@@ -280,7 +287,7 @@ pub fn installed_catalog_engines() -> Vec<String> {
         .collect()
 }
 
-/// 检查当前 ASR 引擎的模型文件是否已下载。
+/// Check whether the model files for the current ASR engine have been downloaded.
 pub(crate) fn inspect_model_files_for_engine(engine: &str) -> ModelCheckResult {
     if paths::is_online_engine(engine) {
         return ModelCheckResult {
@@ -337,7 +344,7 @@ pub(crate) fn inspect_model_files_for_engine(engine: &str) -> ModelCheckResult {
     let cache_root = get_hf_cache_root();
     let cache_path = cache_root.to_string_lossy().to_string();
 
-    // 旧版或损坏的本地引擎值统一迁移到默认的 Qwen3-ASR 0.6B。
+    // Legacy or corrupted local engine values are uniformly migrated to the default Qwen3-ASR 0.6B.
     let model = local_model_file(engine);
     let normalized_engine = model.engine;
     let (repo_id, filename, description) =
@@ -355,7 +362,7 @@ pub(crate) fn inspect_model_files_for_engine(engine: &str) -> ModelCheckResult {
     // so a shared copy must not make it look ready.
     if model_state != ModelState::Ready && normalized_engine != paths::R2T2_ENGINE {
         if let Some(shared) = find_shared_model_file(filename, model.size) {
-            log::info!("模型来自共享文件夹: {}", shared.display());
+            log::info!("Model comes from the shared folder: {}", shared.display());
             model_state = ModelState::Ready;
             missing_models.clear();
             corrupt_models.clear();

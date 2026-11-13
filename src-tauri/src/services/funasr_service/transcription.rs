@@ -1,7 +1,7 @@
 use super::*;
 
 /// ```text
-/// 音频数据 -> 临时文件 -> 发送命令给 Python -> 等待结果 -> 返回文本
+/// Audio data -> temp file -> send command to Python -> wait for result -> return text
 /// ```
 pub async fn transcribe(
     state: &AppState,
@@ -49,7 +49,7 @@ pub async fn transcribe_pcm16_owned(
     app_handle: &tauri::AppHandle,
     options: TranscribeOptions,
 ) -> Result<TranscriptionResult, AppError> {
-    // 检查服务器是否就绪
+    // Check whether the server is ready
     if !state.is_funasr_ready() {
         return Err(AppError::Asr(
             "Speech recognition engine is not ready yet; please wait for initialization to finish"
@@ -59,8 +59,8 @@ pub async fn transcribe_pcm16_owned(
 
     let asr_config = paths::read_asr_transcription_config();
 
-    // 本地引擎对过短输入的处理不稳定。interim 路径的首个 tick 可能只有
-    // 200-400ms，这里尾部 zero-pad 到 0.5s；只对短音频生效，长输入走原路。
+    // Local engines handle very short input unreliably. The first tick on the interim path may be only
+    // 200-400ms, so zero-pad the tail to 0.5s here; this applies only to short audio and long input takes the original path.
     const MIN_IPC_DURATION_SEC: f64 = 0.5;
     let min_samples_for_ipc = (sample_rate as f64 * MIN_IPC_DURATION_SEC) as usize;
     let padded_storage: Vec<i16>;
@@ -131,7 +131,7 @@ pub async fn transcribe_pcm16_owned(
     }
 
     if response_indicates_inline_unsupported(&response) {
-        log::info!("当前 FunASR 运行时不支持内存音频，回退到临时 WAV 文件");
+        log::info!("The current FunASR runtime does not support in-memory audio; falling back to a temporary WAV file");
         state.set_inline_audio_transport(Some(false));
         return transcribe_pcm16_via_path(
             state,
@@ -226,9 +226,9 @@ const _: () = assert!(
 pub(super) fn encode_pcm16_base64(samples: &[i16]) -> String {
     use base64::Engine;
 
-    // 零拷贝 cast：i16 对齐 2、无填充，pcm_s16le 在 LE 目标上（Windows/macOS/Linux
-    // 的 x86/ARM）就是 i16 的内存布局。避免原先逐样本 extend_from_slice 造成的
-    // 192000 次小拷贝 + 一次 384KB Vec 分配，interim loop 每 ~220ms 一次的热点。
+    // Zero-copy cast: i16 has alignment 2 and no padding, and pcm_s16le on LE targets (x86/ARM on Windows/macOS/Linux)
+    // is exactly the i16 memory layout. This avoids the earlier per-sample extend_from_slice, which caused
+    // 192000 small copies plus one 384KB Vec allocation, a hotspot hit every ~220ms in the interim loop.
     let byte_slice: &[u8] =
         // SAFETY: i16 samples are contiguous and initialized, len * 2 is their exact byte length, and the slice borrows samples for its lifetime.
         unsafe { std::slice::from_raw_parts(samples.as_ptr().cast::<u8>(), samples.len() * 2) };

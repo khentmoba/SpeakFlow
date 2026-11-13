@@ -181,7 +181,7 @@ impl ReasoningControlKind {
                 "This model supports thinking.type; Off=disabled, Light/Balanced=auto, Deep=enabled."
             }
             Self::OpenRouterReasoning => {
-                "当前是 OpenRouter 端点，使用统一 reasoning 参数；关闭档下发 reasoning.enabled=false，其余档位映射为 reasoning.effort。"
+                "This is an OpenRouter endpoint and uses the unified reasoning parameter; the Off level sends reasoning.enabled=false and the other levels map to reasoning.effort."
             }
             Self::AutoOpenaiCompat => {
                 "OpenAI-compatible backend; automatically probes supported reasoning parameters and caches the working strategy."
@@ -201,8 +201,8 @@ pub(super) fn reasoning_control_kind(
             .then_some(ReasoningControlKind::AnthropicThinking);
     }
 
-    // host 优先于模型名启发式：OpenRouter 会上游代理任意厂商模型
-    // （如 doubao/seed-* 会被 is_volcengine_like_endpoint 命中），必须在此提前返回。
+    // host takes priority over model-name heuristics: OpenRouter proxies models from any vendor upstream
+    // (e.g. doubao/seed-* would be hit by is_volcengine_like_endpoint), so we must return early here.
     if is_openrouter_like_endpoint(endpoint) {
         return Some(ReasoningControlKind::OpenRouterReasoning);
     }
@@ -518,8 +518,8 @@ pub fn apply_reasoning_controls(
     };
 
     match (kind, mode) {
-        // Cerebras 推理模型：ProviderDefault 映射到 low（恢复重构前的硬编码行为，
-        // 避免服务端默认推理强度过高导致 TTFT 和生成时间显著增加）
+        // Cerebras reasoning models: ProviderDefault maps to low (restoring the hardcoded behavior from before the refactor,
+        // to avoid the server-side default reasoning effort being so high that TTFT and generation time rise noticeably)
         (ReasoningControlKind::CerebrasReasoningEffort, LlmReasoningMode::ProviderDefault) => {
             body["reasoning_effort"] = serde_json::json!("low");
         }
@@ -606,7 +606,7 @@ pub fn apply_reasoning_controls(
             body["disable_reasoning"] = serde_json::json!(mode == LlmReasoningMode::Off);
         }
         (ReasoningControlKind::OpenRouterReasoning, _) => {
-            // OpenRouter 统一入口：enabled=false 关闭思考，effort 控制强度。
+            // OpenRouter unified entry: enabled=false turns thinking off, effort controls its intensity.
             let reasoning = match mode {
                 LlmReasoningMode::ProviderDefault => return,
                 LlmReasoningMode::Off => serde_json::json!({ "enabled": false }),

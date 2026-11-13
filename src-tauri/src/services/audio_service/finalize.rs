@@ -36,7 +36,7 @@ fn can_reuse_interim(
         && !cache.text.trim().is_empty()
 }
 
-// ---------- 最终转写 + 粘贴 ----------
+// ---------- Final transcription + paste ----------
 
 #[derive(Clone, Copy)]
 enum EditGrabStatus {
@@ -182,8 +182,8 @@ fn resolve_recording_app_profile(
                 domain.as_deref(),
             )
         }
-        // 无法确认进程身份时，不能确定用户是否为该应用配置了隐私规则。
-        // 仅关闭会捕获或持久化内容的功能；听写和显式助手请求仍可继续。
+        // When the process identity cannot be confirmed, we cannot tell whether the user configured privacy rules for that app.
+        // Only features that capture or persist content are disabled; dictation and explicit assistant requests can continue.
         _ => ResolvedAppProfile {
             screen_context_enabled: Some(false),
             history_enabled: Some(false),
@@ -412,7 +412,7 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
             }
         },
         async {
-            // 等待 interim 任务自然结束；超时则 abort 以释放 funasr_process 锁
+            // Wait for the interim task to finish on its own; on timeout, abort it to release the funasr_process lock
             if let Some(t) = interim_task {
                 let abort_handle = t.abort_handle();
                 if tokio::time::timeout(std::time::Duration::from_secs(5), t)
@@ -425,9 +425,9 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
             }
         },
         async {
-            // 选中文本保留在本地变量里，不写全局。两个 finalize 并发时也彼此隔离：
-            // edit_grab 来自各自 session 的 RecordingSession，edit_context 只在本函数
-            // 作用域存活，不存在跨会话串位的机会。
+            // The selected text stays in a local variable, not a global. Two concurrent finalizes are also isolated from each other:
+            // edit_grab comes from each session's own RecordingSession and edit_context lives only in this function's
+            // scope, so there is no chance of cross-session mixups.
             match edit_grab {
                 Some(handle) => {
                     let abort_handle = handle.abort_handle();
@@ -567,15 +567,15 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
         audio_file,
     };
 
-    // 优先复用 interim 缓存，否则重新 ASR。
+    // Prefer reusing the interim cache, otherwise run ASR again.
     //
-    // 复用条件（全部成立才复用，否则重跑 do_final_asr）：
-    //   1. 录音必须完整落在 interim 窗口内 (final_count <= 12s * sample_rate)。
-    //      interim 缓存的是"最后 12 秒"的转写，用它顶替更长的 final 会直接丢
-    //      录音开头那段的文本（比率 >0.9 也一样丢，只是用户感知为"前几个字没了"）。
-    //   2. 缓存必须覆盖每一个最终样本，任何尾部间隙都需要重新识别。
-    //      未处理的尾部可能包含语音，不能仅凭间隙时长判定为静音。
-    //   3. interim 确实返回了非空文本。
+    // Reuse conditions (reuse only if all hold, otherwise rerun do_final_asr):
+    //   1. The recording must fall entirely inside the interim window (final_count <= 12s * sample_rate).
+    //      The interim cache holds the transcript of the "last 12 seconds"; substituting it for a longer final would drop
+    //      the text at the start of the recording (a ratio >0.9 drops it too, the user just perceives "the first few words are gone").
+    //   2. The cache must cover every final sample; any trailing gap needs re-recognition.
+    //      An unprocessed tail may contain speech, so silence cannot be inferred from the gap length alone.
+    //   3. The interim result actually returned non-empty text.
     let asr_start = Instant::now();
     let (asr_text, detected_lang): (Result<String, String>, Option<String>) =
         if let Some(result) = native_result {
@@ -678,11 +678,11 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
         return;
     }
 
-    // 音频归档与后续处理并行；发布最终结果前仍等待归档并尝试写入历史。
+    // Audio archiving runs in parallel with later processing; the final result is still published only after archiving is awaited and a history write is attempted.
     if mode == RecordingMode::Dictation && edit_context.is_some() {
         let selected_text = edit_context.unwrap_or_default();
         let edit_started = Instant::now();
-        // 编辑模式：ASR 结果是语音指令，用它改写选中文本
+        // Edit mode: the ASR result is a voice instruction used to rewrite the selected text
         log::info!(
             "Edit mode: instruction {} chars, selected text {} chars",
             text.chars().count(),
@@ -823,8 +823,8 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
         let (assistant_generation, cancel_rx) =
             crate::commands::assistant::begin_assistant_chat_task(state.inner());
         let assistant_pipeline = async {
-            // 搜索判断、搜索关键词和最终生成都基于校正后的语音请求。
-            // 显式关闭翻译覆盖，避免“翻译输出”设置改变用户实际发给助手的指令。
+            // Search decision, search keywords and final generation all use the corrected voice request.
+            // Translation override is explicitly turned off so the "translated output" setting cannot change the instruction the user actually sent to the assistant.
             let polish_outcome = ai_polish_service::polish_text_with_overrides_detailed(
                 state.inner(),
                 &original_request,
@@ -963,7 +963,7 @@ pub async fn finalize_recording(app_handle: tauri::AppHandle, session: Recording
             }
         }
     } else {
-        // 普通听写模式
+        // Plain dictation mode
         let original = text.clone();
         let text = state.with_profile(|profile| {
             crate::services::external_correction_service::apply_spelling_rules(&text, profile)
@@ -1234,8 +1234,8 @@ pub async fn discard_recording(session: RecordingSession) {
         task.abort();
     }
     crate::services::audio_service::restore_audio();
-    // 中止本会话持有的 grab handle（spawn_blocking 不可抢占，但 abort 会让
-    // JoinHandle 提前 detach，结果被丢弃，不会影响后续会话）。
+    // Abort the grab handle held by this session (spawn_blocking is not preemptible, but abort detaches the
+    // JoinHandle early so the result is discarded and does not affect later sessions).
     if let Some(grab) = session.edit_grab {
         grab.abort();
     }
@@ -1338,7 +1338,7 @@ async fn do_final_asr(
     }
 }
 
-// ---------- 事件发送 ----------
+// ---------- Event emission ----------
 
 #[allow(clippy::too_many_arguments)]
 fn emit_done(
@@ -1534,7 +1534,7 @@ fn emit_recording_state_snapshot(
     let _ = app.emit("recording-state", payload);
 }
 
-// ---------- 粘贴逻辑 ----------
+// ---------- Paste logic ----------
 
 pub(crate) fn flush_pending_paste(app: &tauri::AppHandle) {
     let app = app.clone();
@@ -1762,7 +1762,7 @@ mod tests {
     #[test]
     fn polish_failure_keeps_local_spelling_corrections() {
         let source = include_str!("finalize.rs");
-        let dictation = source.split("// 普通听写模式").nth(1).unwrap();
+        let dictation = source.split("// Plain dictation mode").nth(1).unwrap();
         assert!(
             dictation.find("apply_spelling_rules").unwrap()
                 < dictation
@@ -1864,7 +1864,7 @@ mod tests {
     fn dictation_pastes_once_after_polish_completes() {
         let source = include_str!("finalize.rs");
         let dictation_branch = source
-            .split("// 普通听写模式")
+            .split("// Plain dictation mode")
             .nth(1)
             .and_then(|source| source.split("pub async fn discard_recording").next())
             .expect("normal dictation branch should exist");

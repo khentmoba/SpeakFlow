@@ -45,7 +45,7 @@ pub(super) fn handle_hotkey_start(
         {
             Ok(session_id) => {
                 log::info!(
-                    "热键 {} 触发录音开始 (session {}, mode={})",
+                    "Hotkey {} triggered recording start (session {}, mode={})",
                     shortcut_label,
                     session_id,
                     trigger.mode().as_str()
@@ -56,14 +56,22 @@ pub(super) fn handle_hotkey_start(
                 if gate.start_owner.fail(generation) {
                     reset_hotkey_event_gate(&gate);
                 }
-                log::debug!("忽略热键 {} 的开始请求: {}", shortcut_label, message);
+                log::debug!(
+                    "Ignoring start request from hotkey {}: {}",
+                    shortcut_label,
+                    message
+                );
             }
             Err(AppError::Audio(message)) => {
                 let _transition = gate.transition.lock();
                 if gate.start_owner.fail(generation) {
                     reset_hotkey_event_gate(&gate);
                 }
-                log::warn!("热键 {} 开始录音失败: {}", shortcut_label, message);
+                log::warn!(
+                    "Hotkey {} failed to start recording: {}",
+                    shortcut_label,
+                    message
+                );
                 update_hotkey_diagnostic_for_trigger(&app_handle, trigger, |diagnostic| {
                     let now_ms = now_unix_ms();
                     diagnostic.last_error = Some(message.clone());
@@ -77,7 +85,11 @@ pub(super) fn handle_hotkey_start(
                     reset_hotkey_event_gate(&gate);
                 }
                 let message = err.to_string();
-                log::warn!("热键 {} 开始录音失败: {}", shortcut_label, message);
+                log::warn!(
+                    "Hotkey {} failed to start recording: {}",
+                    shortcut_label,
+                    message
+                );
                 update_hotkey_diagnostic_for_trigger(&app_handle, trigger, |diagnostic| {
                     let now_ms = now_unix_ms();
                     diagnostic.last_error = Some(message.clone());
@@ -107,18 +119,25 @@ pub(super) fn handle_hotkey_stop(
         {
             Ok(Some(session_id)) => {
                 log::info!(
-                    "热键 {} 触发录音停止 (session {}, mode={})",
+                    "Hotkey {} triggered recording stop (session {}, mode={})",
                     shortcut_label,
                     session_id,
                     trigger.mode().as_str()
                 );
             }
             Ok(None) => {
-                log::debug!("忽略热键 {} 的停止请求：当前没有活跃录音", shortcut_label);
+                log::debug!(
+                    "Ignoring stop request from hotkey {}: no active recording",
+                    shortcut_label
+                );
             }
             Err(err) => {
                 let message = err.to_string();
-                log::warn!("热键 {} 停止录音失败: {}", shortcut_label, message);
+                log::warn!(
+                    "Hotkey {} failed to stop recording: {}",
+                    shortcut_label,
+                    message
+                );
                 update_hotkey_diagnostic_for_trigger(&app_handle, trigger, |diagnostic| {
                     let now_ms = now_unix_ms();
                     diagnostic.last_error = Some(message.clone());
@@ -292,7 +311,7 @@ pub(super) fn dispatch_hotkey_press(
 
     if active_trigger.is_some() && !allow_toggle_stop {
         log::debug!(
-            "忽略热键 {} 的按下：已有录音进行中 (active trigger={:?}, request trigger={:?})",
+            "Ignoring press of hotkey {}: a recording is already in progress (active trigger={:?}, request trigger={:?})",
             shortcut_label,
             active_trigger,
             trigger
@@ -307,7 +326,10 @@ pub(super) fn dispatch_hotkey_press(
             gate.is_pressed.store(false, Ordering::Release);
             let now_ms = now_unix_ms();
             gate.last_release_ms.store(now_ms, Ordering::Release);
-            log::info!("切换模式：再次按下 {}，停止录音", shortcut_label);
+            log::info!(
+                "Toggle mode: {} pressed again, stopping recording",
+                shortcut_label
+            );
             update_hotkey_diagnostic_for_trigger(app_handle, trigger, |diagnostic| {
                 diagnostic.is_pressed = false;
                 diagnostic.last_error = None;
@@ -331,7 +353,7 @@ pub(super) fn dispatch_hotkey_press(
             }
             gate.toggle_active.store(true, Ordering::Release);
             gate.is_pressed.store(true, Ordering::Release);
-            log::info!("切换模式：{}", pressed_log);
+            log::info!("Toggle mode: {}", pressed_log);
             update_hotkey_diagnostic_for_trigger(app_handle, trigger, |diagnostic| {
                 diagnostic.is_pressed = true;
                 diagnostic.last_error = None;
@@ -383,7 +405,7 @@ pub(super) fn dispatch_hotkey_press(
     let last_release_ms = gate.last_release_ms.load(Ordering::Acquire);
     if now_ms.saturating_sub(last_release_ms) < HOTKEY_REPRESS_DEBOUNCE_MS {
         log::debug!(
-            "忽略热键 {} 的按下抖动（距离上次松开 {}ms）",
+            "Ignoring press bounce of hotkey {} ({}ms since last release)",
             shortcut_label,
             now_ms.saturating_sub(last_release_ms)
         );

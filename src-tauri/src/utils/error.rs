@@ -19,7 +19,7 @@ pub enum AppError {
 }
 
 impl AppError {
-    /// 稳定的机器可读错误码（前端用 switch / 路由）。
+    /// Stable machine-readable error code (the frontend uses it in switch / routing).
     pub fn code(&self) -> &'static str {
         match self {
             AppError::Asr(_) => "ASR_ERROR",
@@ -32,7 +32,7 @@ impl AppError {
         }
     }
 
-    /// 高层归类，方便前端按类别决定提示样式。
+    /// High-level category, so the frontend can pick the notice style by category.
     pub fn category(&self) -> &'static str {
         match self {
             AppError::Asr(_) => "asr",
@@ -50,9 +50,9 @@ struct StructuredAppError {
     code: &'static str,
     category: &'static str,
     message: String,
-    /// 预留给未来携带结构化诊断信息（schema、status、provider 详情等）。
-    /// 当前所有 variant 都没有 payload，统一序列化为 JSON null，让前端
-    /// 永远能 `error.details === null` 判空而不是 `'details' in error`。
+    /// Reserved for carrying structured diagnostics in the future (schema, status, provider details, etc.).
+    /// Currently no variant has a payload, so it always serializes to JSON null, letting the frontend
+    /// always test emptiness with `error.details === null` instead of `'details' in error`.
     details: Option<serde_json::Value>,
 }
 

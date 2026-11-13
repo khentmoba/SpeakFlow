@@ -5,15 +5,15 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 
-/// 发送给 Python 服务器的命令
+/// Command sent to the Python server
 ///
-/// Python 端期望的 JSON 格式是扁平的：
+/// The JSON format the Python side expects is flat:
 /// - `{"action": "status"}`
 /// - `{"action": "transcribe", "audio_path": "/path/to/file.wav"}`
 /// - `{"action": "exit"}`
 ///
-/// 使用 `#[serde(tag = "action")]` 生成带 `action` 字段的扁平 JSON，
-/// `rename_all = "snake_case"` 将变体名转为小写下划线格式。
+/// Uses `#[serde(tag = "action")]` to produce flat JSON with an `action` field,
+/// and `rename_all = "snake_case"` turns variant names into lowercase snake_case.
 #[derive(Debug, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum ServerCommand {
@@ -38,42 +38,42 @@ pub enum ServerCommand {
     StreamCancel {
         session_id: u64,
     },
-    /// 转写音频文件
+    /// Transcribe an audio file
     Transcribe {
         #[serde(skip_serializing_if = "Option::is_none")]
         options: Option<crate::state::user_profile::R2T2Config>,
-        /// 音频文件的路径
+        /// Path of the audio file
         #[serde(skip_serializing_if = "Option::is_none")]
         audio_path: Option<String>,
-        /// 内存音频负载（Base64）
+        /// In-memory audio payload (Base64)
         #[serde(skip_serializing_if = "Option::is_none")]
         audio_base64: Option<String>,
-        /// 内存音频编码格式
+        /// In-memory audio encoding format
         #[serde(skip_serializing_if = "Option::is_none")]
         audio_format: Option<String>,
-        /// 内存音频采样率
+        /// In-memory audio sample rate
         #[serde(skip_serializing_if = "Option::is_none")]
         sample_rate: Option<u32>,
-        /// 热词列表（可选）
+        /// Hotword list (optional)
         #[serde(skip_serializing_if = "Option::is_none")]
         hot_words: Option<Vec<String>>,
-        /// 识别语言（可选）。缺省表示让模型自动检测。
+        /// Recognition language (optional). Absent means let the model auto-detect.
         #[serde(skip_serializing_if = "Option::is_none")]
         language: Option<String>,
-        /// 让支持翻译的模型直接输出英文。
+        /// Have models that support translation output English directly.
         #[serde(skip_serializing_if = "Option::is_none")]
         translate_to_english: Option<bool>,
-        /// 是否先用 VAD 过滤静音（缺省由服务器按开启处理）
+        /// Whether to filter silence with VAD first (the server treats absent as enabled)
         #[serde(skip_serializing_if = "Option::is_none")]
         filter_silence: Option<bool>,
     },
-    /// 查询服务器状态
+    /// Query server status
     Status,
-    /// 更新 GPU 空闲卸载秒数。0 表示关闭，不重启进程。
+    /// Update the GPU idle-unload seconds. 0 means off; does not restart the process.
     SetGpuIdle {
         seconds: u64,
     },
-    /// 更新只读模型文件夹列表，不重启进程。
+    /// Update the read-only model folder list without restarting the process.
     SetModelDirs {
         dirs: Vec<String>,
     },
@@ -88,7 +88,7 @@ pub enum ServerCommand {
         #[serde(skip_serializing_if = "Option::is_none")]
         sample_rate: Option<u32>,
     },
-    /// 退出服务器
+    /// Exit the server
     Exit,
 }
 
@@ -104,10 +104,10 @@ pub struct DiarizeSegment {
     pub p: f64,
 }
 
-/// Python 服务器的 JSON 响应
+/// JSON response from the Python server
 ///
-/// 这个结构体对应 Python 服务器返回的 JSON 格式。
-/// `Option<T>` 表示字段可能存在也可能不存在。
+/// This struct matches the JSON format the Python server returns.
+/// `Option<T>` means the field may or may not be present.
 #[derive(Debug, Deserialize)]
 pub(super) struct ServerResponse {
     pub(super) tentative_text: Option<String>,
@@ -119,41 +119,41 @@ pub(super) struct ServerResponse {
     pub(super) supports_diarization: Option<bool>,
     pub(super) supported: Option<bool>,
     pub(super) segments: Option<Vec<DiarizeSegment>>,
-    /// 请求 ID；新协议用于丢弃取消/超时后迟到的旧响应
+    /// Request ID; with the new protocol it is used to drop stale responses that arrive late after a cancellation/timeout
     pub(super) request_id: Option<u64>,
-    /// 操作是否成功
+    /// Whether the operation succeeded
     pub(super) success: Option<bool>,
-    /// 状态标识
+    /// Status identifier
     pub(super) status: Option<String>,
-    /// 转写得到的文本
+    /// Transcribed text
     pub(super) text: Option<String>,
-    /// 音频时长
+    /// Audio duration
     pub(super) duration: Option<f64>,
-    /// 错误信息
+    /// Error message
     pub(super) error: Option<String>,
-    /// 检测到的语言
+    /// Detected language
     pub(super) language: Option<String>,
-    /// 附加消息
+    /// Additional message
     pub(super) message: Option<String>,
-    /// 模型是否已加载
+    /// Whether the model has loaded
     pub(super) model_loaded: Option<bool>,
-    /// 模型是否已初始化（Python status 返回）
+    /// Whether the model has initialized (returned by Python status)
     pub(super) initialized: Option<bool>,
-    /// 模型加载状态
+    /// Model loading state
     pub(super) models: Option<ServerModelStatus>,
-    /// 设备信息
+    /// Device info
     pub(super) device: Option<String>,
-    /// GPU 名称
+    /// GPU name
     pub(super) gpu_name: Option<String>,
-    /// GPU 总显存（GB）
+    /// Total GPU memory (GB)
     pub(super) gpu_memory_total: Option<f64>,
-    /// 当前引擎
+    /// Current engine
     pub(super) engine: Option<String>,
-    /// 服务端实际采用的输入模式（memory/path）
+    /// Input mode the server actually uses (memory/path)
     pub(super) input_mode: Option<String>,
 }
 
-/// Python status 返回的模型状态
+/// Model state returned by Python status
 #[derive(Debug, Deserialize, Clone)]
 pub(super) struct ServerModelStatus {
     pub(super) asr: Option<bool>,
@@ -236,8 +236,8 @@ where
                     continue;
                 }
 
-                // 某些 Windows 机器上，第三方库会把噪音输出和 JSON 响应挤在同一行。
-                // 尝试从首个 '{' 到末尾 '}' 提取有效 JSON，避免一次脏输出导致整次初始化失败。
+                // On some Windows machines, third-party libraries squeeze noise output and the JSON response onto the same line.
+                // Try to extract valid JSON from the first '{' to the last '}' so one piece of dirty output does not fail the whole initialization.
                 if let (Some(start), Some(end)) = (trimmed.find('{'), trimmed.rfind('}')) {
                     if start < end {
                         if let Ok(value) = serde_json::from_str::<T>(&trimmed[start..=end]) {

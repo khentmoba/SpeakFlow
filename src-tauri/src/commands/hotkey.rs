@@ -533,7 +533,7 @@ fn register_on_chosen_backend(
                     // RegisterHotKey failed — rebuild state with LowLevelHook backend
                     // so the LLKH callback will process this hotkey.
                     log::warn!(
-                        "RegisterHotKey 注册 {} 失败，回退到低层键盘钩子: {}",
+                        "RegisterHotKey registration of {} failed; falling back to the low-level keyboard hook: {}",
                         label,
                         reg_err
                     );
@@ -586,7 +586,7 @@ fn try_register_hotkey_backend(kind: HotkeyKind, state: &Arc<UnifiedHookState>) 
         if let Err(e) = register_via_reg_hotkey(&mods_copy, vk_copy, state.clone()) {
             force_release_hotkey(state);
             log::warn!(
-                "{} RegisterHotKey 失败，回退到 LLKH: {}",
+                "{} RegisterHotKey failed; falling back to LLKH: {}",
                 state.spec.label(),
                 e
             );
@@ -648,7 +648,7 @@ pub async fn register_custom_hotkey(
     let system_conflict: Option<String> = None;
 
     if let Some(ref msg) = system_conflict {
-        log::warn!("系统快捷键冲突检测: {}", msg);
+        log::warn!("System shortcut conflict detected: {}", msg);
     }
 
     #[cfg(target_os = "windows")]
@@ -700,7 +700,7 @@ pub async fn register_custom_hotkey(
         diagnostic.last_registered_at_ms = Some(now_ms);
     });
 
-    log::info!("自定义快捷键 {} 已注册（{}）", label, backend_label);
+    log::info!("Custom shortcut {} registered ({})", label, backend_label);
     Ok(format!("Shortcut {} registered", label))
 }
 
@@ -766,7 +766,7 @@ pub(crate) fn register_translation_hotkey_inner(
             .as_ref()
             .map(|state| state.spec.label().to_string())
             .unwrap_or_else(|| "Not set".to_string());
-        log::info!("翻译热键已更新: {}", label);
+        log::info!("Translation hotkey updated: {}", label);
         Ok(format!("Translation hotkey updated: {}", label))
     }
 }
@@ -833,7 +833,7 @@ pub(crate) fn register_assistant_hotkey_inner(
             .as_ref()
             .map(|state| state.spec.label().to_string())
             .unwrap_or_else(|| "Not set".to_string());
-        log::info!("助手热键已更新: {}", label);
+        log::info!("Assistant hotkey updated: {}", label);
         Ok(format!("Assistant hotkey updated: {}", label))
     }
 }
@@ -871,7 +871,7 @@ pub async fn unregister_all_hotkeys(app_handle: tauri::AppHandle) -> Result<Stri
         diagnostic.last_event_at_ms = Some(now_ms);
     });
 
-    log::info!("所有全局快捷键已注销");
+    log::info!("All global shortcuts unregistered");
     Ok("All global shortcuts unregistered".to_string())
 }
 
@@ -897,7 +897,7 @@ pub async fn set_recording_mode(
         if let Some((session_id, trigger)) = active_session {
             handle_hotkey_stop(
                 _app_handle.clone(),
-                "切换到按住模式，停止当前录音".to_string(),
+                "Switched to hold mode; stopping the current recording".to_string(),
                 trigger,
                 session_id,
             );
@@ -925,7 +925,7 @@ pub async fn set_recording_mode(
                 let new_backend = classify_backend(kind, &old_state.spec);
                 let label = old_state.spec.label().to_string();
                 log::info!(
-                    "模式切换：{} 从 {:?} 迁移到 {:?}",
+                    "Mode switch: {} migrated from {:?} to {:?}",
                     label,
                     old_state.backend,
                     new_backend
@@ -966,7 +966,10 @@ pub async fn set_recording_mode(
         }
     }
 
-    log::info!("录音模式已设置为: {}", if toggle { "切换" } else { "按住" });
+    log::info!(
+        "Recording mode set to: {}",
+        if toggle { "toggle" } else { "hold" }
+    );
     Ok(())
 }
 

@@ -283,7 +283,7 @@ pub(super) fn build_system_prompt_with_base(
         prompt.push_str("</known_corrections>");
     }
 
-    // 翻译指令：translation_target 非空时注入
+    // Translation instruction: injected when translation_target is non-empty
     if let Some(ref target_lang) = translation_target {
         prompt.push_str("\n\n<translation_requirement>\n");
         prompt.push_str(&crate::utils::foreground::wrap_xml_cdata(

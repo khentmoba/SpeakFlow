@@ -106,7 +106,7 @@ pub async fn describe_images(
                 Err("Vision model returned an empty description".to_string())
             } else {
                 log::info!(
-                    "屏幕视觉代理读取完成: provider={}, model={}, reasoning={:?}, 图片={}张, 描述={}字符",
+                    "Screen vision proxy read complete: provider={}, model={}, reasoning={:?}, images={}, description={} chars",
                     endpoint.provider,
                     endpoint.model,
                     options.reasoning_mode,

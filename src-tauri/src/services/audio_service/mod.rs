@@ -1,12 +1,12 @@
 use serde::Serialize;
 
-// ---------- 常量 ----------
+// ---------- Constants ----------
 
 pub(crate) const TARGET_SAMPLE_RATE: u32 = 16000;
-/// finalize_recording 的下限：低于这个时长整段录音直接跳过（视为误按）
+/// Lower bound for finalize_recording: recordings shorter than this are skipped entirely (treated as an accidental press)
 pub(crate) const MIN_AUDIO_DURATION_SEC: f64 = 0.5;
-/// interim 的下限：首个 tick 积到这个时长就开始送 Python 推理，不再等到 0.5s。
-/// 短于 0.5s 的部分会在 funasr_service::transcribe_pcm16 里尾部补零对齐 Python VAD。
+/// Lower bound for interim: once the first tick accumulates this much, it starts sending to Python for inference instead of waiting for 0.5s.
+/// Anything under 0.5s is zero-padded at the tail in funasr_service::transcribe_pcm16 to align with the Python VAD.
 pub(crate) const MIN_INTERIM_DURATION_SEC: f64 = 0.2;
 pub(crate) const MIN_SAMPLES_GROWTH: usize = 1024;
 
@@ -26,7 +26,7 @@ pub(crate) const PASTE_DELAY_MS: u64 = 60;
 pub(crate) const AUDIO_CAPTURE_INIT_TIMEOUT_SECS: u64 = 8;
 /// 20 Hz, matching the dictation meter cadence in the web and desktop clients.
 pub(crate) const MICROPHONE_LEVEL_EMIT_INTERVAL_MS: u64 = 50;
-/// finalize 阶段等待并行抓取选中文本的最大时长。超时就按普通听写处理。
+/// Maximum time finalize waits for the parallel selected-text grab. On timeout, treat it as plain dictation.
 pub(crate) const EDIT_GRAB_WAIT_MS: u64 = 650;
 
 #[derive(Debug, Clone, Serialize)]
@@ -47,9 +47,9 @@ pub struct InputDeviceListPayload {
     pub selected_device_name: Option<String>,
 }
 
-// ---------- 统一的多格式音频流构建宏 ----------
+// ---------- Unified multi-format audio stream builder macro ----------
 
-/// 为三种采样格式（I16/F32/U16）构建 cpal 输入流，消除重复代码。
+/// Builds cpal input streams for the three sample formats (I16/F32/U16), removing duplicated code.
 macro_rules! build_input_stream_dispatch {
     ($device:expr, $config:expr, $sample_format:expr, $err_cb:expr, $callback_i16:expr, $callback_f32:expr, $callback_u16:expr) => {
         match $sample_format {
@@ -70,7 +70,7 @@ macro_rules! build_input_stream_dispatch {
     };
 }
 
-// ---------- 子模块 ----------
+// ---------- Submodules ----------
 
 pub(crate) mod audio_ducking;
 mod capture;
@@ -91,10 +91,10 @@ mod wav;
 #[cfg(target_os = "windows")]
 mod windows_capture;
 
-// ---------- 外部 API 再导出 ----------
+// ---------- Re-exports of the external API ----------
 //
-// 保持外部引用点零改动：
-// `use crate::services::audio_service::X` 在拆分前后语义相同。
+// Keeps external reference sites unchanged:
+// `use crate::services::audio_service::X` has the same meaning before and after the split.
 
 #[allow(unused_imports)]
 pub use audio_ducking::{

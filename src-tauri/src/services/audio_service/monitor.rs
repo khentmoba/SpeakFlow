@@ -14,7 +14,7 @@ use super::MICROPHONE_LEVEL_EMIT_INTERVAL_MS;
 use crate::state::{AppState, MicrophoneLevelMonitor};
 use crate::utils::AppError;
 
-// ---------- peak 计算 ----------
+// ---------- Peak calculation ----------
 
 fn mono_peak_i16(data: &[i16], ch: usize) -> u32 {
     if ch <= 1 {
@@ -74,7 +74,7 @@ fn monitor_start_is_current(
     current_generation == requested_generation && !recording_active
 }
 
-// ---------- 麦克风测试 / 预览 ----------
+// ---------- Microphone test / preview ----------
 
 pub fn stop_microphone_level_monitor(state: &AppState) {
     let old_monitor = {

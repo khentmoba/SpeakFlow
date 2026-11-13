@@ -54,7 +54,7 @@ pub fn subscribe_profile_save_status() -> tokio::sync::watch::Receiver<ProfileSa
 }
 
 // ============================================================
-// 持久化
+// Persistence
 // ============================================================
 
 pub fn load_profile() -> UserProfile {
@@ -62,27 +62,30 @@ pub fn load_profile() -> UserProfile {
     let mut profile = match std::fs::read_to_string(&path) {
         Ok(data) => match serde_json::from_str::<serde_json::Value>(&data) {
             Ok(value) if value.is_object() => serde_json::from_value(value).unwrap_or_else(|err| {
-                log::warn!("用户画像对象解析失败，使用默认值: {}", err);
+                log::warn!(
+                    "Failed to parse the user profile object; using defaults: {}",
+                    err
+                );
                 UserProfile::default()
             }),
             Ok(_) => {
-                log::warn!("用户画像文件是有效 JSON 但不是对象，使用默认值且保留原文件");
+                log::warn!("The user profile file is valid JSON but not an object; using defaults and keeping the original file");
                 UserProfile::default()
             }
             Err(err) => {
-                log::warn!("用户画像文件解析失败，使用默认值且保留原文件: {}", err);
+                log::warn!("Failed to parse the user profile file; using defaults and keeping the original file: {}", err);
                 UserProfile::default()
             }
         },
         Err(_) => {
-            log::info!("用户画像文件不存在，使用默认值");
+            log::info!("User profile file does not exist; using defaults");
             UserProfile::default()
         }
     };
     let stats = normalize_profile(&mut profile);
     if stats.removed_hot_words > 0 || stats.removed_corrections > 0 {
         log::info!(
-            "加载画像时清理：热词 -{}, 纠错 -{}",
+            "Cleanup while loading profile: hotwords -{}, corrections -{}",
             stats.removed_hot_words,
             stats.removed_corrections
         );
@@ -134,7 +137,7 @@ fn migrate_reasoning_modes(profile: &mut UserProfile) {
     }
 }
 
-/// 迁移旧版单 custom provider 到 custom_providers 列表
+/// Migrate the legacy single custom provider into the custom_providers list
 fn migrate_custom_provider(profile: &mut UserProfile) {
     let config = &mut profile.llm_provider;
     if config.active != "custom" || !config.custom_providers.is_empty() {
@@ -156,7 +159,7 @@ fn migrate_custom_provider(profile: &mut UserProfile) {
     config.active = "custom_migrated".to_string();
     config.custom_base_url = None;
     config.custom_model = None;
-    log::info!("已迁移旧版 custom provider 到 custom_providers");
+    log::info!("Migrated the legacy custom provider into custom_providers");
 }
 
 fn serialize_profile(profile: &UserProfile) -> Result<String, String> {
@@ -254,7 +257,7 @@ pub fn schedule_profile_save(profile: UserProfile) {
             let result = write_profile_async(&profile).await;
             complete_profile_save(generation, &result);
             if let Err(err) = result {
-                log::warn!("异步保存用户画像失败: {}", err);
+                log::warn!("Async save of the user profile failed: {}", err);
             }
         }
     });
@@ -284,7 +287,7 @@ pub async fn save_profile_async(state: &AppState) -> Result<(), String> {
 }
 
 // ============================================================
-// 清理
+// Cleanup
 // ============================================================
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -415,7 +418,7 @@ pub fn sanitize_app_profile_rules(profile: &mut UserProfile) {
 fn sanitize_corrections(profile: &mut UserProfile) -> usize {
     let before = profile.correction_patterns.len();
 
-    // 标记矛盾对中 count 较低的（A→B 与 B→A 同时存在）
+    // Mark the lower-count side of contradictory pairs (A→B and B→A both exist)
     let mut contradiction_victims: std::collections::HashSet<(String, String)> =
         std::collections::HashSet::new();
     for p in profile.correction_patterns.iter() {
@@ -428,7 +431,7 @@ fn sanitize_corrections(profile: &mut UserProfile) -> usize {
             .iter()
             .find(|q| q.original == p.corrected && q.corrected == p.original)
         {
-            // count 相等则两个都删，否则删低的
+            // If the counts are equal, delete both; otherwise delete the lower one
             if rev.count >= p.count {
                 contradiction_victims.insert(key);
             }
@@ -439,7 +442,7 @@ fn sanitize_corrections(profile: &mut UserProfile) -> usize {
     }
 
     profile.correction_patterns.retain(|p| {
-        // 用户手动纠错永远保留
+        // User manual corrections are always kept
         if p.source == CorrectionSource::User {
             return true;
         }
@@ -447,15 +450,15 @@ fn sanitize_corrections(profile: &mut UserProfile) -> usize {
         let orig_chars = p.original.chars().count();
         let corrected_chars = p.corrected.chars().count();
 
-        // 过长
+        // Too long
         if orig_chars > 15 || corrected_chars > 15 {
             return false;
         }
-        // 单字符原始 + 非单字符纠正（如 "不"→"一定"）
+        // Single-character original + multi-character correction (e.g. "不"→"一定")
         if orig_chars == 1 && corrected_chars != 1 {
             return false;
         }
-        // 长度比例异常（如 "话"→"的源代码，"）
+        // Abnormal length ratio (e.g. "话"→"的源代码，")
         let (longer, shorter) = (
             orig_chars.max(corrected_chars),
             orig_chars.min(corrected_chars),
@@ -463,11 +466,11 @@ fn sanitize_corrections(profile: &mut UserProfile) -> usize {
         if shorter >= 2 && longer > shorter * 3 {
             return false;
         }
-        // 矛盾对（仅清理 AI 来源的一方）
+        // Contradictory pair (clean up only the AI-sourced side)
         if contradiction_victims.contains(&(p.original.clone(), p.corrected.clone())) {
             return false;
         }
-        // AI 来源仅出现 1 次且超过 24h 的噪声（给新规则宽限期）
+        // Noise: AI-sourced and seen only once, older than 24h (gives new rules a grace period)
         if p.count <= 1 && now_secs().saturating_sub(p.last_seen) > 24 * 60 * 60 {
             return false;
         }
@@ -491,7 +494,7 @@ fn limit_correction_patterns(profile: &mut UserProfile) -> usize {
 }
 
 // ============================================================
-// 热词管理
+// Hotword management
 // ============================================================
 
 fn now_secs() -> u64 {
@@ -714,10 +717,10 @@ pub fn remove_hot_word(profile: &mut UserProfile, text: &str) {
 }
 
 // ============================================================
-// 学习
+// Learning
 // ============================================================
 
-/// 纠错模式 upsert：已有则递增，否则插入新条目
+/// Correction-pattern upsert: increment if it exists, otherwise insert a new entry
 fn upsert_correction(
     patterns: &mut Vec<CorrectionPattern>,
     orig: &str,
@@ -738,18 +741,18 @@ fn upsert_correction(
         return;
     }
 
-    // 单字符原始片段：仅允许 1:1 字符替换（如 "他"→"它"、"嘛"→"吗"）
+    // Single-character original fragment: only 1:1 character replacement is allowed (e.g. "他"→"它", "嘛"→"吗")
     if orig_len == 1 && corrected_len != 1 {
         return;
     }
 
-    // 长度比例过大：可能是对话碎片或句级重写的错误 diff
+    // Length ratio too large: probably a dialogue fragment or a bad diff from a sentence-level rewrite
     let (longer, shorter) = (orig_len.max(corrected_len), orig_len.min(corrected_len));
     if shorter >= 2 && longer > shorter * 3 {
         return;
     }
 
-    // 矛盾检测：已有反向映射则跳过
+    // Contradiction check: skip if the reverse mapping already exists
     if patterns
         .iter()
         .any(|p| p.original == corrected && p.corrected == orig)
@@ -777,7 +780,7 @@ fn upsert_correction(
     }
 }
 
-/// 更新词频统计
+/// Update word-frequency statistics
 fn update_vocab_frequency(
     vocab: &mut std::collections::HashMap<String, VocabEntry>,
     words: impl Iterator<Item = String>,
@@ -796,7 +799,7 @@ fn update_vocab_frequency(
     }
 }
 
-/// 将高频词汇自动提升为热词
+/// Automatically promote high-frequency words to hotwords
 fn promote_vocab_to_hot_words(profile: &mut UserProfile, threshold: u32) {
     let existing: std::collections::HashSet<&str> =
         profile.hot_words.iter().map(|h| h.text.as_str()).collect();
@@ -823,13 +826,13 @@ fn promote_vocab_to_hot_words(profile: &mut UserProfile, threshold: u32) {
     profile.hot_words.extend(new);
 }
 
-/// 学习的公共收尾：限制数量、去重
+/// Shared tail of learning: cap the count and deduplicate
 fn finalize_learning(profile: &mut UserProfile) {
     limit_correction_patterns(profile);
     sanitize_hot_words(profile);
 }
 
-/// 从 ASR 原始文本与纠正后文本的字符 diff 中学习
+/// Learn from the character diff between the raw ASR text and the corrected text
 pub fn learn_from_correction(
     profile: &mut UserProfile,
     original: &str,
@@ -884,7 +887,7 @@ pub fn collect_diff_correction_pairs(baselines: &[&str], corrected: &str) -> Vec
     pairs
 }
 
-/// 从 LLM 结构化输出中学习
+/// Learn from structured LLM output
 /// Records a rule the user typed in the Correction Rules dialog. Manual rules
 /// apply after recognition even where learned rules would be considered unsafe.
 pub fn add_manual_correction(profile: &mut UserProfile, original: &str, corrected: &str) {
@@ -956,7 +959,7 @@ pub fn learn_from_structured(
 }
 
 // ============================================================
-// 辅助函数
+// Helper functions
 // ============================================================
 
 fn is_potential_hot_word(word: &str) -> bool {

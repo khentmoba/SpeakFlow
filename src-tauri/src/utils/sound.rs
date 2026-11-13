@@ -29,9 +29,9 @@ fn generate_tone(base_freq: f32, duration_ms: u32, ascending: bool) -> Vec<u8> {
         })
         .collect();
 
-    // 本地生成的提示音：输入是代码生成的正弦波 i16 + 编译期常量采样率，
-    // hound 在这里失败只可能是开发阶段的参数错误（例如 spec 不匹配），
-    // 不是运行时可恢复的错误。因此用 expect，而不是传播 Result。
+    // Locally generated notification tone: the input is a code-generated sine wave of i16 plus a compile-time constant sample rate,
+    // so a hound failure here can only be a development-time parameter error (e.g. a spec mismatch),
+    // not a runtime-recoverable error. So use expect rather than propagating the Result.
     audio_service::encode_wav(&samples, SAMPLE_RATE).expect("static tone encoding must succeed")
 }
 
@@ -69,7 +69,7 @@ fn generate_double_tone(base_freq: f32, tone_ms: u32, gap_ms: u32, ascending: bo
         })
         .collect();
 
-    // 同 generate_tone：静态生成的提示音，编码失败属于编程期错误。
+    // Same as generate_tone: a statically generated notification tone; an encoding failure is a programming-time error.
     audio_service::encode_wav(&samples, SAMPLE_RATE).expect("static tone encoding must succeed")
 }
 

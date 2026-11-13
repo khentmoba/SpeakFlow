@@ -1,22 +1,22 @@
 use super::*;
 
-/// 向 Python 服务器发送命令并读取响应
+/// Send a command to the Python server and read the response
 ///
-/// 这是与 Python 进程通信的核心函数。
+/// This is the core function for talking to the Python process.
 ///
-/// # 通信流程
-/// 1. 持有进程锁，从全局状态中取出子进程
-/// 2. 将命令序列化为 JSON
-/// 3. 通过 stdin 写入 JSON + 换行符
-/// 4. 从 stdout 读取一行 JSON 响应
-/// 5. 把子进程放回全局状态
-/// 6. 反序列化响应并返回
+/// # Flow
+/// 1. Hold the process lock and take the child process out of global state
+/// 2. Serialize the command to JSON
+/// 3. Write the JSON + newline to stdin
+/// 4. Read one line of JSON response from stdout
+/// 5. Put the child process back into global state
+/// 6. Deserialize the response and return it
 ///
-/// # 注意事项
-/// - 每条消息必须以换行符结尾
-/// - 命令和响应都是单行 JSON
-/// - 为了保证同一时间只有一个命令与子进程通信，
-///   这里会在 I/O 完成前保持锁，避免并发读写导致协议错乱。
+/// # Notes
+/// - Every message must end with a newline
+/// - Commands and responses are both single-line JSON
+/// - To guarantee only one command talks to the child process at a time,
+///   the lock is held until I/O completes, which prevents concurrent reads/writes from corrupting the protocol.
 pub(super) async fn send_command_to_server<R: tauri::Runtime>(
     state: &AppState,
     command: &ServerCommand,
@@ -103,15 +103,15 @@ struct CommandEnvelope<'a> {
     command: &'a ServerCommand,
 }
 
-/// 向子进程发送命令并读取响应的内部实现
+/// Internal implementation of sending a command to the child process and reading the response
 ///
-/// 调用方在整个 I/O 期间持有进程锁和取消守卫。
+/// The caller holds the process lock and the cancel guard for the whole I/O.
 pub(super) async fn send_command_impl(
     process: &mut FunasrProcess,
     command: &ServerCommand,
 ) -> Result<ServerResponse, AppError> {
     let request_id = NEXT_SERVER_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
-    // 直接单次序列化为字节流，避免先 to_value 深拷贝 512KB base64 负载再 to_string 再 format
+    // Serialize straight to a byte stream once, avoiding to_value (a deep copy of the 512KB base64 payload) then to_string then format
     let mut command_bytes = serde_json::to_vec(&CommandEnvelope {
         request_id,
         command,
@@ -119,22 +119,22 @@ pub(super) async fn send_command_impl(
     .map_err(|e| AppError::Asr(format!("Failed to serialize command: {}", e)))?;
     command_bytes.push(b'\n');
 
-    // 写入命令到 stdin
-    // `write_all` 确保所有字节都被写入
+    // Write the command to stdin
+    // `write_all` ensures all bytes are written
     process
         .stdin
         .write_all(&command_bytes)
         .await
         .map_err(|e| AppError::Asr(format!("Failed to write command to FunASR: {}", e)))?;
 
-    // `flush` 确保缓冲区的数据被立即发送
+    // `flush` ensures buffered data is sent immediately
     process
         .stdin
         .flush()
         .await
         .map_err(|e| AppError::Asr(format!("Failed to flush stdin buffer: {}", e)))?;
 
-    // 从 stdout 读取响应（允许跳过非 JSON 行）
+    // Read the response from stdout (non-JSON lines may be skipped)
     read_json_response_matching(
         &mut process.stdout,
         Duration::from_secs(SERVER_RESPONSE_TIMEOUT_SECS),

@@ -525,7 +525,7 @@ pub async fn send_llm_request(
             response = retry_response;
         } else if should_reduce_anthropic_budget(endpoint, status, &error_message, &request_body) {
             log::warn!(
-                "当前模型拒绝较大的输出额度，使用兼容额度重试: provider={}, model={}",
+                "The current model rejected the larger output quota; retrying with a compatible quota: provider={}, model={}",
                 endpoint.provider,
                 endpoint.model,
             );
