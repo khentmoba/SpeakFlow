@@ -773,7 +773,7 @@ pub async fn set_models_dir(
         _ => paths::get_default_models_dir(),
     };
 
-    // Compare after canonicalizing to avoid Windows case/trailing-slash differences
+    // canonicalize before comparing to avoid Windows case/trailing-slash differences
     let canon_old = std::fs::canonicalize(&old_dir).unwrap_or_else(|_| old_dir.clone());
     // The target directory may not exist yet and canonicalize would fail; fall back to comparing the original paths
     let canon_new = std::fs::canonicalize(&new_dir).unwrap_or_else(|_| new_dir.clone());
