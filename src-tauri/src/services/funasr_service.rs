@@ -1,20 +1,20 @@
-//! FunASR 语音识别服务模块
+//! FunASR speech recognition service module
 //!
-//! 这是整个应用最核心、最复杂的模块。
-//! 它负责管理 FunASR Python 后端服务器的完整生命周期：
+//! This is the most central and most complex module in the app.
+//! It manages the full lifecycle of the FunASR Python backend server:
 //!
-//! 1. **查找 Python 解释器**：按优先级搜索可用的 Python
-//! 2. **启动服务器**：以子进程方式启动 Python 脚本
-//! 3. **通信协议**：通过 stdin/stdout 以 JSON 格式与 Python 进程通信
-//! 4. **语音转写**：发送音频数据，接收转写结果
-//! 5. **状态管理**：检查服务器状态、模型状态
-//! 6. **停止服务器**：优雅地关闭 Python 进程
+//! 1. **Locate the Python interpreter**: search for a usable Python by priority
+//! 2. **Start the server**: launch the Python script as a child process
+//! 3. **Communication protocol**: talk to the Python process in JSON over stdin/stdout
+//! 4. **Speech transcription**: send audio data and receive transcription results
+//! 5. **State management**: check server state and model state
+//! 6. **Stop the server**: shut the Python process down gracefully
 //!
-//! # 通信协议说明
-//! Rust 进程（父进程）和 Python 进程（子进程）通过标准输入/输出通信：
-//! - 父进程写入 JSON 命令到子进程的 stdin
-//! - 子进程处理后，将 JSON 结果写入 stdout
-//! - 每条消息占一行（以换行符分隔）
+//! # Communication protocol
+//! The Rust process (parent) and the Python process (child) communicate over stdin/stdout:
+//! - The parent writes JSON commands to the child's stdin
+//! - After processing, the child writes JSON results to stdout
+//! - Each message occupies one line (newline-delimited)
 //!
 //! ```text
 //! [Rust/Tauri] --stdin--> [Python/FunASR]
@@ -62,46 +62,46 @@ use protocol::{read_json_response, read_json_response_matching, ServerResponse};
 pub use protocol::{DiarizeSegment, ServerCommand};
 
 // ============================================================
-// 数据结构定义
+// Data structure definitions
 // ============================================================
 
-/// 语音转写的结果
+/// Result of speech transcription
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionResult {
-    /// 转写得到的文本
+    /// Transcribed text
     pub text: String,
-    /// 音频时长（秒）
+    /// Audio duration (seconds)
     pub duration: Option<f64>,
-    /// 是否成功
+    /// Whether it succeeded
     pub success: bool,
-    /// 错误信息（如果失败）
+    /// Error message (if it failed)
     pub error: Option<String>,
-    /// 检测到的语言
+    /// Detected language
     pub language: Option<String>,
 }
 
-/// FunASR 服务器的状态信息
+/// Status information of the FunASR server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunASRStatus {
-    /// 服务器是否正在运行
+    /// Whether the server is running
     pub running: bool,
-    /// 服务器是否已就绪（模型已加载）
+    /// Whether the server is ready (model loaded)
     pub ready: bool,
-    /// 模型是否已加载
+    /// Whether the model has loaded
     pub model_loaded: bool,
-    /// 推理设备（cpu/cuda）
+    /// Inference device (cpu/cuda)
     pub device: Option<String>,
-    /// GPU 名称（如果可用）
+    /// GPU name (if available)
     pub gpu_name: Option<String>,
-    /// GPU 总显存（GB）
+    /// Total GPU memory (GB)
     pub gpu_memory_total: Option<f64>,
-    /// 状态描述信息
+    /// Status description
     pub message: String,
-    /// 当前引擎
+    /// Current engine
     pub engine: Option<String>,
-    /// 模型文件是否齐备
+    /// Whether the model files are complete
     pub models_present: Option<bool>,
-    /// 缺失模型列表
+    /// List of missing models
     pub missing_models: Option<Vec<String>>,
     pub model_state: Option<ModelState>,
     pub corrupt_models: Option<Vec<String>>,
@@ -148,22 +148,22 @@ mod runtime_readiness_tests {
     }
 }
 
-/// 模型文件检查结果
+/// Result of checking local model files
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelCheckResult {
-    /// 所有必需的模型是否都已就位
+    /// Whether all required models are present
     pub all_present: bool,
-    /// ASR（语音识别）模型是否存在
+    /// Whether the ASR (speech recognition) model exists
     pub asr_model: bool,
-    /// VAD（语音活动检测）模型是否存在
+    /// Whether the VAD (voice activity detection) model exists
     pub vad_model: bool,
-    /// 标点符号模型是否存在
+    /// Whether the punctuation model exists
     pub punc_model: bool,
-    /// 当前引擎
+    /// Current engine
     pub engine: String,
-    /// 模型缓存目录的路径
+    /// Path to the model cache directory
     pub cache_path: String,
-    /// 缺失的模型列表
+    /// List of missing models
     pub missing_models: Vec<String>,
     pub model_state: ModelState,
     pub corrupt_models: Vec<String>,
@@ -239,8 +239,8 @@ impl EngineProgressGate {
     }
 }
 
-/// 启动守卫：异常返回或 future 被取消时同步杀掉尚未 promote 的子进程，
-/// 清理 matching starting slot，并且只释放自己的 owner。
+/// Startup guard: synchronously kills an unpromoted child process on early return
+/// or future cancellation, clears the matching starting slot, and releases only its own owner.
 struct StartingFlagGuard<'a> {
     engine: &'a EngineState,
     owner: u64,
@@ -364,7 +364,7 @@ fn report_model_repo_file_state(
 }
 
 // ============================================================
-// 核心功能实现
+// Core implementation
 // ============================================================
 
 #[cfg(test)]
@@ -402,9 +402,9 @@ async fn try_send_exit_command(process: &mut FunasrProcess) -> Result<(), AppErr
     Ok(())
 }
 
-/// 把 GPU 空闲秒数发给正在运行的 Python 进程。进程不在时只保留配置。
+/// Sends the GPU idle timeout (in seconds) to the running Python process, or only saves the config when stopped.
 ///
-/// 不修改 ready：卸载后的 status 仍由既有粘滞逻辑保持就绪。
+/// Does not modify `ready`: post-unload status remains ready via the existing sticky logic.
 pub async fn push_gpu_idle_seconds(state: &AppState, seconds: u64) -> Result<(), AppError> {
     let has_process = {
         let guard = state.engine.funasr_process.lock().await;
@@ -448,8 +448,8 @@ pub async fn push_model_dirs(state: &AppState) -> Result<(), AppError> {
     Ok(())
 }
 
-/// 检查 FunASR 服务器的状态
-// 需要引入 Emitter trait 才能使用 emit 方法
+/// Checks the status of the FunASR server
+// Emitter trait is required for the emit method
 use tauri::Emitter;
 
 #[cfg(test)]

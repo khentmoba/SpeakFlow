@@ -128,7 +128,7 @@ pub(super) fn ensure_reg_hotkey_backend() -> Result<(), AppError> {
                         if let Some(state) = registered.get(&id) {
                             send_dispatch(DispatchEvent::Press(
                                 state.clone(),
-                                format!("{} 按下（RegisterHotKey）", state.spec.label()),
+                                format!("{} pressed (RegisterHotKey)", state.spec.label()),
                             ));
                         }
                     }

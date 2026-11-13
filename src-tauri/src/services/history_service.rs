@@ -310,8 +310,8 @@ pub async fn initialize() -> Result<(), String> {
             tokio::task::spawn_blocking(|| {
                 let connection = open_connection()?;
                 configure_connection(&connection)?;
-                // 初始化完成前所有历史操作都会等待此 OnceCell，因此这里清理的
-                // 只能是上次进程崩溃遗留的租约和孤立音频。
+                // All history operations wait on this OnceCell before initialization completes, so what gets cleaned up here
+                // can only be leases and orphaned audio left behind by a previous process crash.
                 connection
                     .execute("DELETE FROM history_audio_leases", [])
                     .map_err(|error| {
@@ -473,8 +473,8 @@ pub async fn get(id: i64) -> Result<Option<StoredHistoryRecord>, String> {
     .map_err(|error| format!("Failed to execute transcription history read task: {error}"))?
 }
 
-/// 原子读取待重处理记录并为其音频建立租约。删除命令与这里都使用 IMMEDIATE
-/// 事务，因此不可能在“读到记录”和“保护音频”之间把最后一个 WAV 引用删掉。
+/// Atomically read records awaiting reprocessing and take out leases on their audio. The delete command and this function both use IMMEDIATE
+/// transactions, so the last WAV reference cannot be deleted between "record read" and "audio protected".
 fn get_for_reprocess_with_connection(
     connection: &mut Connection,
     id: i64,
@@ -873,8 +873,8 @@ fn cleanup_audio_if_unreferenced_with_connection(connection: &Connection, audio_
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => {
-            // 数据库操作已经提交，文件回收属于可重试垃圾回收，不能把已经
-            // 成功的删除伪装成整体失败。
+            // The database operation has already committed; file reclamation is retryable garbage collection and must not make a
+            // deletion that already succeeded look like an overall failure.
             log::warn!("Failed to delete history audio, retaining for next startup retry: {audio_file}: {error}");
         }
     }

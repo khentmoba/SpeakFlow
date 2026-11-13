@@ -152,13 +152,13 @@ pub struct RecordingSession {
     pub interim_task: Option<tokio::task::JoinHandle<()>>,
     pub native_recording: Option<crate::services::audio_service::NativeRecording>,
     pub interim_cache: Arc<parking_lot::Mutex<Option<InterimCache>>>,
-    /// 录音热键触发时的前台应用快照。规则、历史元数据和截图授权都必须基于
-    /// 同一个边界，避免收尾阶段切换窗口后套用错误的隐私策略。
+    /// Snapshot of the foreground app when the recording hotkey fired. Rules, history metadata and screenshot authorization must all be based on
+    /// the same boundary, so switching windows during finalization cannot apply the wrong privacy policy.
     pub foreground_app: Option<crate::utils::foreground::ForegroundApp>,
     /// Exact window identity captured before asynchronous recording startup.
     pub paste_target: Option<isize>,
-    /// 热键按下时并行抓取的选中文本任务。与会话同生同死，避免全局共享导致的
-    /// 跨会话污染（finalize_N 读到 hotkey_{N+1} 的 grab）。
+    /// Selected-text task grabbed in parallel when the hotkey is pressed. It lives and dies with the session, avoiding the
+    /// cross-session contamination a global share would cause (finalize_N reading the grab of hotkey_{N+1}).
     pub edit_grab: Option<tokio::task::JoinHandle<Option<String>>>,
 }
 
@@ -249,31 +249,31 @@ impl Default for HotkeyDiagnosticState {
     }
 }
 
-// ---------- AppState 按领域分组的子结构 ----------
+// ---------- AppState sub-structs grouped by domain ----------
 
-/// ASR 引擎生命周期 + 下载 + 传输能力探测
+/// ASR engine lifecycle + downloads + transport capability probing
 pub struct EngineState {
     /// Serialize entire native utterances, including final flush and cancellation.
     pub native_asr_owner: Arc<Mutex<()>>,
     pub funasr_process: Arc<Mutex<Option<FunasrProcess>>>,
-    /// 已生成但尚未完成初始化的子进程。使用同步句柄以便取消/Drop 时立即 start_kill。
+    /// Child process that has been spawned but has not finished initializing. Uses a synchronous handle so start_kill can run immediately on cancel/Drop.
     pub funasr_starting_process: Arc<parking_lot::Mutex<Option<StartingFunasrProcess>>>,
-    /// 串行化 restart / engine switch / model-dir migration 等生命周期操作。
+    /// Serializes lifecycle operations such as restart / engine switch / model-dir migration.
     pub funasr_lifecycle_op: Mutex<()>,
-    /// 引擎归档解压 singleflight，防止多个启动/下载任务并行替换引擎目录。
+    /// Engine archive extraction singleflight, preventing several start/download tasks from replacing the engine directory in parallel.
     pub engine_install_op: Mutex<()>,
-    /// 将解压进度的代数检查与状态广播组成原子提交，避免旧 loading
-    /// 在 stop/switch 的最终状态之后才抵达前端。
+    /// Makes the generation check of extraction progress and the state broadcast one atomic commit, so a stale loading
+    /// cannot reach the frontend after the final state of stop/switch.
     pub funasr_status_commit: Arc<parking_lot::Mutex<()>>,
     pub funasr_ready: Arc<AtomicBool>,
     pub supports_native_streaming: AtomicBool,
     pub supports_diarization: AtomicBool,
-    /// 当前 FunASR 启动所有者。0=空闲，u64::MAX=迁移期间禁止启动。
+    /// Current FunASR start owner. 0=idle, u64::MAX=start forbidden during migration.
     funasr_starting_owner: AtomicU64,
-    /// 引擎生命周期代数，stop_server 递增，start_server 据此检测是否被取消
+    /// Engine lifecycle generation; stop_server increments it and start_server uses it to detect cancellation
     pub funasr_generation: Arc<AtomicU64>,
     pub download_task: Arc<Mutex<Option<DownloadTask>>>,
-    /// 内存音频传输支持状态：0=未知, 1=支持, 2=不支持
+    /// In-memory audio transport support state: 0=unknown, 1=supported, 2=unsupported
     pub inline_audio_transport: AtomicU8,
 }
 
@@ -297,7 +297,7 @@ impl Default for EngineState {
     }
 }
 
-/// 当前录音会话 + 粘贴队列 + 麦克风相关运行时
+/// Current recording session + paste queue + microphone-related runtime
 pub struct RecordingState {
     pub recording: Arc<parking_lot::Mutex<Option<RecordingSlot>>>,
     recording_snapshot: Arc<parking_lot::Mutex<Option<RecordingSnapshot>>>,
@@ -395,7 +395,7 @@ impl RecordingState {
     }
 }
 
-/// 用户配置 + 各类 AI / ASR API key + 能力缓存
+/// User config + AI / ASR API keys of every kind + capability cache
 #[derive(Default)]
 pub struct ProfileState {
     pub user_profile: Arc<parking_lot::Mutex<UserProfile>>,
@@ -410,7 +410,7 @@ pub struct ProfileState {
     pub ai_polish_stream_started_sessions: Arc<parking_lot::Mutex<HashSet<u64>>>,
 }
 
-/// UI / 交互类偏好 + 诊断
+/// UI / interaction preferences + diagnostics
 pub struct UiState {
     pub input_method: Arc<parking_lot::Mutex<String>>,
     pub sound_enabled: Arc<AtomicBool>,
@@ -549,12 +549,12 @@ impl AppState {
         self.profile.user_profile.lock().clone()
     }
 
-    /// 借用 profile 执行只读操作，无需克隆
+    /// Borrow the profile for read-only operations without cloning
     pub fn with_profile<R>(&self, f: impl FnOnce(&UserProfile) -> R) -> R {
         f(&self.profile.user_profile.lock())
     }
 
-    /// 修改 profile，不返回克隆（无需持久化时使用）
+    /// Mutate the profile without returning a clone (use when persistence is not needed)
     pub fn update_profile_mut<R>(&self, f: impl FnOnce(&mut UserProfile) -> R) -> R {
         f(&mut self.profile.user_profile.lock())
     }

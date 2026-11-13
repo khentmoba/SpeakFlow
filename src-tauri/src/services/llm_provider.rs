@@ -15,7 +15,7 @@ mod reasoning;
 pub use endpoint::*;
 pub use reasoning::*;
 
-/// 获取模型列表 URL
+/// Get the model list URL
 pub fn models_url(config: &LlmProviderConfig, provider: &str, base_url: Option<&str>) -> String {
     if !is_preset(provider) {
         if let Some(cp) = config.custom_providers.iter().find(|p| p.id == provider) {
@@ -34,7 +34,7 @@ pub fn models_url(config: &LlmProviderConfig, provider: &str, base_url: Option<&
     }
 }
 
-/// 规范化 Anthropic 模型列表 URL（`/v1/models`）
+/// Normalize the Anthropic model list URL (`/v1/models`)
 fn normalize_anthropic_models_url(base_url: &str) -> String {
     let trimmed = base_url.trim().trim_end_matches('/');
     if trimmed.is_empty() {
@@ -56,7 +56,7 @@ fn normalize_anthropic_models_url(base_url: &str) -> String {
     format!("{trimmed}/v1/models")
 }
 
-/// 获取密钥环用户名（每个后端独立存储 API Key）
+/// Get the keyring user name (each backend stores its API key separately)
 pub fn keyring_user_for_provider(provider: &str) -> String {
     match provider {
         OPENAI => "openai-api-key".to_string(),
@@ -72,7 +72,7 @@ pub fn keyring_user_for_provider(provider: &str) -> String {
     }
 }
 
-/// 构建认证 headers（按 api_format 分支）
+/// Build auth headers (branching on api_format)
 pub fn build_auth_headers(
     api_format: &ApiFormat,
     api_key: &str,
@@ -134,7 +134,7 @@ pub fn build_auth_headers(
     Ok(headers)
 }
 
-/// 保存或删除 API Key：非空则写入密钥环，空则删除
+/// Save or delete an API key: write to the keyring if non-empty, delete if empty
 pub fn save_or_delete_api_key<R: tauri::Runtime>(
     app_handle: &tauri::AppHandle<R>,
     keyring_user: &str,

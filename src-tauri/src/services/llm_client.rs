@@ -1,17 +1,17 @@
+mod error;
 mod events;
 mod protocol;
 mod request;
 mod stream;
 mod transport;
 
+pub use error::LlmError;
 pub use request::{build_llm_body, LlmImageInput, LlmRequestOptions, LlmUserInput};
 #[allow(unused_imports)]
 pub use stream::{read_anthropic_sse_stream, read_openai_responses_sse_stream, read_sse_stream};
 pub use transport::send_llm_request;
 
-pub(crate) use protocol::{
-    ensure_non_empty_llm_content, is_empty_llm_response_error, is_terminal_provider_error,
-};
+pub(crate) use protocol::{ensure_non_empty_llm_content, is_empty_llm_response_error};
 
 pub(crate) use stream::AI_POLISH_STREAM_PROGRESS_TIMEOUT_SECS;
 

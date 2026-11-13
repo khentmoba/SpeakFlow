@@ -55,7 +55,8 @@ async fn non_streaming_body_reads_share_the_request_deadline() {
         server.abort();
         let error = result
             .expect("response body must finish within the original request budget")
-            .unwrap_err();
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("timed out"), "{status}: {error}");
     }
 }
@@ -100,6 +101,7 @@ async fn non_streaming_retry_body_uses_the_remaining_request_budget() {
     assert!(result
         .expect("retry must not restart the request budget")
         .unwrap_err()
+        .to_string()
         .contains("timed out"));
 }
 
@@ -367,7 +369,8 @@ async fn native_anthropic_failed_budget_retry_is_not_repeated_or_cached() {
     let error =
         llm_client::send_llm_request(&client, &endpoint, "test-key", &body, 5, None, options)
             .await
-            .expect_err("a rejected 4096 budget must stop after one retry");
+            .expect_err("a rejected 4096 budget must stop after one retry")
+            .to_string();
     assert!(error.contains("max_tokens"));
     let response =
         llm_client::send_llm_request(&client, &endpoint, "test-key", &body, 5, None, options)
@@ -427,7 +430,8 @@ async fn native_anthropic_other_errors_never_remove_or_downgrade_required_budget
         let error =
             llm_client::send_llm_request(&client, &endpoint, "test-key", &body, 5, None, options)
                 .await
-                .expect_err("unrelated failures must not trigger a budget compatibility retry");
+                .expect_err("unrelated failures must not trigger a budget compatibility retry")
+                .to_string();
         assert!(
             error.contains(message),
             "original error must survive: {error}"
@@ -1425,7 +1429,8 @@ async fn auto_reasoning_fallback_non_reasoning_error_does_not_strip_or_cache() {
         options,
     )
     .await
-    .expect_err("non-reasoning fallback errors must stop compatibility retries");
+    .expect_err("non-reasoning fallback errors must stop compatibility retries")
+    .to_string();
 
     let captured_bodies = server.await.expect("server task should complete");
 
@@ -1514,7 +1519,8 @@ async fn cached_no_controls_reasoning_error_does_not_retry_same_body() {
         options,
     )
     .await
-    .expect_err("cached no-controls state should not retry an identical terminal request");
+    .expect_err("cached no-controls state should not retry an identical terminal request")
+    .to_string();
 
     let captured_bodies = server.await.expect("server task should complete");
 
@@ -1777,7 +1783,8 @@ async fn token_limit_error_without_token_field_does_not_retry_identical_body() {
         options,
     )
     .await
-    .expect_err("a token-limit-looking error without a token field should fail fast");
+    .expect_err("a token-limit-looking error without a token field should fail fast")
+    .to_string();
     let captured_bodies = server.await.expect("server task should complete");
 
     assert!(
@@ -2141,7 +2148,7 @@ async fn open_sse_response(body: &str) -> (reqwest::Response, tokio::task::JoinH
     (response, server)
 }
 
-async fn request_chatgpt_plan_stream(body: &str) -> Result<String, String> {
+async fn request_chatgpt_plan_stream(body: &str) -> Result<String, llm_client::LlmError> {
     use base64::Engine;
     let (url, server) = spawn_sse_response_server(body).await;
     let endpoint = unknown_openai_compat_endpoint(
@@ -2197,12 +2204,10 @@ async fn chatgpt_plan_stream_error_preserves_code_and_stops_transport_fallback()
     ] {
         let event = format!("data: {{\"type\":\"response.failed\",\"response\":{{\"error\":{{\"code\":\"{code}\",\"message\":\"Request rejected\",\"param\":\"grant\"}}}}}}\n\n");
         let error = request_chatgpt_plan_stream(&event).await.unwrap_err();
-        assert!(error.contains(code), "lost code: {error}");
-        assert!(error.contains("param: grant"), "lost parameter: {error}");
-        assert!(
-            llm_client::is_terminal_provider_error(&error),
-            "repeated plan request: {error}"
-        );
+        let message = error.to_string();
+        assert!(message.contains(code), "lost code: {error}");
+        assert!(message.contains("param: grant"), "lost parameter: {error}");
+        assert!(error.is_terminal(), "repeated plan request: {error}");
     }
 }
 
@@ -2293,7 +2298,9 @@ async fn responses_sse_loopback_surfaces_failed_response() {
     server.await.expect("SSE server should finish");
 
     assert_eq!(
-        result.expect_err("failed Responses events must fail the request"),
+        result
+            .expect_err("failed Responses events must fail the request")
+            .to_string(),
         "Responses streaming error: responses provider failed"
     );
 }

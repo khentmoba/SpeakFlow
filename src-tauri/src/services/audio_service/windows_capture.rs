@@ -43,7 +43,7 @@ pub(super) struct WindowsSpeechCapture {
     event: Handle,
     raw_buffer: Vec<u8>,
     chunk_buffer: Vec<i16>,
-    // 必须最后析构，确保所有 COM 音频对象先释放。
+    // Must be dropped last so all COM audio objects are released first.
     _com: ComGuard,
 }
 

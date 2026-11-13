@@ -1,6 +1,6 @@
-//! 模型下载服务
+//! Model download service
 //!
-//! 从 commands/funasr.rs 中提取的模型下载逻辑。
+//! Model download logic extracted from commands/funasr.rs.
 
 use crate::services::funasr_service;
 use crate::state::AppState;
@@ -13,7 +13,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::oneshot;
 
-/// 下载进度行的 JSON 结构
+/// JSON shape of a download progress line
 #[derive(serde::Deserialize)]
 struct DownloadLine {
     success: Option<bool>,
@@ -84,16 +84,16 @@ fn emit_download_status(app_handle: &tauri::AppHandle, payload: serde_json::Valu
     let _ = app_handle.emit("model-download-status", payload);
 }
 
-/// 执行模型下载
+/// Run a model download
 ///
-/// 启动 Python 下载脚本，逐行读取进度并通过 Tauri 事件转发给前端。
-/// 支持通过 cancel channel 取消下载。
+/// Launches the Python download script, reads progress line by line and forwards it to the frontend via Tauri events.
+/// Supports cancelling the download through a cancel channel.
 pub async fn run_download(
     app_handle: &tauri::AppHandle,
     state: &AppState,
 ) -> Result<String, AppError> {
     crate::services::local_only::ensure("Download a model").map_err(AppError::Other)?;
-    // 获取下载脚本路径，清理 Windows \\?\ 前缀
+    // Get the download script path and strip the Windows \\?\ prefix
     let download_script = paths::get_download_script_path(app_handle);
     let download_script_str = paths::strip_win_prefix(&download_script);
 
@@ -102,8 +102,8 @@ pub async fn run_download(
     let (cancel_tx, mut cancel_rx) = oneshot::channel();
     let task_id = NEXT_DOWNLOAD_TASK_ID.fetch_add(1, Ordering::Relaxed);
     {
-        // 与模型目录切换串行登记。登记完成后 set_models_dir 会看到 active slot
-        // 并拒绝迁移，直到下载子进程真正退出并清理自己的 task ID。
+        // Registered serially with model-directory switching. Once registered, set_models_dir sees the active slot
+        // and refuses to migrate until the download child process actually exits and cleans up its own task ID.
         let _lifecycle_guard = state.engine.funasr_lifecycle_op.lock().await;
         let mut guard = state.engine.download_task.lock().await;
         if guard.is_some() {
@@ -118,7 +118,7 @@ pub async fn run_download(
         });
     }
 
-    // 查找引擎运行时；失败或取消时也必须释放刚登记的下载槽。
+    // Find the engine runtime; on failure or cancellation the just-registered download slot must also be released.
     let generation = state.engine.funasr_generation.load(Ordering::SeqCst);
     let runtime = tokio::select! {
         _ = &mut cancel_rx => {
@@ -143,7 +143,7 @@ pub async fn run_download(
         }
     };
 
-    // 仅开发模式需要检查脚本是否存在；此时 task 已登记，错误路径必须按 ID 清理。
+    // Only dev mode needs to check that the script exists; the task is already registered, so the error path must clean up by ID.
     if matches!(runtime, funasr_service::EngineRuntime::Development { .. })
         && !download_script.exists()
     {
@@ -154,7 +154,7 @@ pub async fn run_download(
         )));
     }
 
-    // 通知前端开始下载
+    // Notify the frontend that the download is starting
     emit_download_status(
         app_handle,
         serde_json::json!({
@@ -163,8 +163,8 @@ pub async fn run_download(
         }),
     );
 
-    // 启动下载脚本（逐行读取 stdout 以转发进度）
-    // 模型从 HuggingFace 下载，使用 HF 默认缓存目录
+    // Launch the download script (read stdout line by line to forward progress)
+    // Models download from HuggingFace using the default HF cache directory
     let engine = paths::read_engine_config();
     let engine_arg = if paths::is_local_engine(&engine) {
         engine.as_str()
@@ -204,7 +204,7 @@ pub async fn run_download(
             }
         });
 
-    // Windows 上隐藏控制台窗口
+    // Hide the console window on Windows
     #[cfg(target_os = "windows")]
     {
         const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -309,7 +309,7 @@ pub async fn run_download(
         status.success(),
     );
 
-    // 清理下载任务
+    // Clean up the download task
     clear_download_task(state, task_id).await;
 
     if cancelled {

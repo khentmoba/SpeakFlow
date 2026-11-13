@@ -102,7 +102,7 @@ fn require_window(
         .ok_or_else(|| AppError::Tauri(missing_message.to_string()))
 }
 
-/// 获取光标所在显示器（物理坐标比对）
+/// Get the display containing the cursor (compared in physical coordinates)
 #[cfg(target_os = "windows")]
 fn find_cursor_monitor(app_handle: &tauri::AppHandle) -> Option<tauri::Monitor> {
     use windows_sys::Win32::Foundation::POINT;
@@ -158,7 +158,7 @@ fn resolve_subtitle_layout(app_handle: &tauri::AppHandle) -> (f64, f64, f64, f64
         let y = screen_pos.y as f64 / scale_factor;
         (logical_width, logical_height, x, y)
     } else {
-        log::warn!("未获取到显示器信息，字幕窗口使用默认布局");
+        log::warn!("Could not get display info; caption window uses the default layout");
         (
             DEFAULT_SUBTITLE_WINDOW_WIDTH,
             DEFAULT_SUBTITLE_WINDOW_HEIGHT,
@@ -341,7 +341,7 @@ fn hide_guard_matches(
 
 fn stale_session_show_result(session_id: u64, show_gen: u64) -> String {
     log::debug!(
-        "忽略过期字幕显示请求 (session {}, generation {})",
+        "Ignoring stale caption show request (session {}, generation {})",
         session_id,
         show_gen
     );
@@ -374,7 +374,10 @@ fn show_subtitle_window_unlocked(
         "Subtitle window is missing after creation",
     )?;
     if let Err(err) = apply_subtitle_layout(app_handle, &window) {
-        log::warn!("刷新字幕窗口布局失败，继续尝试显示: {}", err);
+        log::warn!(
+            "Failed to refresh caption window layout; continuing to try showing it: {}",
+            err
+        );
     }
 
     if let Some((session_id, show_gen)) = session {
@@ -397,7 +400,7 @@ fn show_subtitle_window_unlocked(
     }
 
     if let Err(err) = set_subtitle_window_interactive(app_handle, false) {
-        log::warn!("重新设置字幕窗口鼠标穿透失败: {}", err);
+        log::warn!("Failed to reset caption window mouse pass-through: {}", err);
     }
 
     Ok("Subtitle window shown".to_string())
@@ -524,7 +527,7 @@ pub(crate) fn schedule_subtitle_hide(
             );
         }
         if let Err(err) = hide_result {
-            log::warn!("隐藏字幕窗口失败: {}", err);
+            log::warn!("Failed to hide caption window: {}", err);
         }
     });
 }

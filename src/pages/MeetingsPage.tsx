@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   ChevronDown,
   ChevronUp,
@@ -26,6 +25,7 @@ import {
   startMeetingRecording,
   stopMeetingRecording,
 } from "@/api/tauri";
+import { useTauriEvent } from "@/hooks/useTauriEvent";
 import { formatMeetingDuration } from "@/lib/behaviorConfig";
 import type {
   MeetingExportFormat,
@@ -88,28 +88,11 @@ export default function MeetingsPage({ animClass = "" }: { animClass?: string })
     return () => window.clearInterval(timer);
   }, [status?.recording, status?.processing, refreshStatus]);
 
-  useEffect(() => {
-    const unlisteners: UnlistenFn[] = [];
-    let cancelled = false;
-    const register = async () => {
-      const finished = await listen("meeting-finished", () => {
-        void load();
-        void refreshStatus();
-      });
-      const changed = await listen("meeting-status", () => { void refreshStatus(); });
-      if (cancelled) {
-        finished();
-        changed();
-        return;
-      }
-      unlisteners.push(finished, changed);
-    };
-    void register();
-    return () => {
-      cancelled = true;
-      unlisteners.forEach((unlisten) => unlisten());
-    };
-  }, [load, refreshStatus]);
+  useTauriEvent("meeting-finished", () => {
+    void load();
+    void refreshStatus();
+  });
+  useTauriEvent("meeting-status", () => { void refreshStatus(); });
 
   const toggleRecording = async () => {
     setBusy(true);

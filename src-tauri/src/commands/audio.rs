@@ -80,9 +80,9 @@ pub(crate) async fn start_recording_inner(
     app_handle: tauri::AppHandle,
     state: &AppState,
     trigger: RecordingTrigger,
-    // 调用方（如 hotkey 路径）在 start 之前已 spawn 的选中文本抓取任务，
-    // 会被存进最终创建的 RecordingSession，由 finalize/discard 路径负责回收。
-    // 本函数如果在任何路径上提前失败，这个本地 Option 会自然 drop，JoinHandle 被 detach。
+    // A selected-text capture task spawned by the caller (e.g. the hotkey path) before start
+    // is stored in the RecordingSession that is finally created; the finalize/discard path reclaims it.
+    // If this function fails early on any path, the local Option drops and the JoinHandle is detached.
     edit_grab: Option<tokio::task::JoinHandle<Option<String>>>,
 ) -> Result<u64, AppError> {
     start_recording_with_start_owner(app_handle, state, trigger, edit_grab, None).await
@@ -167,8 +167,8 @@ pub(crate) async fn start_recording_with_start_owner(
         return Err(AppError::Audio(RECORDING_NOT_READY_ERROR.into()));
     }
 
-    // 在任何字幕窗口/异步任务启动前抓取目标应用。后续收尾可能延迟数秒，
-    // 不能再读取届时的前台窗口来决定历史或截图策略。
+    // Capture the target app before any caption window or async task starts. Finalization may
+    // be delayed by several seconds, so the then-current foreground window must not decide the history or screenshot policy.
     let foreground_app = crate::utils::foreground::get_foreground_app();
     let paste_target = crate::services::selection_service::foreground_window_id();
 
@@ -278,8 +278,14 @@ pub(crate) async fn start_recording_with_start_owner(
 
     match show_task.await {
         Ok(Ok(_)) => {}
-        Ok(Err(err)) => log::warn!("显示字幕窗口失败（录音继续）: {}", err),
-        Err(err) => log::warn!("字幕窗口显示任务异常结束（录音继续）: {}", err),
+        Ok(Err(err)) => log::warn!(
+            "Failed to show caption window (recording continues): {}",
+            err
+        ),
+        Err(err) => log::warn!(
+            "Caption window show task ended abnormally (recording continues): {}",
+            err
+        ),
     }
     let capture_result = match capture_task.await {
         Ok(result) => result,
@@ -490,7 +496,7 @@ pub(crate) async fn start_recording_with_start_owner(
         }
     }
     log::info!(
-        "录音已开始 (session {}, {}Hz, mode={})",
+        "Recording started (session {}, {}Hz, mode={})",
         session_id,
         actual_sample_rate,
         trigger.mode().as_str()
@@ -562,13 +568,13 @@ pub(crate) async fn stop_recording_inner(
         None => {
             // No session means no release tail, so nothing is still capturing.
             crate::services::audio_service::restore_audio();
-            log::warn!("stop_recording 被调用但没有活跃的录音会话");
+            log::warn!("stop_recording called but there is no active recording session");
             return Ok(None);
         }
         Some(RecordingSlot::Starting(p)) => {
             // A cancelled start never opened the capture stream, so no tail runs.
             crate::services::audio_service::restore_audio();
-            log::info!("录音启动阶段已取消 (session {})", p.session_id);
+            log::info!("Recording start phase cancelled (session {})", p.session_id);
             if let Some(snapshot) = transition.as_ref() {
                 emit_recording_state(&app_handle, snapshot, false, false, false, None);
             }
@@ -591,7 +597,7 @@ pub(crate) async fn stop_recording_inner(
             RecordingMode::Assistant => crate::utils::sound::play_assistant_stop_sound(),
         }
     }
-    log::info!("正在停止录音 (session {})", session_id);
+    log::info!("Stopping recording (session {})", session_id);
     if let Some(snapshot) = transition.as_ref() {
         emit_recording_state(&app_handle, snapshot, false, false, true, None);
     }
@@ -696,9 +702,9 @@ pub async fn set_input_method(
     state: tauri::State<'_, AppState>,
     method: String,
 ) -> Result<(), AppError> {
-    // 仅允许这两个取值。clipboard.rs 的 paste_text_impl 把 "clipboard" 单独
-    // 分支处理，其余值都走 SendInput，所以"任意 String"等于把所有未知值悄悄
-    // 解释为 sendInput。这里在入口卡死，避免 UI 错位/typo 写入静默退化。
+    // Only these two values are allowed. paste_text_impl in clipboard.rs handles "clipboard"
+    // as its own branch and every other value goes through SendInput, so accepting "any String" would silently
+    // treat unknown values as sendInput. Reject them at the entry point so UI mismatches/typos cannot degrade silently.
     match method.as_str() {
         "sendInput" | "clipboard" => {
             *state.ui.input_method.lock() = method;

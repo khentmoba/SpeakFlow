@@ -63,7 +63,7 @@ fn validate_audio_payload(audio_data: &[u8]) -> Result<(), AppError> {
             }
         }
         Err(err) => {
-            log::debug!("GLM-ASR WAV 时长预检跳过：{}", err);
+            log::debug!("GLM-ASR WAV duration precheck skipped: {}", err);
         }
     }
 

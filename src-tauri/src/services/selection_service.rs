@@ -155,7 +155,9 @@ pub fn hide_selection_window(app_handle: &tauri::AppHandle) -> Result<(), String
 
     let tauri_error = window.hide().err().map(|error| error.to_string());
     if let Some(error) = tauri_error.as_deref() {
-        log::warn!("Tauri 隐藏划词助手窗口失败，将尝试 Win32 SW_HIDE: {error}");
+        log::warn!(
+            "Tauri failed to hide the selection assistant window; will try Win32 SW_HIDE: {error}"
+        );
     }
 
     #[cfg(target_os = "windows")]
@@ -788,7 +790,7 @@ fn run_hook_message_loop() {
             SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook), std::ptr::null_mut(), 0);
         if mouse.is_null() || keyboard.is_null() {
             log::error!(
-                "安装划词全局输入监听失败: {}",
+                "Failed to install the global input listener for selection: {}",
                 std::io::Error::last_os_error()
             );
             if !mouse.is_null() {
@@ -828,7 +830,7 @@ fn run_selection_worker(
             HookEvent::Dismiss => {
                 gesture_tracker.clear();
                 if let Err(error) = hide_selection_window(&app_handle) {
-                    log::warn!("外部键盘事件隐藏划词助手失败: {error}");
+                    log::warn!("Failed to hide the selection assistant on an external keyboard event: {error}");
                 }
                 cancel_active_request(&app_handle);
             }
@@ -838,7 +840,7 @@ fn run_selection_worker(
                     gesture_tracker.clear();
                 } else {
                     if let Err(error) = hide_selection_window(&app_handle) {
-                        log::warn!("外部鼠标事件隐藏划词助手失败: {error}");
+                        log::warn!("Failed to hide the selection assistant on an external mouse event: {error}");
                     }
                     cancel_active_request(&app_handle);
                     gesture_tracker.begin(sample);
@@ -875,7 +877,7 @@ fn run_selection_worker(
                         }) {
                         Ok(task) => Some(task),
                         Err(error) => {
-                            log::warn!("启动划词自动截图失败，回退纯文本: {error}");
+                            log::warn!("Failed to start automatic selection screenshot; falling back to text only: {error}");
                             None
                         }
                     }
@@ -900,18 +902,18 @@ fn run_selection_worker(
                     Some(task) => match task.join() {
                         Ok(Ok(images)) => images,
                         Ok(Err(error)) => {
-                            log::warn!("划词自动截图失败，回退纯文本: {error}");
+                            log::warn!("Automatic selection screenshot failed; falling back to text only: {error}");
                             Vec::new()
                         }
                         Err(_) => {
-                            log::warn!("划词自动截图线程异常，回退纯文本");
+                            log::warn!("Automatic selection screenshot thread failed unexpectedly; falling back to text only");
                             Vec::new()
                         }
                     },
                     None => Vec::new(),
                 };
                 if let Err(error) = show_selection(&app_handle, gesture, text, screenshots) {
-                    log::warn!("显示划词助手失败: {error}");
+                    log::warn!("Failed to show the selection assistant: {error}");
                 }
             }
         }

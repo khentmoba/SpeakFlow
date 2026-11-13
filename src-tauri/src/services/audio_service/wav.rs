@@ -1,6 +1,6 @@
 use crate::utils::AppError;
 
-// ---------- WAV 编码 ----------
+// ---------- WAV encoding ----------
 
 pub fn encode_wav(samples: &[i16], sample_rate: u32) -> Result<Vec<u8>, AppError> {
     let spec = hound::WavSpec {
@@ -25,7 +25,7 @@ pub fn encode_wav(samples: &[i16], sample_rate: u32) -> Result<Vec<u8>, AppError
     Ok(cursor.into_inner())
 }
 
-// ---------- 单元测试 ----------
+// ---------- Unit tests ----------
 //
 // TDD red-state tests for `encode_wav`.
 //

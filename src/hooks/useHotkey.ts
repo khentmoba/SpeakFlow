@@ -1,4 +1,3 @@
-import { listen } from "@tauri-apps/api/event";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   getHotkeyDiagnostic,
@@ -7,6 +6,7 @@ import {
 import { DEFAULT_HOTKEY, HOTKEY_STORAGE_KEY } from "@/lib/constants";
 import { formatHotkeyForDisplay, normalizeHotkey } from "@/lib/hotkey";
 import { readLocalStorage, writeLocalStorage } from "@/lib/storage";
+import { useTauriEvent } from "@/hooks/useTauriEvent";
 import type { HotkeyDiagnostic } from "@/types";
 
 interface UseHotkeyReturn {
@@ -94,34 +94,17 @@ export function useHotkey(): UseHotkeyReturn {
     };
   }, [register]);
 
+  useTauriEvent<HotkeyDiagnostic>("hotkey-diagnostic", setDiagnostic);
+
   useEffect(() => {
     let disposed = false;
-    let unlisten: null | (() => void) = null;
-
     void getHotkeyDiagnostic()
       .then((payload) => {
         if (!disposed) setDiagnostic(payload);
       })
       .catch(() => undefined);
-
-    void (async () => {
-      try {
-        unlisten = await listen<HotkeyDiagnostic>("hotkey-diagnostic", (event) => {
-          if (!disposed) setDiagnostic(event.payload);
-        });
-
-        if (disposed && unlisten) {
-          unlisten();
-          unlisten = null;
-        }
-      } catch {
-        // 忽略热键诊断监听失败
-      }
-    })();
-
     return () => {
       disposed = true;
-      unlisten?.();
     };
   }, []);
 

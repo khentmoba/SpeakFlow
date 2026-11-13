@@ -10,15 +10,15 @@ use super::{AUDIO_CAPTURE_INIT_TIMEOUT_SECS, TARGET_SAMPLE_RATE};
 use crate::services::audio_service::{InputDeviceInfo, InputDeviceListPayload};
 use crate::utils::AppError;
 
-/// 录音缓冲硬上限（单位：i16 样本，单声道，post mix-down）。即使 stop 信号
-/// 丢失或某条异常路径漏掉了停止逻辑，缓冲也不会无限增长。
+/// Hard cap on the recording buffer (unit: i16 samples, mono, post mix-down). Even if the stop signal
+/// is lost or some abnormal path skips the stop logic, the buffer cannot grow without bound.
 ///
-/// 30min × 48kHz mono = 86_400_000 samples = 172.8MB。覆盖任何合理录音
-/// 时长；超过 30 分钟应分段录制。这是兜底安全阀，正常路径不应该触到。
+/// 30min × 48kHz mono = 86_400_000 samples = 172.8MB. Covers any reasonable recording
+/// length; anything over 30 minutes should be recorded in segments. This is a last-resort safety valve the normal path should never hit.
 pub(crate) const MAX_RECORD_SAMPLES: usize = 30 * 60 * 48_000;
 const AUDIO_CAPTURE_TIMEOUT_JOIN_MS: u64 = 500;
 
-/// Pre-roll 缓冲时长（毫秒）。避免用户按键和开口之间的极短延迟导致首音节被裁切。
+/// Pre-roll buffer length (milliseconds). Prevents the first syllable from being clipped by the very short delay between the keypress and speech.
 pub(crate) const PRE_ROLL_DURATION_MS: u32 = 450;
 
 static AVOID_BLUETOOTH_MIC: AtomicBool = AtomicBool::new(true);
@@ -246,7 +246,7 @@ pub fn stop_preroll_and_take() -> Option<(Vec<i16>, u32)> {
     }
 }
 
-/// 环形 Pre-roll 缓冲区，保留最新的固定时长音频样本。
+/// Ring pre-roll buffer that keeps the most recent fixed-length audio samples.
 #[derive(Debug, Clone)]
 pub struct PreRollBuffer {
     buffer: Vec<i16>,
@@ -294,7 +294,7 @@ const WINDOWS_NATIVE_CAPTURE_INIT_TIMEOUT_MS: u64 = 2_000;
 #[cfg(target_os = "windows")]
 static WINDOWS_NATIVE_CAPTURE_DISABLED: AtomicBool = AtomicBool::new(false);
 
-/// 一次性的"已触达录音缓冲硬上限"警告标志。仅在第一次撞上限时打日志。
+/// One-shot flag for the "recording buffer hard cap reached" warning. Logs only the first time the cap is hit.
 static RECORD_CAP_WARNED: AtomicBool = AtomicBool::new(false);
 
 pub(super) fn warn_if_record_cap_reached(current_len: usize) {
@@ -481,7 +481,7 @@ fn run_windows_native_capture(
     }
 }
 
-// ---------- cpal 设备管理 ----------
+// ---------- cpal device management ----------
 
 pub(super) fn resolve_input_device(
     preferred_name: Option<&str>,
@@ -596,7 +596,7 @@ pub fn list_input_devices_sync(
     })
 }
 
-// ---------- 多声道混音到单声道 i16（带硬上限） ----------
+// ---------- Mix multiple channels down to mono i16 (with hard cap) ----------
 
 /// Whisper mode doubles the input gain so quiet speech clears the VAD and the
 /// recognizer's level assumptions. It is a capture-wide flag because the capture
@@ -707,7 +707,7 @@ pub(crate) fn mix_to_mono_capped_u16(
     }
 }
 
-// ---------- 录音波形可视化 ----------
+// ---------- Recording waveform visualization ----------
 
 const WAVEFORM_BAR_COUNT: usize = 9;
 const WAVEFORM_EMIT_INTERVAL_MS: u64 = 55;
@@ -764,7 +764,7 @@ pub fn spawn_waveform_emitter(
     });
 }
 
-// ---------- 音频捕获线程 ----------
+// ---------- Audio capture thread ----------
 
 pub fn spawn_audio_capture_thread(
     stop_flag: Arc<AtomicBool>,
@@ -798,8 +798,8 @@ pub fn spawn_audio_capture_thread_with_preroll(
     selected_device_name: Option<String>,
     preroll: Option<(Vec<i16>, u32)>,
 ) -> Result<(std::thread::JoinHandle<()>, u32), AppError> {
-    // 每个新录音会话重置警告 latch；否则进程级一次警告之后，后续会话即便
-    // 再次撞上限也不会写日志，丢失诊断信息。
+    // Reset the warning latch for each new recording session; otherwise after one process-wide warning,
+    // later sessions that hit the cap again would not log, losing diagnostics.
     RECORD_CAP_WARNED.store(false, Ordering::Relaxed);
     // Quiet-speech gain is read once per session so the capture callback never
     // touches the settings file.

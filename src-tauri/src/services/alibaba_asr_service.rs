@@ -8,9 +8,9 @@ const ASR_PATH: &str = "/api/v1/services/aigc/multimodal-generation/generation";
 const OMNI_CHAT_PATH: &str = "/compatible-mode/v1/chat/completions";
 const REQUEST_TIMEOUT_SECS: u64 = 60;
 
-/// DashScope 对入站请求体有 10MB 上限。请求体里的音频是 base64 字符串，
-/// base64 会把原始字节放大 4/3 倍。这里按放大后的长度比对，避免"本地 9MB 通过
-/// 校验→DashScope 收到 12MB 请求体 400"的错位。
+/// DashScope caps inbound request bodies at 10MB. The audio in the body is a base64 string,
+/// and base64 inflates the raw bytes by 4/3. Compare against the inflated length to avoid the mismatch of "9MB passes
+/// local validation → DashScope receives a 12MB body and returns 400".
 const MAX_BASE64_AUDIO_BYTES: usize = 10 * 1024 * 1024;
 
 fn exceeds_dashscope_limit(raw_len: usize) -> bool {
@@ -51,7 +51,7 @@ pub async fn transcribe(
     }
 
     log::info!(
-        "DashScope ASR 请求: model={}, region={}, 音频 {} KB",
+        "DashScope ASR request: model={}, region={}, audio {} KB",
         model,
         region,
         audio_wav.len() / 1024,
@@ -199,7 +199,7 @@ async fn transcribe_via_dashscope_asr(
 
     if text_out.is_empty() {
         log::warn!(
-            "DashScope ASR 返回空文本 (响应{}字符)",
+            "DashScope ASR returned empty text (response {} chars)",
             text.chars().count()
         );
     }
@@ -293,11 +293,11 @@ async fn transcribe_via_omni_chat(
         let parsed = match serde_json::from_str::<OmniStreamChunk>(data) {
             Ok(p) => p,
             Err(e) => {
-                // 对第一个 parse-fail 留一条日志，后续的保持安静——否则一条损坏
-                // 会淹没日志。HTTP 层错误已经在主路径上显式处理过，这里只兜底。
+                // Log the first parse failure and stay quiet afterwards; otherwise one corrupted
+                // stream would flood the log. HTTP-level errors are already handled explicitly on the main path; this is only a safety net.
                 if !logged_parse_failure {
                     log::warn!(
-                        "DashScope Omni 流中跳过无法解析的 chunk: {} (err={})",
+                        "DashScope Omni stream skipped an unparseable chunk: {} (err={})",
                         data,
                         e
                     );
@@ -333,8 +333,8 @@ async fn transcribe_via_omni_chat(
 
     let collected = collected.trim().to_string();
     if collected.is_empty() {
-        // 空流没有 [DONE] 以外的任何内容，通常意味着上游模型拒绝或配额耗尽，
-        // 不要当成"用户啥也没说"默默返回空串——给一个可操作的错误。
+        // An empty stream with nothing but [DONE] usually means the upstream model refused or quota ran out;
+        // do not silently return an empty string as if "the user said nothing"; give an actionable error.
         return Err(AppError::Asr(
             "DashScope Omni stream response was empty; please check model availability, quota, or logs".into(),
         ));
@@ -389,8 +389,8 @@ impl DashScopeAsrMessage {
     }
 }
 
-/// DashScope 历史上既见过 `"content": "..."` 也见过
-/// `"content": [{"text": "..."}]`。两种都兜底。
+/// DashScope has historically returned both `"content": "..."` and
+/// `"content": [{"text": "..."}]`. Handle both.
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum DashScopeAsrContentField {
@@ -420,7 +420,7 @@ struct OmniStreamDelta {
 }
 
 impl OmniStreamDelta {
-    /// delta.content 可能是字符串或 `[{"type":"text","text":"..."}]` 形式。两种都处理。
+    /// delta.content may be a string or the `[{"type":"text","text":"..."}]` form. Handle both.
     fn content_as_string(&self) -> Option<String> {
         let content = self.content.as_ref()?;
         if let Some(s) = content.as_str() {

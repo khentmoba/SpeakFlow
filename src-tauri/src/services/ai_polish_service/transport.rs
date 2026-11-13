@@ -10,7 +10,7 @@ pub(super) async fn send_ai_polish_request(
     user_content_len: usize,
     app_handle: Option<&tauri::AppHandle>,
     options: LlmRequestOptions<'_>,
-) -> Result<String, String> {
+) -> Result<String, llm_client::LlmError> {
     let body = llm_client::build_llm_body(endpoint, system_prompt, user_input, options);
     llm_client::send_llm_request(
         &state.http_client,
@@ -24,9 +24,9 @@ pub(super) async fn send_ai_polish_request(
     .await
 }
 
-/// AI 润色的四段传输计划。
+/// The four-stage transport plan for AI polish.
 ///
-/// `prefer_streaming_after_partial` 只影响 stage1 已经吐出 chunk/token 后的后续顺序。
+/// `prefer_streaming_after_partial` only affects the ordering after stage1 has already emitted a chunk/token.
 pub(crate) fn ai_polish_transport_plan(
     reasoning_mode: LlmReasoningMode,
     session_id: u64,
@@ -139,28 +139,27 @@ pub(super) async fn send_llm_request_with_transport_fallback(
         stage1,
     )
     .await
+    .map_err(|err| (err.is_terminal(), String::from(err)))
     {
         Ok(content) => {
             let _ = state.take_ai_polish_stream_started(session_id);
             return Ok(content);
         }
-        Err(err) => {
-            // 空响应是模型/prompt 层面的问题，换 transport 大概率仍然回空——
-            // 直接抛错，省下 3 次 LLM 请求；用户能从错误里看到 provider/model
-            // 诊断信息。
-            if llm_client::is_empty_llm_response_error(&err)
-                || llm_client::is_terminal_provider_error(&err)
-            {
+        Err((terminal, err)) => {
+            // An empty response is a model/prompt-level problem and another transport will probably return empty too;
+            // raise the error directly, saving 3 LLM requests; the user can see the provider/model
+            // diagnostics in the error.
+            if terminal || llm_client::is_empty_llm_response_error(&err) {
                 let _ = state.take_ai_polish_stream_started(session_id);
                 log::warn!(
-                    "AI 润色 {} 遇到不可通过传输回退恢复的错误: {}",
+                    "AI polish {} hit an error that transport fallback cannot recover from: {}",
                     ai_polish_transport_label(&stage1),
                     err
                 );
                 return Err(err);
             }
             log::warn!(
-                "AI 润色 {} 失败: {}",
+                "AI polish {} failed: {}",
                 ai_polish_transport_label(&stage1),
                 err
             );
@@ -195,30 +194,28 @@ pub(super) async fn send_llm_request_with_transport_fallback(
             stage,
         )
         .await
+        .map_err(|err| (err.is_terminal(), String::from(err)))
         {
             Ok(content) => {
                 let _ = state.take_ai_polish_stream_started(session_id);
                 return Ok(content);
             }
-            Err(err)
-                if llm_client::is_empty_llm_response_error(&err)
-                    || llm_client::is_terminal_provider_error(&err) =>
-            {
+            Err((terminal, err)) if terminal || llm_client::is_empty_llm_response_error(&err) => {
                 let _ = state.take_ai_polish_stream_started(session_id);
                 log::warn!(
-                    "AI 润色 {} 遇到不可通过传输回退恢复的错误，停止剩余 fallback: {}",
+                    "AI polish {} hit an error that transport fallback cannot recover from; stopping remaining fallbacks: {}",
                     stage_label,
                     err
                 );
                 return Err(err);
             }
-            Err(err) if stage.json_output => {
+            Err((_, err)) if stage.json_output => {
                 if !llm_provider::looks_like_json_output_unsupported_error(&err) {
                     let _ = state.take_ai_polish_stream_started(session_id);
                     return Err(format!("AI polish {} failed: {}", stage_label, err));
                 }
 
-                log::warn!("AI 润色确认 JSON 格式不被支持，降级到 prompt 约束: {}", err);
+                log::warn!("AI polish confirmed JSON format is unsupported; degrading to prompt constraints: {}", err);
                 if emit_status {
                     emit_polish_status(
                         app_handle,
@@ -234,13 +231,17 @@ pub(super) async fn send_llm_request_with_transport_fallback(
                     return Err(format!("All transport strategies failed: {}", err));
                 }
             }
-            Err(err) => {
+            Err((_, err)) => {
                 if is_last_stage {
                     let _ = state.take_ai_polish_stream_started(session_id);
                     return Err(format!("All transport strategies failed: {}", err));
                 }
 
-                log::warn!("AI 润色 {} 失败，继续回退: {}", stage_label, err);
+                log::warn!(
+                    "AI polish {} failed; continuing fallback: {}",
+                    stage_label,
+                    err
+                );
                 if emit_status {
                     emit_polish_status(app_handle, "fallback", "", "", &err, session_id);
                 }
@@ -288,7 +289,7 @@ pub(super) async fn send_llm_request_with_fallback(
                 && llm_provider::looks_like_image_input_unsupported_error(&err) =>
         {
             log::warn!(
-                "当前 AI 润色模型不支持图片输入，回退到纯文本请求: provider={}, model={}, err={}",
+                "The current AI polish model does not support image input; falling back to a text-only request: provider={}, model={}, err={}",
                 endpoint.provider,
                 endpoint.model,
                 err
@@ -305,25 +306,25 @@ pub(super) async fn send_llm_request_with_fallback(
                 );
             }
 
-            let fallback_text =
-                match screen_vision_service::describe_images(state, app_handle, &user_input.images)
-                    .await
-                {
-                    Ok(description) => {
-                        log::info!("AI 润色已通过视觉代理保留屏幕上下文");
-                        screen_vision_service::with_screen_description(
-                            &user_input.text,
-                            &description,
-                        )
-                    }
-                    Err(vision_err) => {
-                        log::warn!(
-                            "AI 润色视觉代理不可用，继续无屏幕上下文请求: {}",
+            let fallback_text = match screen_vision_service::describe_images(
+                state,
+                app_handle,
+                &user_input.images,
+            )
+            .await
+            {
+                Ok(description) => {
+                    log::info!("AI polish kept screen context via the vision proxy");
+                    screen_vision_service::with_screen_description(&user_input.text, &description)
+                }
+                Err(vision_err) => {
+                    log::warn!(
+                            "AI polish vision proxy unavailable; continuing with a request without screen context: {}",
                             vision_err
                         );
-                        screen_vision_service::without_screen_context(&user_input.text)
-                    }
-                };
+                    screen_vision_service::without_screen_context(&user_input.text)
+                }
+            };
             let fallback_input = llm_client::LlmUserInput {
                 text: fallback_text,
                 images: Vec::new(),

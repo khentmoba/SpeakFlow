@@ -288,9 +288,9 @@ fn validate_assistant_source_url(value: &str) -> Result<reqwest::Url, AppError> 
     Ok(parsed)
 }
 
-// ── 联网搜索 ────────────────────────────────────────────────────────
+// ── Web search ──────────────────────────────────────────────────────
 
-/// 需要独立凭据的搜索供应商在系统密钥环中的用户名。
+/// Username in the system keyring for search providers that need their own credentials.
 pub fn web_search_keyring_user(provider: &WebSearchProvider) -> Option<&'static str> {
     match provider {
         WebSearchProvider::Exa => Some("web-search-exa-key"),

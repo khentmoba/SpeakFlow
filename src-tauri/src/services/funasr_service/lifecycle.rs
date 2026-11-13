@@ -66,11 +66,11 @@ pub(super) fn request_engine_recovery(previous: Option<FunasrProcess>) {
     });
 }
 
-/// 启动 FunASR Python 服务器
+/// Start the FunASR Python server
 pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Result<(), AppError> {
     let (ticket, mut starting_guard) = {
-        // 启动预检与 lifecycle 配置变更串行：engine snapshot、owner、generation
-        // 以及首个 loading 状态必须作为一个不可分割的提交。
+        // Startup preflight is serialized with lifecycle config changes: the engine snapshot, owner, generation
+        // and the first loading state must be committed as one indivisible unit.
         let _lifecycle_guard = state.engine.funasr_lifecycle_op.lock().await;
         let engine = paths::read_engine_config();
         if paths::is_online_engine(&engine) {
@@ -79,18 +79,18 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
 
         let process_guard = state.engine.funasr_process.lock().await;
         if process_guard.is_some() {
-            log::warn!("FunASR 服务器已在运行中");
+            log::warn!("FunASR server is already running");
             return Ok(());
         }
         drop(process_guard);
         if state.engine.funasr_starting_process.lock().is_some() {
-            log::info!("FunASR 子进程正在初始化中，跳过重复启动");
+            log::info!("FunASR child process is initializing; skipping duplicate start");
             return Ok(());
         }
 
         let start_owner = next_server_start_owner();
         if !state.engine.try_begin_funasr_start(start_owner) {
-            log::info!("FunASR 服务器正在启动中，跳过重复启动");
+            log::info!("FunASR server is starting; skipping duplicate start");
             return Ok(());
         }
 
@@ -117,36 +117,40 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
         (ticket, starting_guard)
     };
 
-    // 查找引擎运行时
+    // Locate the engine runtime
     let runtime_result = find_engine(app_handle, state, ticket.generation).await;
     {
         let _lifecycle_guard = state.engine.funasr_lifecycle_op.lock().await;
         if !start_ticket_is_current(state, &ticket) {
-            log::warn!("引擎运行时已就绪但启动票据已失效，取消本次启动");
+            log::warn!("Engine runtime is ready but the start ticket is no longer valid; cancelling this start");
             return Err(AppError::Asr("Startup was cancelled".to_string()));
         }
     }
     let runtime = runtime_result?;
 
     if !start_ticket_is_current(state, &ticket) {
-        log::warn!("引擎运行时已就绪但代数已变更，取消本次启动");
+        log::warn!("Engine runtime is ready but the generation has changed; cancelling this start");
         return Err(AppError::Asr("Startup was cancelled".to_string()));
     }
 
-    // 构建子进程命令
+    // Build the child process command
     let data_dir = paths::strip_win_prefix(paths::get_data_dir());
-    // 仅在用户开启时传入。0/缺省不设置环境变量，启动路径与以前相同。
+    // Passed only when the user enables it. 0/default sets no environment variable, so the startup path is the same as before.
     let gpu_idle_at_spawn = paths::read_gpu_idle_seconds();
     let model_dirs_at_spawn = paths::read_model_dirs();
     let mut cmd = match &runtime {
         EngineRuntime::Bundled { exe_path } => {
-            log::info!("使用打包引擎: {} (engine={})", exe_path, ticket.engine);
+            log::info!(
+                "Using bundled engine: {} (engine={})",
+                exe_path,
+                ticket.engine
+            );
             let mut c = Command::new(exe_path);
             c.arg("serve").arg("--engine").arg(&ticket.engine);
             c
         }
         EngineRuntime::Development { python_path } => {
-            log::info!("使用开发模式 Python: {}", python_path);
+            log::info!("Using development-mode Python: {}", python_path);
             let server_script = match ticket.engine.as_str() {
                 "confucius4-r2t2" => paths::get_r2t2_asr_server_path(app_handle),
                 engine if paths::is_transcribe_cpp_engine(engine) => {
@@ -160,7 +164,7 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
             };
             let server_script_str = paths::strip_win_prefix(&server_script);
             log::info!(
-                "语音识别脚本路径 (engine={}): {}",
+                "Speech recognition script path (engine={}): {}",
                 ticket.engine,
                 server_script_str
             );
@@ -193,11 +197,14 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
             let log_path = paths::get_data_dir().join("funasr_stderr.log");
             match std::fs::File::create(&log_path) {
                 Ok(file) => {
-                    log::info!("Python stderr 重定向到: {}", log_path.display());
+                    log::info!("Python stderr redirected to: {}", log_path.display());
                     std::process::Stdio::from(file)
                 }
                 Err(e) => {
-                    log::warn!("无法创建 stderr 日志文件: {}，丢弃 stderr", e);
+                    log::warn!(
+                        "Could not create the stderr log file: {}; discarding stderr",
+                        e
+                    );
                     std::process::Stdio::null()
                 }
             }
@@ -221,7 +228,7 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
         cmd.env("SPEAK_FLOW_CUSTOM_MODEL_NAME", &custom.name);
     }
 
-    // Windows 上隐藏控制台窗口
+    // Hide the console window on Windows
     #[cfg(target_os = "windows")]
     {
         const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -229,8 +236,8 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
     }
 
     let (stdin, stdout, child_handle) = {
-        // spawn 与 starting slot 登记在同一 lifecycle 临界区，stop 不会漏掉
-        // “已生成但尚未写入正式 process slot”的子进程。
+        // Spawn and starting-slot registration share one lifecycle critical section, so stop cannot miss
+        // a child process that is "spawned but not yet written into the official process slot".
         let _lifecycle_guard = state.engine.funasr_lifecycle_op.lock().await;
         if !start_ticket_is_current(state, &ticket) {
             return Err(AppError::Asr("Startup was cancelled".to_string()));
@@ -255,7 +262,7 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
         });
         starting_guard.register_child(child_handle.clone());
 
-        log::info!("FunASR 子进程已启动，等待初始化...");
+        log::info!("FunASR child process started; waiting for initialization...");
         let _ = app_handle.emit(
             "funasr-status",
             serde_json::json!({
@@ -266,7 +273,7 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
         (stdin, stdout, child_handle)
     };
 
-    // 读取子进程初始化输出，跳过非 JSON 行，直到拿到有效响应
+    // Read the child's initialization output, skipping non-JSON lines until a valid response arrives
     let mut stdout_reader = BufReader::new(stdout);
     let response: ServerResponse = match read_json_response(
         &mut stdout_reader,
@@ -310,7 +317,7 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
         });
         let _lifecycle_guard = state.engine.funasr_lifecycle_op.lock().await;
         if !start_ticket_is_current(state, &ticket) {
-            log::warn!("FunASR 初始化完成但启动票据已失效，丢弃旧进程");
+            log::warn!("FunASR initialization finished but the start ticket is no longer valid; discarding the old process");
             return Err(AppError::Asr("Startup was cancelled".to_string()));
         }
 
@@ -331,13 +338,13 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
         });
         starting_guard.release_child();
         drop(process_guard);
-        log::info!("FunASR 服务器初始化成功！");
+        log::info!("FunASR server initialized successfully!");
         // A folder saved while the process was starting is not in its
         // environment. This must succeed before the server is announced ready:
         // otherwise the UI stops polling and dictation fails with no recovery.
         if paths::read_model_dirs() != model_dirs_at_spawn {
             if let Err(error) = super::push_model_dirs(state).await {
-                log::error!("同步模型文件夹失败，启动中止: {error}");
+                log::error!("Failed to sync the model folder; aborting start: {error}");
                 let _ = super::stop_server(state).await;
                 state.set_funasr_ready(false);
                 let _ = app_handle.emit(
@@ -367,10 +374,12 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
         state.set_funasr_ready(true);
         let _ = app_handle.emit("funasr-status", ready_status);
     } else {
-        log::error!("FunASR 初始化失败: {}", error_message);
+        log::error!("FunASR initialization failed: {}", error_message);
         let _lifecycle_guard = state.engine.funasr_lifecycle_op.lock().await;
         if !start_ticket_is_current(state, &ticket) {
-            log::warn!("FunASR 初始化失败结果已过期，忽略旧错误状态");
+            log::warn!(
+                "FunASR initialization failure result is stale; ignoring the old error state"
+            );
             return Err(AppError::Asr("Startup was cancelled".to_string()));
         }
         let Some(mut child) = take_starting_child(state, &ticket, &child_handle) else {
@@ -390,11 +399,11 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
 
     if initialized {
         let gpu_idle_now = paths::read_gpu_idle_seconds();
-        // 启动时的环境变量已经带上当时的值。只有中途改过才再发一条命令，
-        // 避免关闭状态下多一次往返。
+        // The environment variable at startup already carried the value of that moment. Send another command only if it changed midway,
+        // avoiding an extra round trip when it is off.
         if gpu_idle_now != gpu_idle_at_spawn {
             if let Err(error) = push_gpu_idle_seconds(state, gpu_idle_now).await {
-                log::warn!("同步 GPU 空闲卸载设置失败: {error}");
+                log::warn!("Failed to sync the GPU idle-unload setting: {error}");
             }
         }
 
@@ -404,29 +413,29 @@ pub async fn start_server(app_handle: &tauri::AppHandle, state: &AppState) -> Re
     }
 }
 
-/// 执行语音转写
+/// Run speech transcription
 ///
-/// 将音频数据写入临时 WAV 文件，然后通过 stdin 发送转写命令给 Python 进程，
-/// 并从 stdout 读取转写结果。
+/// Writes the audio data to a temporary WAV file, then sends a transcribe command to the Python process via stdin
+/// and reads the result from stdout.
 ///
-/// # 参数
-/// - `state`：全局应用状态
-/// - `audio_data`：WAV 格式的音频数据（字节数组）
+/// # Parameters
+/// - `state`: global application state
+/// - `audio_data`: audio data in WAV format (byte array)
 ///
-/// # 流程
+/// # Flow
 ///
-/// 发送 status 命令给 Python 服务器，获取当前的运行状态。
+/// Sends a status command to the Python server to get its current state.
 pub async fn check_status(
     state: &AppState,
     app_handle: &tauri::AppHandle,
 ) -> Result<FunASRStatus, AppError> {
-    // 先检查进程是否存在
+    // First check whether the process exists
     let has_process = {
         let guard = state.engine.funasr_process.lock().await;
         guard.is_some()
     };
 
-    // 如果进程句柄不存在，检查是否正在启动中
+    // If there is no process handle, check whether it is starting
     if !has_process {
         let engine = paths::read_engine_config();
         if paths::is_online_engine(&engine) {
@@ -460,7 +469,7 @@ pub async fn check_status(
         }
 
         if state.engine.is_funasr_starting() {
-            // 正在启动中（模型加载中），告诉前端"正在运行但还没准备好"
+            // Starting (model loading): tell the frontend "running but not ready yet"
             return Ok(status_with_defaults(
                 true,
                 false,
@@ -501,7 +510,7 @@ pub async fn check_status(
         });
     }
 
-    // 发送状态查询命令
+    // Send the status query command
     match send_command_to_server(state, &ServerCommand::Status, Some(app_handle)).await {
         Ok(response) => {
             let model_loaded = response.is_model_loaded();
@@ -545,8 +554,8 @@ pub async fn check_status(
             })
         }
         Err(e) => {
-            // 发送命令失败，可能进程已崩溃
-            log::warn!("查询 FunASR 状态失败: {}", e);
+            // Sending the command failed; the process may have crashed
+            log::warn!("Failed to query FunASR status: {}", e);
             state.set_funasr_ready(false);
             Ok(status_with_defaults(
                 false,
@@ -558,15 +567,15 @@ pub async fn check_status(
     }
 }
 
-/// 停止 FunASR 服务器
+/// Stop the FunASR server
 ///
-/// 优雅关闭流程：
-/// 1. 先发送 exit 命令让 Python 进程自行退出
-/// 2. 等待一小段时间
-/// 3. 如果进程仍在运行，强制杀死
+/// Graceful shutdown flow:
+/// 1. Send an exit command first so the Python process quits on its own
+/// 2. Wait a short while
+/// 3. If the process is still running, kill it
 ///
 pub async fn stop_server(state: &AppState) -> Result<(), AppError> {
-    // 递增代数，使正在进行的 start_server 感知到取消
+    // Bump the generation so an in-flight start_server notices the cancellation
     {
         let _status_guard = state.engine.funasr_status_commit.lock();
         state
@@ -575,24 +584,24 @@ pub async fn stop_server(state: &AppState) -> Result<(), AppError> {
             .fetch_add(1, Ordering::SeqCst);
     }
 
-    // spawn 后、初始化完成前的子进程也必须立即可取消；否则 set_engine
-    // 已返回时旧模型进程仍可能在后台加载并继续发送状态。
+    // A child spawned but not yet finished initializing must also be cancellable immediately; otherwise, after set_engine
+    // returns, the old model process could still load in the background and keep sending status.
     if let Some(starting) = state.engine.funasr_starting_process.lock().take() {
         if let Some(mut child) = starting.child.lock().take() {
             let _ = child.start_kill();
         }
     }
 
-    // 先取出子进程句柄，避免关闭流程被常规请求超时拖住
+    // Take the child process handle out first so shutdown is not held up by the regular request timeout
     let mut process = {
         let mut guard = state.engine.funasr_process.lock().await;
         guard.take()
     };
 
-    // 如果有子进程，确保它被终止
+    // If there is a child process, make sure it is terminated
     if let Some(ref mut child_process) = process {
         if let Err(err) = try_send_exit_command(child_process).await {
-            log::debug!("发送 FunASR 退出命令失败，准备直接等待/终止进程: {}", err);
+            log::debug!("Failed to send the FunASR exit command; about to wait for / terminate the process directly: {}", err);
         }
 
         let wait_result = tokio::time::timeout(
@@ -603,19 +612,21 @@ pub async fn stop_server(state: &AppState) -> Result<(), AppError> {
 
         match wait_result {
             Ok(Ok(status)) => {
-                log::info!("FunASR 进程已退出，状态码: {}", status);
+                log::info!("FunASR process exited with status: {}", status);
             }
             _ => {
-                // 超时或出错，强制杀死进程
-                log::warn!("FunASR 进程未响应退出命令，强制终止...");
+                // Timed out or errored; kill the process
+                log::warn!(
+                    "FunASR process did not respond to the exit command; forcing termination..."
+                );
                 if let Err(e) = child_process.child.kill().await {
-                    log::warn!("强制终止 FunASR 进程失败: {}", e);
+                    log::warn!("Failed to force-terminate the FunASR process: {}", e);
                 }
             }
         }
     }
 
-    // 更新状态
+    // Update state
     state.set_funasr_ready(false);
     state
         .engine
@@ -627,6 +638,6 @@ pub async fn stop_server(state: &AppState) -> Result<(), AppError> {
         .store(false, Ordering::Release);
     state.set_inline_audio_transport(None);
 
-    log::info!("FunASR 服务器已停止");
+    log::info!("FunASR server stopped");
     Ok(())
 }

@@ -323,8 +323,8 @@ pub async fn reprocess_transcription_history(
 
     if let Some(audio_file) = leased_audio {
         if let Err(error) = history_service::release_audio_lease(audio_file).await {
-            // 租约只会延迟文件回收；下次启动会清除崩溃/异常遗留租约。
-            log::warn!("释放历史重处理音频租约失败: {error}");
+            // A lease only delays file reclamation; the next startup clears leases left by crashes/abnormal exits.
+            log::warn!("Failed to release history reprocess audio lease: {error}");
         }
     }
 
@@ -351,7 +351,7 @@ pub async fn persist_history_insert(
                 if let Err(cleanup_error) =
                     history_service::cleanup_audio_if_unreferenced(audio_file).await
                 {
-                    log::warn!("回收未入库历史音频失败，将在下次启动重试: {cleanup_error}");
+                    log::warn!("Failed to reclaim unindexed history audio; will retry on next startup: {cleanup_error}");
                 }
             }
             Err(error)

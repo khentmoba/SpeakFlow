@@ -16,7 +16,7 @@ use crate::services::funasr_service;
 use crate::state::AppState;
 use crate::utils::paths;
 
-// ---------- 中间转写循环 ----------
+// ---------- Interim transcription loop ----------
 
 pub fn spawn_interim_loop(
     app_handle: tauri::AppHandle,
@@ -33,10 +33,10 @@ pub fn spawn_interim_loop(
         let mut last_sample_count: usize = 0;
         let engine = paths::read_engine_config();
         let mut previous_hypothesis: Option<String> = None;
-        // 会话级重采样缓存：只对新增的原始增量执行一次重采样，结果追加到这里
-        // 原生 16k 设备时与原始数据相同（resample_to_16k 走零拷贝路径）
+        // Session-level resample cache: only the newly added raw increment is resampled once, and the result is appended here.
+        // For native 16k devices it equals the raw data (resample_to_16k takes the zero-copy path)
         let mut resampled_cache: Vec<i16> = Vec::new();
-        // 已写入 resampled_cache 的原始样本数（raw sample index）
+        // Number of raw samples already written to resampled_cache (raw sample index)
         let mut raw_processed: usize = 0;
         let needs_resample = sample_rate != 0 && sample_rate != TARGET_SAMPLE_RATE;
         let mut resample_failed = false;
@@ -66,7 +66,7 @@ pub fn spawn_interim_loop(
             }
         }
 
-        // 在线引擎不做中间转写（每次请求花钱且有网络延迟）
+        // Online engines do no interim transcription (each request costs money and adds network latency)
         if paths::is_online_engine(&engine) {
             log::info!(
                 "Online engine: skipping interim transcription (session {})",
@@ -85,7 +85,7 @@ pub fn spawn_interim_loop(
                 break;
             }
 
-            // 只把新增的原始样本拷贝出来，锁持有时间最短
+            // Copy out only the newly added raw samples to keep the lock held as briefly as possible
             let (delta, current_count) = {
                 let guard = samples.lock();
                 let count = guard.len();
@@ -102,7 +102,7 @@ pub fn spawn_interim_loop(
 
             let start = std::time::Instant::now();
 
-            // 只对增量重采样（原生 16k 时是零拷贝），追加到会话缓存
+            // Resample only the increment (zero-copy for native 16k) and append it to the session cache
             if !delta.is_empty() {
                 if needs_resample && !resample_failed {
                     if let Some(resampler) = resampler.as_mut() {
@@ -125,20 +125,20 @@ pub fn spawn_interim_loop(
                         resampled_cache.clear();
                     }
                 } else if resample_failed {
-                    // fallback 分支会直接从原始 samples 取尾部，避免把非 16k 音频送成 16k。
+                    // The fallback branch takes the tail straight from the raw samples, so non-16k audio is not sent as 16k.
                 } else {
                     resampled_cache.extend_from_slice(&delta);
                 }
                 raw_processed = current_count;
 
-                // 限制缓存增长：超过 2 倍窗口时丢弃最老的部分，只保留尾部一倍多一点
+                // Bound cache growth: once it exceeds 2x the window, drop the oldest part and keep a bit more than one window of tail
                 if resampled_cache.len() > 2 * max_output_tail {
                     let drop_n = resampled_cache.len() - max_output_tail;
                     resampled_cache.drain(..drop_n);
                 }
             }
 
-            // 把最后 12s 送给 Python；重采样失败时保留原始采样率。
+            // Send the last 12s to Python; if resampling fails, keep the original sample rate.
             let raw_tail;
             let (interim_samples, interim_sample_rate) = if resample_failed {
                 let max_raw_tail = (sample_rate as f64 * INTERIM_MAX_AUDIO_WINDOW_SEC) as usize;

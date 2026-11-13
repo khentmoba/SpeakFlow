@@ -1,15 +1,15 @@
 use super::*;
 
-/// 剥离 LLM 返回的 markdown 代码块包裹（```json ... ``` 或 ``` ... ```）
+/// Strip the markdown code fence the LLM wrapped around its reply (```json ... ``` or ``` ... ```)
 pub(super) fn strip_markdown_code_block(s: &str) -> String {
     let trimmed = s.trim().trim_start_matches('\u{feff}');
     if trimmed.starts_with("```") {
-        // 跳过第一行（```json 或 ```）
+        // Skip the first line (```json or ```)
         let after_first_line = match trimmed.find('\n') {
             Some(pos) => &trimmed[pos + 1..],
             None => return trimmed.to_string(),
         };
-        // 去掉末尾的 ```
+        // Drop the trailing ```
         let content = after_first_line.trim_end();
         if let Some(stripped) = content.strip_suffix("```") {
             return stripped.trim().to_string();

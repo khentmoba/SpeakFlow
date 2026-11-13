@@ -659,7 +659,7 @@ fn contains_any(value: &str, patterns: &[&str]) -> bool {
     patterns.iter().any(|pattern| value.contains(pattern))
 }
 
-/// 执行第三方搜索（Exa / Tavily / Google Search Grounding）
+/// Run a third-party search (Exa / Tavily / Google Search Grounding)
 struct ThirdPartySearchOutput {
     results: Vec<web_search_service::SearchResult>,
     google_search_entry_point: Option<String>,
@@ -937,19 +937,21 @@ async fn generate_content_inner(
     let ws = state.with_profile(|p| p.web_search.clone());
     let is_codex_chatgpt_bearer =
         codex_oauth_service::decode_chatgpt_bearer_token(&api_key).is_some();
-    let effective_ws =
-        if ws.enabled && ws.provider == WebSearchProvider::ModelNative && is_codex_chatgpt_bearer {
-            log::info!(
-            "OpenAI Codex OAuth bearer 模式下，助手联网搜索从模型内置搜索自动切换到 Exa: model={}",
+    let effective_ws = if ws.enabled
+        && ws.provider == WebSearchProvider::ModelNative
+        && is_codex_chatgpt_bearer
+    {
+        log::info!(
+            "Under OpenAI Codex OAuth bearer mode, assistant web search switched automatically from the model's built-in search to Exa: model={}",
             endpoint.model
         );
-            WebSearchConfig {
-                provider: WebSearchProvider::Exa,
-                ..ws.clone()
-            }
-        } else {
-            ws.clone()
-        };
+        WebSearchConfig {
+            provider: WebSearchProvider::Exa,
+            ..ws.clone()
+        }
+    } else {
+        ws.clone()
+    };
 
     let screen_context_requested = request_context
         .screen_context_enabled
@@ -1005,15 +1007,15 @@ async fn generate_content_inner(
         let mut external_search_context = None;
         let mut search_elapsed_ms = None;
 
-        // ── 联网搜索 ──
-        // 先用本地意图判断避免无关搜索；实时/事实/显式查询再进入搜索路径。
-        // 原生模式：注入 tool，模型在需要时调用；不支持的模型会在下方 retry 时去掉 web_search。
-        // 第三方模式：先搜索，再将不可信结果作为用户侧上下文交给模型。
+        // ── Web search ──
+        // Use a local intent check first to avoid unnecessary searches; real-time/factual/explicit queries then enter the search path.
+        // Native mode: inject the tool and let the model call it when needed; models that do not support it get web_search removed on the retry below.
+        // Third-party mode: search first, then hand the untrusted results to the model as user-side context.
         if effective_ws.enabled
             && effective_ws.provider != WebSearchProvider::ModelNative
             && web_search_decision.should_search
         {
-            // 通知前端：正在搜索
+            // Notify the frontend: searching
             let search_query = contextual_search_query(asr_text, conversation);
             let _ = app_handle.emit(
                 stream_event,
@@ -1032,7 +1034,7 @@ async fn generate_content_inner(
                     search_elapsed_ms = Some(elapsed_ms);
                     let results = web_search_service::dedupe_search_results(search_output.results);
                     log::info!(
-                        "联网搜索({:?})返回 {} 条去重结果 (查询{}字符)",
+                        "Web search ({:?}) returned {} deduplicated results (query {} chars)",
                         effective_ws.provider,
                         results.len(),
                         search_query.chars().count()
@@ -1056,7 +1058,7 @@ async fn generate_content_inner(
                     let elapsed_ms = search_started.elapsed().as_millis() as u64;
                     search_elapsed_ms = Some(elapsed_ms);
                     log::warn!(
-                        "联网搜索({:?})失败，继续无搜索上下文: {err}",
+                        "Web search ({:?}) failed; continuing without search context: {err}",
                         effective_ws.provider
                     );
                     let _ = app_handle.emit(
@@ -1076,7 +1078,7 @@ async fn generate_content_inner(
             }
         } else if effective_ws.enabled && !web_search_decision.should_search {
             log::info!(
-                "助手联网搜索跳过: provider={:?}, reason={}",
+                "Assistant web search skipped: provider={:?}, reason={}",
                 effective_ws.provider,
                 web_search_decision.reason
             );
@@ -1100,7 +1102,7 @@ async fn generate_content_inner(
             if let Some(supported) = support {
                 state.set_assistant_image_support(image_support_cache_key.clone(), supported);
                 log::info!(
-                    "根据模型元数据识别图片输入支持: provider={}, model={}, supported={}",
+                    "Image input support identified from model metadata: provider={}, model={}, supported={}",
                     endpoint.provider,
                     endpoint.model,
                     supported
@@ -1127,7 +1129,10 @@ async fn generate_content_inner(
             match screen_capture_service::capture_full_screen_context_async().await {
                 Ok(captured) if foreground_still_matches() => {
                     if !captured.is_empty() {
-                        log::info!("助手模式已附带屏幕截图上下文: {} 张", captured.len());
+                        log::info!(
+                            "Assistant mode attached screen screenshot context: {} images",
+                            captured.len()
+                        );
                     }
                     captured
                         .into_iter()
@@ -1138,11 +1143,11 @@ async fn generate_content_inner(
                         .collect::<Vec<_>>()
                 }
                 Ok(_) => {
-                    log::warn!("助手截图后前台窗口已变化，丢弃截图并继续纯文本请求");
+                    log::warn!("Foreground window changed after the assistant screenshot; discarding it and continuing with a text-only request");
                     Vec::new()
                 }
                 Err(err) => {
-                    log::warn!("截取屏幕上下文失败，继续纯文本助手请求: {}", err);
+                    log::warn!("Failed to capture screen context; continuing with a text-only assistant request: {}", err);
                     Vec::new()
                 }
             }
@@ -1152,19 +1157,19 @@ async fn generate_content_inner(
                 && !screen_vision_enabled
             {
                 log::info!(
-                "当前助手模型不支持图片输入且视觉代理已关闭，跳过屏幕截图上下文: provider={}, model={}",
+                "The current assistant model does not support image input and the vision proxy is off; skipping screen screenshot context: provider={}, model={}",
                 endpoint.provider,
                 endpoint.model
             );
             } else if needs_screen_capture && !foreground_still_matches() {
-                log::warn!("助手截图已跳过：前台窗口已离开录音开始时的目标应用");
+                log::warn!("Assistant screenshot skipped: the foreground window is no longer the target app from when recording started");
             }
             Vec::new()
         };
 
         let screen_description = if let Some(description) = reusable_screen_description {
             log::info!(
-                "助手复用前置润色视觉描述: {}字符",
+                "Assistant reused the earlier polish vision description: {} chars",
                 description.chars().count()
             );
             Some(description)
@@ -1175,7 +1180,7 @@ async fn generate_content_inner(
                     Some(description)
                 }
                 Err(err) => {
-                    log::warn!("助手视觉代理读取失败，继续无屏幕上下文请求: {}", err);
+                    log::warn!("Assistant vision proxy read failed; continuing with a request without screen context: {}", err);
                     images.clear();
                     None
                 }
@@ -1191,7 +1196,7 @@ async fn generate_content_inner(
         )
     };
 
-    // 路由完成后的搜索和屏幕准备相互独立，保留在可取消的请求 future 内。
+    // Search and screen preparation after routing are independent; keep them inside the cancellable request future.
     let (
         (external_search_context, search_elapsed_ms),
         (mut images, mut screen_description, image_support_cache_key, needs_screen_capture),
@@ -1206,7 +1211,7 @@ async fn generate_content_inner(
         &mut images,
         &mut screen_description,
     ) {
-        log::warn!("助手上下文准备期间前台窗口已变化，丢弃屏幕上下文");
+        log::warn!("Foreground window changed during assistant context preparation; discarding screen context");
     }
     let has_screen_context = !images.is_empty() || screen_description.is_some();
 
@@ -1264,6 +1269,7 @@ async fn generate_content_inner(
         request_options,
     )
     .await
+    .map_err(String::from)
     {
         Ok(content) => {
             if !user_input.images.is_empty() {
@@ -1276,25 +1282,28 @@ async fn generate_content_inner(
                 && llm_provider::looks_like_image_input_unsupported_error(&err) =>
         {
             log::warn!(
-                "当前模型不支持图片输入，回退到纯文本助手请求: provider={}, model={}, err={}",
+                "The current model does not support image input; falling back to a text-only assistant request: provider={}, model={}, err={}",
                 endpoint.provider,
                 endpoint.model,
                 err
             );
             state.set_assistant_image_support(image_support_cache_key.clone(), false);
-            let fallback_text =
-                match screen_vision_service::describe_images(state, app_handle, &user_input.images)
-                    .await
-                {
-                    Ok(description) => {
-                        log::info!("助手已通过视觉代理保留屏幕上下文");
-                        screen_vision_service::with_screen_description(&user_content, &description)
-                    }
-                    Err(vision_err) => {
-                        log::warn!("助手视觉代理不可用，继续无屏幕上下文请求: {}", vision_err);
-                        screen_vision_service::without_screen_context(&user_content)
-                    }
-                };
+            let fallback_text = match screen_vision_service::describe_images(
+                state,
+                app_handle,
+                &user_input.images,
+            )
+            .await
+            {
+                Ok(description) => {
+                    log::info!("Assistant kept screen context via the vision proxy");
+                    screen_vision_service::with_screen_description(&user_content, &description)
+                }
+                Err(vision_err) => {
+                    log::warn!("Assistant vision proxy unavailable; continuing with a request without screen context: {}", vision_err);
+                    screen_vision_service::without_screen_context(&user_content)
+                }
+            };
             let fallback_input = LlmUserInput {
                 text: fallback_text,
                 images: Vec::new(),
@@ -1315,13 +1324,13 @@ async fn generate_content_inner(
                 request_options,
             )
             .await
-            .map_err(AppError::Other)?
+            .map_err(|err| AppError::Other(err.into()))?
         }
         Err(err)
             if use_native_search && llm_provider::looks_like_web_search_unsupported_error(&err) =>
         {
             log::warn!(
-                "当前模型不支持联网搜索工具，去掉 web_search 重试: provider={}, model={}, err={}",
+                "The current model does not support the web search tool; retrying without web_search: provider={}, model={}, err={}",
                 endpoint.provider,
                 endpoint.model,
                 err
@@ -1346,15 +1355,15 @@ async fn generate_content_inner(
                 fallback_options,
             )
             .await
-            .map_err(AppError::Other)?
+            .map_err(|err| AppError::Other(err.into()))?
         }
         Err(err) => return Err(AppError::Other(err)),
     };
 
-    // `send_llm_request` 已经在内部把空响应统一映射成 Err（带 provider/
-    // model 诊断信息），上面的 match 把所有 Err 分支都 return 了，所以走到
-    // 这里 content trim 后必然非空。旧的 "AI 助手返回了空内容" 兜底已
-    // 不可达，移除。
+    // `send_llm_request` already maps empty responses to Err internally (with provider/
+    // model diagnostics), and the match above returns on every Err branch, so
+    // content is necessarily non-empty after trim here. The old "AI assistant returned empty content" fallback is
+    // unreachable and was removed.
     let trimmed = content.trim().to_string();
 
     let _ = app_handle.emit(
@@ -1370,7 +1379,7 @@ async fn generate_content_inner(
 
     if state.ui.sound_enabled.load(Ordering::Acquire) {
         log::info!(
-            "助手生成完成 (session {}, {} chars)",
+            "Assistant generation complete (session {}, {} chars)",
             session_id,
             trimmed.len()
         );

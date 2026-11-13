@@ -153,8 +153,9 @@ async fn dispatch_and_capture_with_reasoning(
     let body = build_llm_body(&endpoint, "system", &LlmUserInput::from("request"), options);
     let client = reqwest::Client::new();
 
-    let result =
-        send_llm_request(&client, &endpoint, "test-api-key", &body, 7, None, options).await;
+    let result = send_llm_request(&client, &endpoint, "test-api-key", &body, 7, None, options)
+        .await
+        .map_err(String::from);
     let captured = server
         .await
         .expect("capture server task should finish normally");

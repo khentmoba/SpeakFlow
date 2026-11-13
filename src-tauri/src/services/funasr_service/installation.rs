@@ -9,11 +9,11 @@ use tokio::process::Command;
 
 use super::{now_unix_ms, EngineProgressGate, ENGINE_ARCHIVE_FINGERPRINT};
 
-/// 引擎运行模式
+/// Engine run mode
 pub enum EngineRuntime {
-    /// 生产模式：直接运行打包的 engine.exe
+    /// Production mode: run the bundled engine.exe directly
     Bundled { exe_path: String },
-    /// 开发模式：使用系统 Python 解释器 + .py 脚本
+    /// Development mode: use the system Python interpreter + .py scripts
     Development { python_path: String },
 }
 
@@ -59,13 +59,13 @@ pub(super) fn engine_install_fingerprint_matches(installed: &str, expected: &str
                 }))
 }
 
-/// 查找引擎运行时
+/// Locate the engine runtime
 ///
-/// 按优先级：
-/// 1. 已解压到数据目录的 engine.exe（版本匹配时直接复用）
-/// 2. 未解压的引擎归档（engine.tar.xz / 兼容 engine.zip）→ 解压后使用
-/// 3. 资源目录中的 engine.exe（开发时直接放置 python-dist）
-/// 4. 系统 Python（开发模式）
+/// In priority order:
+/// 1. engine.exe already extracted to the data directory (reused directly when the version matches)
+/// 2. An unextracted engine archive (engine.tar.xz / legacy engine.zip) → extract, then use
+/// 3. engine.exe in the resource directory (python-dist placed directly during development)
+/// 4. System Python (development mode)
 pub async fn find_engine(
     app_handle: &tauri::AppHandle,
     state: &AppState,
@@ -82,7 +82,7 @@ pub async fn find_engine(
     }
     let expected_fingerprint = expected_engine_install_fingerprint(app_handle);
 
-    // 策略1：已解压的 engine.exe（版本匹配时使用）
+    // Strategy 1: already-extracted engine.exe (used when the version matches)
     if let Some(engine_path) = paths::get_engine_exe_path(app_handle) {
         let version_file = paths::get_engine_dir().join(".version");
         let installed_version = std::fs::read_to_string(&version_file).unwrap_or_default();
@@ -100,7 +100,7 @@ pub async fn find_engine(
         );
     }
 
-    // 策略2：存在引擎归档，需要解压（首次启动或版本升级）
+    // Strategy 2: an engine archive exists and must be extracted (first launch or version upgrade)
     if let Some(archive_path) = paths::get_engine_archive_path(app_handle) {
         log::info!(
             "Found engine archive, preparing to extract: {}",
@@ -133,12 +133,12 @@ pub async fn find_engine(
         }
     }
 
-    // 策略4：开发模式
+    // Strategy 4: development mode
     if let Ok(python_path) = find_python().await {
         return Ok(EngineRuntime::Development { python_path });
     }
 
-    // 策略5：在线下载引擎归档（轻量化安装包首次运行或引擎升级）
+    // Strategy 5: download the engine archive online (first run of the lightweight installer or an engine upgrade)
     log::info!("No local speech engine found; attempting online download...");
     let engine_exe = download_and_extract_engine(app_handle, &progress_gate).await?;
     let path_str = paths::strip_win_prefix(&engine_exe);
@@ -146,7 +146,7 @@ pub async fn find_engine(
     Ok(EngineRuntime::Bundled { exe_path: path_str })
 }
 
-/// 解压引擎归档到数据目录
+/// Extract the engine archive into the data directory
 async fn extract_engine_archive(
     archive_path: &std::path::Path,
     app_handle: &tauri::AppHandle,
@@ -167,7 +167,7 @@ async fn extract_engine_archive(
     let handle = app_handle.clone();
     let progress_gate = progress_gate.clone();
 
-    // 解压是 CPU 密集型 + IO 密集型，放到阻塞线程
+    // Extraction is CPU-bound and IO-bound, so run it on a blocking thread
     tokio::task::spawn_blocking(move || {
         verify_engine_archive(
             &archive,
@@ -213,7 +213,7 @@ async fn extract_engine_archive(
                 ));
             }
 
-            // 写入版本标记，用于后续升级检测；只写 staging，验证成功后整体替换。
+            // Write a version marker for later upgrade detection; write only to staging and swap everything in after verification succeeds.
             let fingerprint = effective_engine_archive_fingerprint(ENGINE_ARCHIVE_FINGERPRINT);
             paths::atomic_write(
                 staging_dir.join(".version").as_path(),
@@ -637,18 +637,18 @@ async fn download_and_extract_engine(
         }));
     }
 
-    // 下载成功，执行解压
+    // Download succeeded; run the extraction
     extract_engine_archive(&temp_archive_path, app_handle, progress_gate).await
 }
 
-/// 查找可用的 Python 解释器（开发模式回退）
+/// Find a usable Python interpreter (development-mode fallback)
 pub(super) async fn find_python() -> Result<String, AppError> {
     if !cfg!(debug_assertions) {
         return Err(AppError::Asr(
             "System Python is only supported in development builds".into(),
         ));
     }
-    // ---- 策略1：检查项目 .venv 虚拟环境 ----
+    // ---- Strategy 1: check the project .venv virtual environment ----
     let mut venv_candidates = vec![PathBuf::from(".venv"), PathBuf::from("..").join(".venv")];
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
@@ -674,8 +674,8 @@ pub(super) async fn find_python() -> Result<String, AppError> {
         }
     }
 
-    // ---- 策略2：在系统 PATH 中搜索 ----
-    // 尝试多个可能的 Python 命令名
+    // ---- Strategy 2: search the system PATH ----
+    // Try several possible Python command names
     let python_names = vec!["python.exe", "python3.exe", "python"];
 
     for name in &python_names {
@@ -705,7 +705,7 @@ pub(super) async fn find_python() -> Result<String, AppError> {
         }
     }
 
-    // 所有策略都失败了
+    // All strategies failed
     Err(AppError::Asr(
         "No available Python interpreter found. Please install Python 3.8+ or create a .venv virtual environment in the project directory (uv recommended)."
             .to_string(),

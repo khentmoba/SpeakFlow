@@ -1,51 +1,51 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// 热词来源
+/// Hotword source
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum HotWordSource {
-    /// 用户手动添加
+    /// Added manually by the user
     User,
-    /// 从纠错中自动学习
+    /// Learned automatically from corrections
     Learned,
 }
 
-/// 纠错来源
+/// Correction source
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum CorrectionSource {
-    /// AI 润色自动学习
+    /// Learned automatically by AI polish
     #[default]
     Ai,
-    /// 用户手动纠错
+    /// Manual user correction
     User,
 }
 
-/// 热词条目
+/// Hotword entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HotWord {
     pub text: String,
-    /// 权重 1-5，越高越优先
+    /// Weight 1-5; higher means higher priority
     pub weight: u8,
     pub source: HotWordSource,
     pub use_count: u32,
-    /// Unix 时间戳（秒）
+    /// Unix timestamp (seconds)
     pub last_used: u64,
 }
 
-/// 纠错模式记录
+/// Correction pattern record
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CorrectionPattern {
-    /// ASR 原始输出片段
+    /// Raw ASR output fragment
     pub original: String,
-    /// 纠正后的片段
+    /// Corrected fragment
     pub corrected: String,
-    /// 出现次数
+    /// Number of occurrences
     pub count: u32,
-    /// 最近一次出现的时间戳
+    /// Timestamp of the most recent occurrence
     pub last_seen: u64,
-    /// 纠错来源
+    /// Correction source
     #[serde(default)]
     pub source: CorrectionSource,
     /// Typed in the Correction Rules dialog rather than learned from edits.
@@ -53,7 +53,7 @@ pub struct CorrectionPattern {
     pub manual: bool,
 }
 
-/// 词频条目
+/// Word-frequency entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VocabEntry {
     pub count: u32,
@@ -103,7 +103,7 @@ impl Default for JevConfig {
     }
 }
 
-/// 用户画像
+/// User profile
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct R2T2Config {
     #[serde(default)]
@@ -140,7 +140,7 @@ pub struct UserProfile {
     /// Local learning from edits in the field receiving automatic dictation; enabled by default.
     #[serde(default = "default_external_correction_learning")]
     pub external_correction_learning: bool,
-    /// 开机自启动时隐藏主窗口，仅保留系统托盘入口。
+    /// Hide the main window on launch at login, leaving only the system tray entry.
     #[serde(default)]
     pub autostart_minimized: bool,
     #[serde(default)]
@@ -149,56 +149,56 @@ pub struct UserProfile {
     pub correction_patterns: Vec<CorrectionPattern>,
     pub vocab_frequency: HashMap<String, VocabEntry>,
     pub total_transcriptions: u64,
-    /// 上次更新时间（Unix 时间戳）
+    /// Last update time (Unix timestamp)
     pub last_updated: u64,
-    /// LLM 后端配置
+    /// LLM backend configuration
     pub llm_provider: LlmProviderConfig,
     /// Optional Jev gate configuration; provider credentials remain in the system keyring.
     #[serde(default)]
     pub jev: JevConfig,
-    /// 翻译目标语言（None = 关闭翻译，非空 = 开启并翻译为该语言）
+    /// Translation target language (None = translation off, non-empty = on and translate into that language)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub translation_target: Option<String>,
-    /// 翻译模式独立热键
+    /// Independent hotkey for translation mode
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub translation_hotkey: Option<String>,
-    /// 用户自定义润色指令
+    /// User-defined polish instructions
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_prompt: Option<String>,
-    /// AI 润色对口述内容进行归类、重排和摘要的强度
+    /// How strongly AI polish categorizes, reorders and summarizes dictated content
     #[serde(default)]
     pub polish_structure_level: PolishStructureLevel,
-    /// 助手模式独立热键
+    /// Independent hotkey for assistant mode
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assistant_hotkey: Option<String>,
-    /// 助手模式附加系统提示词
+    /// Extra system prompt for assistant mode
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assistant_system_prompt: Option<String>,
-    /// 助手模式是否附带当前屏幕截图作为上下文
+    /// Whether assistant mode attaches the current screen screenshot as context
     #[serde(default)]
     pub assistant_screen_context_enabled: bool,
-    /// AI 润色是否附带当前屏幕截图作为上下文
+    /// Whether AI polish attaches the current screen screenshot as context
     #[serde(default)]
     pub ai_polish_screen_context_enabled: bool,
-    /// 系统级划词助手配置
+    /// System-level selection assistant configuration
     #[serde(default)]
     pub selection_assistant: SelectionAssistantConfig,
-    /// 用户手动删除后，不再自动学习回来的热词黑名单
+    /// Blocklist of hotwords that must not be learned back automatically after the user deletes them manually
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub blocked_hot_words: Vec<String>,
-    /// 联网搜索配置（仅助手模式）
+    /// Web search configuration (assistant mode only)
     #[serde(default)]
     pub web_search: WebSearchConfig,
-    /// 是否启用定期 LLM 审核纠错规则
+    /// Whether to periodically run the LLM review of correction rules
     #[serde(default)]
     pub correction_validation_enabled: bool,
-    /// 上次 LLM 审核时间戳（Unix 秒）
+    /// Timestamp of the last LLM review (Unix seconds)
     #[serde(default)]
     pub last_correction_validation: u64,
-    /// 本地转写历史的保留策略
+    /// Retention policy for local transcription history
     #[serde(default)]
     pub history_settings: HistorySettings,
-    /// 按前台应用匹配的听写覆盖规则；顺序即优先级，首个匹配项生效
+    /// Dictation override rules matched by foreground app; order is priority and the first match wins
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub app_profile_rules: Vec<AppProfileRule>,
     /// Audio ducking, Bluetooth guard, pre-roll, and adaptive release tail settings.
@@ -469,14 +469,14 @@ fn default_history_retention_days() -> u32 {
     90
 }
 
-/// 本地历史默认仅保存文本；音频需要用户主动开启。
+/// Local history saves text only by default; audio must be turned on by the user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistorySettings {
     #[serde(default = "default_history_enabled")]
     pub enabled: bool,
     #[serde(default)]
     pub save_audio: bool,
-    /// 0 表示永久保留，否则按天清理文本和音频。
+    /// 0 means keep forever; otherwise text and audio are cleaned up by day.
     #[serde(default = "default_history_retention_days")]
     pub retention_days: u32,
 }
@@ -524,7 +524,7 @@ fn default_app_rule_enabled() -> bool {
     true
 }
 
-/// 针对一个 Windows 进程（并可进一步限定窗口标题或浏览器域名）的听写覆盖规则。
+/// Dictation override rule for one Windows process (optionally narrowed by window title or browser domain).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppProfileRule {
     pub id: String,
@@ -675,7 +675,7 @@ impl AppProfileRule {
     }
 }
 
-/// 系统级划词助手行为配置。默认关闭，避免升级后意外监听全局鼠标。
+/// Behavior configuration for the system-level selection assistant. Off by default so an upgrade does not unexpectedly listen to the global mouse.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectionAssistantConfig {
     pub enabled: bool,
@@ -715,30 +715,30 @@ impl Default for SelectionAssistantConfig {
     }
 }
 
-/// 联网搜索方式
+/// Web search method
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum WebSearchProvider {
-    /// 使用模型厂商内置搜索能力（OpenAI web_search / Anthropic web_search）
+    /// Use the model vendor's built-in search capability (OpenAI web_search / Anthropic web_search)
     #[default]
     ModelNative,
     /// Bing public web search (no API key).
     Bing,
     /// Exa MCP (rate-limited free tier; optional API key).
     Exa,
-    /// Tavily Search API（需要 API Key）
+    /// Tavily Search API (requires an API key)
     Tavily,
-    /// Gemini Grounding with Google Search（需要 Google AI API Key）
+    /// Gemini Grounding with Google Search (requires a Google AI API key)
     Google,
 }
 
-/// 联网搜索配置（仅在助手模式下生效）
+/// Web search configuration (effective in assistant mode only)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebSearchConfig {
     pub enabled: bool,
     #[serde(default)]
     pub provider: WebSearchProvider,
-    /// 搜索结果条数（1-10，默认 5）
+    /// Number of search results (1-10, default 5)
     #[serde(default = "default_max_results")]
     pub max_results: u8,
 }
@@ -757,7 +757,7 @@ impl Default for WebSearchConfig {
     }
 }
 
-/// API 协议格式
+/// API protocol format
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ApiFormat {
@@ -766,17 +766,17 @@ pub enum ApiFormat {
     Anthropic,
 }
 
-/// OpenAI 认证方式选择（仅当 active / assistant provider 为 openai 时生效）
+/// OpenAI auth method selection (effective only when the active / assistant provider is openai)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum OpenaiAuthMode {
-    /// 只使用用户填入的 API Key，忽略已登录的 OAuth session
+    /// Use only the API key the user entered and ignore any signed-in OAuth session
     ApiKey,
-    /// 只使用 OAuth session，忽略手填的 API Key
+    /// Use only the OAuth session and ignore a hand-entered API key
     Oauth,
 }
 
-/// xAI 认证方式选择（仅当 active / assistant provider 为 xai 时生效）
+/// xAI auth method selection (effective only when the active / assistant provider is xai)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum XaiAuthMode {
@@ -784,7 +784,7 @@ pub enum XaiAuthMode {
     Oauth,
 }
 
-/// Anthropic 认证方式选择（仅当 provider 为 claude 时生效）
+/// Anthropic auth method selection (effective only when the provider is claude)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ClaudeAuthMode {
@@ -792,39 +792,39 @@ pub enum ClaudeAuthMode {
     Oauth,
 }
 
-/// AI 润色的结构化改写强度。与模型推理深度彼此独立。
+/// Structured rewrite strength of AI polish. Independent of the model's reasoning depth.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PolishStructureLevel {
-    /// 只校正和断句，不重排内容
+    /// Only correct and punctuate; do not reorder content
     #[default]
     Off,
-    /// 只处理明确的列表、步骤和自然分段
+    /// Only handle explicit lists, steps and natural paragraph breaks
     Light,
-    /// 主动归类相关观点，使长口述更易扫读
+    /// Proactively group related points so long dictation is easier to scan
     Balanced,
-    /// 允许在忠实保留关键事实的前提下总结和重排
+    /// Allow summarizing and reordering while faithfully preserving key facts
     Strong,
 }
 
-/// 推理/思考模式（跨供应商抽象层）
+/// Reasoning/thinking mode (cross-vendor abstraction layer)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum LlmReasoningMode {
-    /// 不下发任何推理参数，走供应商默认行为
+    /// Send no reasoning parameters and follow the vendor's default behavior
     #[default]
     ProviderDefault,
-    /// 尽量关闭或压低思考
+    /// Turn thinking off or keep it as low as possible
     Off,
-    /// 偏轻量
+    /// Lighter
     Light,
-    /// 标准
+    /// Standard
     Balanced,
-    /// 偏深度
+    /// Deeper
     Deep,
 }
 
-/// 用户自定义的 LLM 服务商
+/// User-defined LLM provider
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CustomProvider {
     pub id: String,
@@ -835,79 +835,79 @@ pub struct CustomProvider {
     pub api_format: ApiFormat,
 }
 
-/// LLM 后端配置
+/// LLM backend configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmProviderConfig {
-    /// 当前使用的后端: 预置 key 或 custom provider id
+    /// Currently used backend: a preset key or a custom provider id
     pub active: String,
-    /// 旧字段，迁移兼容
+    /// Legacy field, kept for migration compatibility
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_base_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_model: Option<String>,
-    /// 跨供应商的思考模式抽象层
+    /// Cross-vendor thinking-mode abstraction layer
     #[serde(default)]
     pub reasoning_mode: LlmReasoningMode,
-    /// AI 润色链路的独立思考模式；为空时回退到旧的 reasoning_mode
+    /// Independent thinking mode for the AI polish pipeline; falls back to the legacy reasoning_mode when empty
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub polish_reasoning_mode: Option<LlmReasoningMode>,
-    /// AI 助手链路的独立思考模式；为空时回退到旧的 reasoning_mode
+    /// Independent thinking mode for the AI assistant pipeline; falls back to the legacy reasoning_mode when empty
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assistant_reasoning_mode: Option<LlmReasoningMode>,
-    /// AI 助手是否使用不同于润色的独立模型
+    /// Whether the AI assistant uses its own model, separate from polish
     #[serde(default)]
     pub assistant_use_separate_model: bool,
-    /// AI 助手独立模型；仅在 assistant_use_separate_model = true 时生效
+    /// Independent AI assistant model; effective only when assistant_use_separate_model = true
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assistant_model: Option<String>,
-    /// AI 助手独立供应商；仅在 assistant_use_separate_model = true 时生效
+    /// Independent AI assistant provider; effective only when assistant_use_separate_model = true
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assistant_provider: Option<String>,
-    /// 划词助手思考模式；为空时回退到润色思考模式
+    /// Selection assistant thinking mode; falls back to the polish thinking mode when empty
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selection_reasoning_mode: Option<LlmReasoningMode>,
-    /// 划词助手是否使用不同于润色的独立模型
+    /// Whether the selection assistant uses its own model, separate from polish
     #[serde(default)]
     pub selection_use_separate_model: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selection_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selection_provider: Option<String>,
-    /// 用户自定义服务商列表
+    /// User-defined provider list
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom_providers: Vec<CustomProvider>,
-    /// 纠错审核是否使用独立供应商/模型
+    /// Whether correction review uses its own provider/model
     #[serde(default)]
     pub validation_use_separate_model: bool,
-    /// 纠错审核独立供应商
+    /// Independent provider for correction review
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validation_provider: Option<String>,
-    /// 纠错审核独立模型
+    /// Independent model for correction review
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validation_model: Option<String>,
-    /// 当前模型不支持图片输入时，是否启用独立视觉模型读取屏幕
+    /// When the current model does not support image input, whether to use a separate vision model to read the screen
     #[serde(default)]
     pub screen_vision_enabled: bool,
-    /// 屏幕视觉模型供应商
+    /// Screen vision model provider
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub screen_vision_provider: Option<String>,
-    /// 屏幕视觉模型
+    /// Screen vision model
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub screen_vision_model: Option<String>,
-    /// OpenAI 认证方式：None = 用户未显式选择（resolver 按 OAuth 登录状态推断智能默认）；
-    /// Some(ApiKey) / Some(Oauth) = 用户通过设置页明确选定后存进来
+    /// OpenAI auth method: None = the user has not chosen explicitly (the resolver infers a smart default from OAuth sign-in state);
+    /// Some(ApiKey) / Some(Oauth) = stored after the user picked one explicitly on the settings page
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub openai_auth_mode: Option<OpenaiAuthMode>,
-    /// ChatGPT OAuth 快速模式：注入 service_tier="priority" 走优先处理通道。
-    /// 仅对已登录的 ChatGPT OAuth 会话生效，API Key 请求永不携带该标记。
-    /// 用户侧叫 "fast mode / 快速模式"，wire 值是 "priority"（对齐官方 Codex CLI）。
+    /// ChatGPT OAuth fast mode: injects service_tier="priority" to use the priority processing lane.
+    /// Applies only to signed-in ChatGPT OAuth sessions; API key requests never carry this flag.
+    /// Called "fast mode" on the user side; the wire value is "priority" (matching the official Codex CLI).
     #[serde(default)]
     pub openai_fast_mode: bool,
-    /// xAI 认证方式：None = 用户未显式选择（resolver 按 Grok Build 登录状态推断智能默认）；
-    /// Some(ApiKey) / Some(Oauth) = 用户通过设置页明确选定后存进来
+    /// xAI auth method: None = the user has not chosen explicitly (the resolver infers a smart default from Grok Build sign-in state);
+    /// Some(ApiKey) / Some(Oauth) = stored after the user picked one explicitly on the settings page
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xai_auth_mode: Option<XaiAuthMode>,
-    /// Anthropic 认证方式：None = 按 Claude 登录状态推断；Some(..) = 用户显式选择
+    /// Anthropic auth method: None = infer from Claude sign-in state; Some(..) = the user chose explicitly
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_auth_mode: Option<ClaudeAuthMode>,
 }
@@ -1142,7 +1142,7 @@ impl LlmProviderConfig {
         }) && model_is_set
     }
 
-    /// 解析助手实际使用的 provider（独立配置 > 润色 active）
+    /// Resolve the provider the assistant actually uses (independent config > active polish)
     pub fn resolve_assistant_provider(&self) -> String {
         if self.assistant_use_separate_model {
             if let Some(ref p) = self.assistant_provider {
@@ -1204,7 +1204,7 @@ impl UserProfile {
         self.resolve_app_profile(process_name, window_title)
     }
 
-    /// 获取按权重排序的热词文本列表（用于 ASR 注入）
+    /// Get the hotword text list sorted by weight (for ASR injection)
     pub fn get_hot_word_texts(&self, limit: usize) -> Vec<String> {
         let mut words: Vec<&HotWord> = self.hot_words.iter().collect();
         words.sort_by(|a, b| {
@@ -1252,17 +1252,17 @@ impl UserProfile {
         merged
     }
 
-    /// 根据输入文本动态检索相关纠错模式
+    /// Dynamically retrieve relevant correction patterns for the input text
     ///
-    /// 策略：精确子串匹配优先（input 中包含 pattern.original），
-    /// 不足 limit 条时用高频纠错兜底。User 来源始终优先于 Ai。
+    /// Strategy: exact substring match first (input contains pattern.original),
+    /// when fewer than limit are found, fill with high-frequency corrections. The User source always takes priority over Ai.
     pub fn get_relevant_corrections(&self, input: &str, limit: usize) -> Vec<&CorrectionPattern> {
         let source_ord = |s: &CorrectionSource| match s {
             CorrectionSource::User => 0,
             CorrectionSource::Ai => 1,
         };
 
-        // 仅注入与当前输入子串匹配的纠错，不注入无关高频规则
+        // Only inject corrections whose substring matches the current input; do not inject unrelated high-frequency rules
         let mut matched: Vec<&CorrectionPattern> = self
             .correction_patterns
             .iter()

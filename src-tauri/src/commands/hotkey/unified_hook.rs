@@ -415,7 +415,10 @@ pub(super) fn handle_modifier_only_event(
                 if is_locked {
                     state.locked.store(false, Ordering::Release);
                     state.activated.store(false, Ordering::Release);
-                    dispatch_state_release(state, format!("{} 解锁停止录音", label));
+                    dispatch_state_release(
+                        state,
+                        format!("{} unlocked, stopping recording", label),
+                    );
                 } else {
                     let now = now_unix_ms();
                     let last_rel = state.last_release_ms.load(Ordering::Acquire);
@@ -427,14 +430,20 @@ pub(super) fn handle_modifier_only_event(
                         state.locked.store(true, Ordering::Release);
                     }
                     state.activated.store(true, Ordering::Release);
-                    dispatch_state_press(state, format!("{} 按下，开始录音", label));
+                    dispatch_state_press(state, format!("{} pressed, starting recording", label));
                 }
             }
         } else if !is_altgr_ctrl_companion {
             state.tainted.store(true, Ordering::Release);
             if was_activated {
                 state.activated.store(false, Ordering::Release);
-                dispatch_state_release(state, format!("{} 被非热键按键打断，停止录音", label));
+                dispatch_state_release(
+                    state,
+                    format!(
+                        "{} interrupted by a non-hotkey key, stopping recording",
+                        label
+                    ),
+                );
             }
         }
     } else {
@@ -451,7 +460,10 @@ pub(super) fn handle_modifier_only_event(
                         .last_release_ms
                         .store(now_unix_ms(), Ordering::Release);
                     state.activated.store(false, Ordering::Release);
-                    dispatch_state_release(state, format!("{} 松开，停止录音", label));
+                    dispatch_state_release(
+                        state,
+                        format!("{} released, stopping recording", label),
+                    );
                 }
             }
         }
@@ -525,7 +537,7 @@ pub(super) fn handle_standard_event(
             if is_locked {
                 state.locked.store(false, Ordering::Release);
                 state.activated.store(false, Ordering::Release);
-                dispatch_state_release(state, format!("{} 解锁停止录音", label));
+                dispatch_state_release(state, format!("{} unlocked, stopping recording", label));
             } else if !was_activated {
                 let now = now_unix_ms();
                 let last_rel = state.last_release_ms.load(Ordering::Acquire);
@@ -537,7 +549,7 @@ pub(super) fn handle_standard_event(
                     state.locked.store(true, Ordering::Release);
                 }
                 state.activated.store(true, Ordering::Release);
-                dispatch_state_press(state, format!("{} 按下，开始录音", label));
+                dispatch_state_press(state, format!("{} pressed, starting recording", label));
             }
         }
     } else if !is_key_down && state.activated.load(Ordering::Acquire) {
@@ -550,7 +562,7 @@ pub(super) fn handle_standard_event(
                     .last_release_ms
                     .store(now_unix_ms(), Ordering::Release);
                 state.activated.store(false, Ordering::Release);
-                dispatch_state_release(state, format!("{} 松开，停止录音", label));
+                dispatch_state_release(state, format!("{} released, stopping recording", label));
 
                 let leaked = state.modifier_leaked.swap(false, Ordering::AcqRel);
                 if leaked {
@@ -649,7 +661,10 @@ pub(super) unsafe extern "system" fn unified_low_level_mouse_proc(
                     let was_activated = state.activated.load(Ordering::Acquire);
                     if !was_activated {
                         state.activated.store(true, Ordering::Release);
-                        dispatch_state_press(state, format!("{} 按下，开始录音", label));
+                        dispatch_state_press(
+                            state,
+                            format!("{} pressed, starting recording", label),
+                        );
                     }
                     if !(share_dictation && state.kind.is_dictation_passthrough_eligible()) {
                         swallow = true;
@@ -659,7 +674,7 @@ pub(super) unsafe extern "system" fn unified_low_level_mouse_proc(
                 state
                     .last_release_ms
                     .store(now_unix_ms(), Ordering::Release);
-                dispatch_state_release(state, format!("{} 松开，停止录音", label));
+                dispatch_state_release(state, format!("{} released, stopping recording", label));
                 if !(share_dictation && state.kind.is_dictation_passthrough_eligible()) {
                     swallow = true;
                 }
